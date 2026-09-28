@@ -1,0 +1,66 @@
+// Copy this directory to <repo>/.devcontainer/ unchanged. Every name below is derived
+// from ${localWorkspaceFolderBasename}, so each repo gets its own volumes with no edits.
+// See 603-Identity/devcontainers README.md for the reasoning behind each line.
+{
+  "name": "${localWorkspaceFolderBasename}",
+  "build": { "dockerfile": "Dockerfile" },
+
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+  "remoteUser": "app",
+
+  // Least privilege. The app user needs no Linux capabilities, and no process in the
+  // container may gain privileges through setuid binaries.
+  "runArgs": ["--cap-drop=ALL", "--security-opt=no-new-privileges"],
+
+  "mounts": [
+    // Git identity and signing config, read-only. git-identity.sh wires it in at start.
+    "source=${localEnv:USERPROFILE}/.gitconfig-work,target=/home/app/.gitconfig-host,type=bind,readonly",
+
+    // PER-REPO GitHub credential: a fine-grained PAT covering THIS repo only (the hub
+    // repo's token also covers its satellites). Run `gh auth login --with-token` once;
+    // the volume keeps it across rebuilds. Never shared between repos.
+    "source=${localWorkspaceFolderBasename}-gh,target=/home/app/.config/gh,type=volume",
+
+    // PER-REPO Claude Code sessions and memory. Every repo mounts its code at
+    // /workspace and Claude keys projects by path, so a shared volume would mix
+    // different repos' histories together.
+    "source=${localWorkspaceFolderBasename}-claude,target=/home/app/.claude,type=volume",
+
+    // PER-REPO scratch. /tmp is where session scratch and task output pile up. On a
+    // volume it stays out of the container's own filesystem, shows up in
+    // `docker system df -v`, and can be wiped with
+    // `docker volume rm <repo>-tmp` without touching anything else.
+    "source=${localWorkspaceFolderBasename}-tmp,target=/tmp,type=volume",
+
+    // SHARED download cache (tofu providers, npm tarballs). Safe to share: every entry
+    // is verified against the consuming repo's own lock file before use.
+    "source=603identity-cache,target=/home/app/.cache,type=volume",
+
+    // Dependency directories on per-repo volumes. They are the heavy, many-small-file
+    // trees that are slowest across the Windows bind mount. Keep the ones this repo
+    // uses and delete the rest:
+    "source=${localWorkspaceFolderBasename}-node_modules,target=/workspace/node_modules,type=volume",
+    "source=${localWorkspaceFolderBasename}-venv,target=/workspace/.venv,type=volume"
+  ],
+
+  // On every START, not just create: re-resolve the host gitconfig, and check that an
+  // editor-forwarded GPG agent is answering in THIS session.
+  "postStartCommand": "sh /usr/local/share/603identity/git-identity.sh; sh /usr/local/share/603identity/gpg-check.sh",
+  "postCreateCommand": "if [ -f .pre-commit-config.yaml ]; then pre-commit install; fi",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "anthropic.claude-code",
+        "GitHub.vscode-pull-request-github",
+        "github.vscode-github-actions",
+        "editorconfig.editorconfig",
+        "redhat.vscode-yaml",
+        // tofu repos: OpenTofu's own extension, which knows OpenTofu-only blocks such as
+        // `encryption`. HashiCorp's flags those as errors.
+        "OpenTofu.vscode-opentofu"
+      ]
+    }
+  }
+}
