@@ -1,0 +1,78 @@
+name: Lint
+
+# Static checks on everything that decides what goes into an image or how it is
+# published. Linters run from images pinned by digest, the same rule the images
+# themselves follow.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  hadolint:
+    name: hadolint (Dockerfiles)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: hadolint
+        run: |
+          for f in images/*/Dockerfile template/.devcontainer/Dockerfile; do
+            echo "== $f"
+            docker run --rm -i hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d < "$f"
+          done
+
+  trivy-config:
+    name: Trivy misconfiguration (Dockerfiles)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Trivy's Dockerfile checks (root user, ADD from a URL, unpinned base, secrets in
+      # ENV and so on). A second opinion alongside hadolint; they catch different
+      # things.
+      - name: trivy config
+        run: |
+          for dir in images template; do
+            docker run --rm -v "$PWD:/src:ro" \
+              aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969 \
+              config --quiet --severity HIGH,CRITICAL --exit-code 1 "/src/$dir"
+          done
+
+  shellcheck:
+    name: shellcheck (scripts)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # shellcheck is preinstalled on ubuntu-latest runners.
+      - name: shellcheck
+        run: shellcheck images/base/files/*.sh tests/*.sh .github/scripts/*.sh
+
+  zizmor:
+    name: zizmor (workflow security)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # --offline: audit only what is in this repo, and hand the linter no token.
+      - name: zizmor
+        run: |
+          docker run --rm -v "$PWD:/repo:ro" -w /repo \
+            ghcr.io/zizmorcore/zizmor:1.30.1@sha256:a2eb396d886c053073405c7a980f2139ba2248ec172243cfa3841e57196e8101 \
+            --offline .github/workflows
