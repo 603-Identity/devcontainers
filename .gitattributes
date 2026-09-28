@@ -1,0 +1,4 @@
+# Everything in this repo ends up inside a Linux image. A CRLF shell script fails
+# with "/bin/sh^M: bad interpreter", and a CRLF lock file breaks hash checking, so
+# force LF on every checkout, including Windows hosts with core.autocrlf=true.
+* text=auto eol=lf
