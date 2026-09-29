@@ -1,0 +1,112 @@
+# way-of-working plugin contract for this repo (schema v0.13.0).
+# See reference/project-schema.md in the way-of-working plugin for the full key reference.
+#
+# Every value below was read from this repo on 2026-09-29: the check names come from the
+# `name:` fields of the jobs in .github/workflows/, and the ruleset block from a live API
+# read-back. Nothing was copied from a sibling repo's file without checking it here.
+
+# ── identity ─────────────────────────────────────────────────────────────────
+repo: 603-Identity/devcontainers
+pr_base: main
+migration_base: null   # no long-lived integration branch; work lands on main directly.
+
+# ── the deep record ──────────────────────────────────────────────────────────
+roadmap: docs/roadmap.md         # status, next action, and the decisions that bind this repo.
+sprints_dir: sprints             # exists (sprints/README.md) so the path resolves, but holds no
+                                 # plans: planning.kind is github_milestones (IAC-D48's companion
+                                 # convention).
+threat_model: docs/threat_model.md   # inputs, sinks, credential holders, boundaries, known
+                                     # gaps. The record of reference: README.md § Security model
+                                     # summarizes it and links here, never the other way round.
+
+planning:
+  kind: github_milestones   # one sprint = one milestone on this repo; its issues are the task
+                            # list. Requires backlog.kind: github_issues (below).
+
+decisions:
+  log: docs/roadmap.md   # this repo's own DEVC-D decisions, plus a cited list of the org-wide
+                         # IAC-D decisions (logged in infrastructure-core) that bind it.
+  prefix: DEVC-D         # DEVC-D1, applying IAC-D48: a decision affecting only this repo is
+                         # DEVC-D. One that changes another repo too (the image and token model,
+                         # a toolchain version) is IAC-D in infrastructure-core's log.
+
+backlog:
+  kind: github_issues    # devcontainer work and planning live on this repo's own tracker.
+  repo: null             # this repo. It is PUBLIC: an issue here must not carry private repos'
+                         # internals. Link to a private issue instead of quoting it.
+  path: null
+  item_prefix: null
+
+load_bearing_docs:
+  - README.md
+  - docs/roadmap.md
+  - docs/threat_model.md
+
+# ── what counts as a behavior change ─────────────────────────────────────────
+# Everything that decides what goes into a published image, how it is tested and published,
+# or what a consuming repo's container does at runtime.
+code_paths:
+  - images/
+  - template/            # copied unchanged into every consuming repo's .devcontainer/
+  - tests/               # the smoke test is the pre-push gate on every image
+  - .github/             # workflows, the build script, and dependabot.yml
+  - .trivyignore.yaml    # an ALLOWLIST past the vulnerability gate: the one file where a real
+                         # finding can be parked and the build stays green by design.
+  - .gitattributes       # forces LF; a CRLF script or lock file breaks inside the image.
+  - .ai/project.yml      # the source of truth for code_paths, the gate, the ruleset and the
+                         # review gate. An edit weakening any of them must route to review.
+  - .claude/             # the plugin pin and the deny rules on merge and force-push.
+
+# ── the local green gate ─────────────────────────────────────────────────────
+# A local pre-check, not the gate of record; CI on the PR is. Mirrors lint.yml's four jobs
+# and build.yml's test job, with the same digest-pinned linter images. Needs Docker and a
+# POSIX shell. The last step builds all three images and runs the smoke test and Trivy gate,
+# so it takes several minutes.
+gates:
+  green:
+    - { cwd: ".", run: "for f in images/*/Dockerfile template/.devcontainer/Dockerfile; do docker run --rm -i hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d < \"$f\" || exit 1; done" }
+    - { cwd: ".", run: "for d in images template; do docker run --rm -v \"$PWD:/src:ro\" aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969 config --quiet --severity HIGH,CRITICAL --exit-code 1 \"/src/$d\" || exit 1; done" }
+    - { cwd: ".", run: "shellcheck images/base/files/*.sh tests/*.sh .github/scripts/*.sh" }
+    - { cwd: ".", run: "docker run --rm -v \"$PWD:/repo:ro\" -w /repo ghcr.io/zizmorcore/zizmor:1.30.1@sha256:a2eb396d886c053073405c7a980f2139ba2248ec172243cfa3841e57196e8101 --offline .github/workflows" }
+    - { cwd: ".", run: "bash .github/scripts/build-and-test.sh local" }
+
+# ── branch protection ────────────────────────────────────────────────────────
+# `main-required-checks` (ruleset id 24183176), created 2026-09-29, `enforcement: active`,
+# read back live via `GET /repos/603-Identity/devcontainers/rules/branches/main`. Same shape as
+# terraform-cloudflare-dns's: a `pull_request` rule plus a `required_status_checks` rule, no
+# bypass actors. The check names are the jobs' own `name:` fields, not typed from memory
+# (IAC-D14's absent-check trap).
+#
+# build.yml's "Build, test, push and attest" job is deliberately absent: it runs only on
+# push to main, the schedule and manual dispatch, never on a pull request.
+ruleset:
+  name: main-required-checks
+  rule_types: [pull_request, required_status_checks]
+  required_checks:
+    - "hadolint (Dockerfiles)"
+    - "Trivy misconfiguration (Dockerfiles)"
+    - "shellcheck (scripts)"
+    - "zizmor (workflow security)"
+    - "Build and smoke-test (no push)"
+    - "architect-review"
+
+# ── the fresh-session review gate ────────────────────────────────────────────
+# architect-review-gate.yml, adapted from terraform-cloudflare-dns's copy. Event values reach
+# its shell through env, not inline expressions, so the workflow passes this repo's zizmor
+# lint.
+review:
+  ci_gate:
+    check: architect-review
+    header: "**Opus/Architect HITL review (automated)**"
+    attestation: "*Fresh-session review: this session did not author the diff.*"
+    triggers_on: null   # the gate fires on code_paths. architect-review-gate.yml mirrors that
+                        # list in its `case` block by hand; keep the two in sync.
+
+# ── agents ───────────────────────────────────────────────────────────────────
+agents:
+  enabled: [architect, coder, security-critic, docs-consistency]
+models:
+  architect: opus
+  coder: sonnet
+  second_opinion: fable   # offered as an optional late critic-gate round on a different model;
+                          # runs only when the human authorizes it in-session.
