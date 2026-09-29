@@ -14,7 +14,7 @@
 #
 # Ubuntu 24.04 tracks GitHub Actions' `ubuntu-latest` runner, so the container's
 # system Python (3.12) and libc match CI. Re-pin deliberately when the runner moves.
-FROM ubuntu:24.04@sha256:008173c23f95b170204355c12626cb5a965d779a7e1283b09e9cffbb1bf33ca3
+FROM ubuntu:26.04@sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78
 
 LABEL org.opencontainers.image.source="https://github.com/603-Identity/devcontainers" \
       org.opencontainers.image.description="603-Identity devcontainer base: git, gh, jq, yq, pre-commit, bc-detect-secrets, non-root app user" \
