@@ -1,0 +1,176 @@
+name: Architect Review Gate
+
+# review.ci_gate (.ai/project.yml): stays red on a PR that touches code_paths until a
+# fresh-session review is posted, as a PR comment or a formal PR review, against the PR's
+# CURRENT head commit. HEADER and ATTESTATION below must match
+# review.ci_gate.header/.attestation in .ai/project.yml byte for byte. This is a literal
+# substring match, not an intent match: a paraphrase turns the check red, and the failure
+# looks like a review problem. Rename either only together with .ai/project.yml.
+#
+# This is an EXISTENCE gate, not a verdict gate. It checks that a fresh-session review was
+# posted, not what the review concluded; the human still reads it before merging.
+#
+# Adapted from terraform-cloudflare-dns's architect-review-gate.yml, which carries the fixes
+# found live across the org's repos. Two of them shape this file:
+#   * For issue_comment and pull_request_review events, GitHub attaches the job's implicit
+#     check-run to the DEFAULT BRANCH's tip, not the PR's head. So the job resolves the PR's
+#     head SHA itself and posts the `architect-review` commit STATUS against it. The job is
+#     named `architect-review-runner` so its own check-run never collides with that status.
+#   * The job exits 0 when no review is found. Enforcement lives entirely in the status,
+#     which is what the ruleset requires; a red job check-run would only leave reviewed PRs
+#     UNSTABLE, and a comment-triggered rerun can never clear it.
+#
+# Differences from the source: event values reach the shell through `env`, never inline
+# `${{ }}` in a run block, and permissions are set on the job, so this repo's zizmor lint
+# passes. The `case` block mirrors this repo's code_paths.
+#
+# issue_comment and pull_request_review runs use the workflow file on the DEFAULT branch.
+# On the PR that first adds this file, a posted review therefore re-evaluates only when the
+# PR's own `pull_request` run is re-run.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+
+permissions: {}
+
+jobs:
+  architect-review-runner:
+    name: architect-review-runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # issue_comment also fires for comments on plain issues; only the PR case has
+    # github.event.issue.pull_request.
+    if: github.event_name != 'issue_comment' || github.event.issue.pull_request != null
+    # No concurrency group on purpose: every run posts an idempotent status for the
+    # current head, and cancelling one could drop the run that saw a new review.
+    permissions:
+      contents: read        # read the head commit's date
+      pull-requests: read   # the PR's head SHA, changed files and formal reviews
+      issues: read          # PR comments, which the API serves as issue comments
+      statuses: write       # post the `architect-review` commit status
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      EVENT_NAME: ${{ github.event_name }}
+      PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+      RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      HEADER: "**Opus/Architect HITL review (automated)**"
+      ATTESTATION: "*Fresh-session review: this session did not author the diff.*"
+      CONTEXT: architect-review
+    steps:
+      - name: Resolve PR number and head commit
+        id: pr
+        run: |
+          set -euo pipefail
+          if ! [[ "${PR_NUMBER:-}" =~ ^[0-9]+$ ]]; then
+            echo "::error::Could not resolve a PR number from event '${EVENT_NAME}'."
+            exit 1
+          fi
+          head_sha="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.sha')"
+          if ! [[ "$head_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Could not resolve PR #${PR_NUMBER}'s head commit."
+            exit 1
+          fi
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+
+      # Posted first so the required check shows `pending`, not absent, while this runs.
+      - name: Post pending status against the PR's head commit
+        env:
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          gh api --method POST "repos/${REPO}/statuses/${HEAD_SHA}" \
+            -f state=pending -f context="${CONTEXT}" \
+            -f description="Checking for a fresh-session review..." \
+            -f target_url="${RUN_URL}"
+
+      # Mirrors code_paths in .ai/project.yml; keep the two in sync by hand. Each renamed
+      # file's OLD path is checked too (`previous_filename`), so renaming a file out of scope
+      # cannot skip review. `set -euo pipefail` is load-bearing: a failed `gh api` must fail
+      # closed, never read as "nothing in scope". An empty file list is treated the same way,
+      # because every real PR changes at least one file.
+      - name: Does this PR touch code_paths?
+        id: scope
+        env:
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          files="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/files" --paginate --jq '.[] | .filename, (.previous_filename // empty)')"
+          if [ -z "$files" ]; then
+            gh api --method POST "repos/${REPO}/statuses/${HEAD_SHA}" \
+              -f state=failure -f context="${CONTEXT}" \
+              -f description="PR files API returned no entries -- cannot evaluate scope, failing closed." \
+              -f target_url="${RUN_URL}"
+            echo
+            echo "::error::PR files API returned no entries. Failing closed rather than reporting that no review is required."
+            exit 1
+          fi
+          touches=0
+          while IFS= read -r f; do
+            case "$f" in
+              images/*|template/*|tests/*|.github/*|.claude/*) touches=1 ;;
+              .trivyignore.yaml|.gitattributes|.ai/project.yml) touches=1 ;;
+            esac
+          done <<< "$files"
+          echo "touches=$touches" >> "$GITHUB_OUTPUT"
+
+      - name: Not in scope -- post success
+        if: steps.scope.outputs.touches != '1'
+        env:
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          gh api --method POST "repos/${REPO}/statuses/${HEAD_SHA}" \
+            -f state=success -f context="${CONTEXT}" \
+            -f description="No code_paths touched -- no review required." \
+            -f target_url="${RUN_URL}"
+
+      - name: Check for a qualifying review and post the result
+        if: steps.scope.outputs.touches == '1'
+        env:
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          head_date="$(gh api "repos/${REPO}/commits/${HEAD_SHA}" --jq '.commit.committer.date')"
+          echo "Head commit: ${HEAD_SHA} (${head_date})"
+
+          # Captured into variables, not process substitution, so a failing `gh api` aborts
+          # under `set -e` instead of vanishing inside a subshell.
+          comments_json="$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate --jq '.[] | {body, at: .created_at} | tojson')"
+          reviews_json="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews" --paginate --jq '.[] | {body, at: .submitted_at} | tojson')"
+
+          found_at=""
+          while IFS= read -r item; do
+            [ -n "$item" ] || continue
+            body="$(printf '%s' "$item" | jq -r '.body // ""')"
+            at="$(printf '%s' "$item" | jq -r '.at // ""')"
+            if [[ "$body" == *"$HEADER"* && "$body" == *"$ATTESTATION"* ]] \
+               && [[ "$at" > "$head_date" || "$at" == "$head_date" ]]; then
+              found_at="$at"
+              echo "Qualifying review found, posted ${at}."
+              break
+            fi
+          done <<< "${comments_json}"$'\n'"${reviews_json}"
+
+          if [ -n "$found_at" ]; then
+            gh api --method POST "repos/${REPO}/statuses/${HEAD_SHA}" \
+              -f state=success -f context="${CONTEXT}" \
+              -f description="Fresh-session review found (${found_at})." \
+              -f target_url="${RUN_URL}"
+          else
+            gh api --method POST "repos/${REPO}/statuses/${HEAD_SHA}" \
+              -f state=failure -f context="${CONTEXT}" \
+              -f description="No fresh-session review posted against this commit yet." \
+              -f target_url="${RUN_URL}"
+            # `gh api` prints no trailing newline, and the runner reads a workflow command
+            # only at the start of a line, so this `echo` is what makes the ::error:: render.
+            echo
+            echo "::error::No fresh-session review posted against head commit ${HEAD_SHA} (${head_date}) yet. A PR comment or review containing both \"${HEADER}\" and \"${ATTESTATION}\", posted at or after that commit, is required."
+            # Exit 0 on purpose: the `architect-review` status above is the enforcement.
+            exit 0
+          fi

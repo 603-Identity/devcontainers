@@ -13,6 +13,9 @@ costs almost no disk, because the image layers are stored once per machine.
 Local sizes measured on 2026-09-28: base 445 MB, tofu 664 MB, node 752 MB. Shared layers
 are stored only once, so all three together take about 0.95 GB.
 
+Work on these images is planned on this repo's issues and milestones. See
+[`docs/roadmap.md`](docs/roadmap.md) for status, next action and decisions.
+
 ## Using an image in a repo
 
 1. Copy [`template/.devcontainer/`](template/.devcontainer/) into the repo unchanged.
@@ -37,45 +40,17 @@ without the other.
 
 ## Security model
 
-**Everything is pinned and verified.** The base image is pinned by digest. Each binary is
-pinned by version and sha256, and each sha256 comes from that release's own published
-checksum file, never from a first download. Python tools install only from a hash lock
-(`--require-hashes`). npm is checked against the registry's sha512 `integrity` value. The
-CI linters also run from digest-pinned images.
+[`docs/threat_model.md`](docs/threat_model.md) is the record of reference: what the images
+take in, what they publish, who holds which credential, the boundaries meant to hold, and
+the known gaps. In short:
 
-**Nothing is published without these checks:**
-
-| Check | Where | Fails the build when |
-|---|---|---|
-| Smoke test ([`tests/smoke.sh`](tests/smoke.sh)) | before push | a tool version differs from its Dockerfile pin; the user isn't uid 1000; any setuid/setgid binary exists; a volume mount point isn't app-owned |
-| Trivy image scan | before push | there's a HIGH/CRITICAL vulnerability **with a fix available**, or a secret is baked into a layer |
-| hadolint and Trivy config | lint | there's a Dockerfile anti-pattern |
-| shellcheck | lint | a script has a shell bug |
-| zizmor | lint | a workflow has a security problem (template injection, excessive permissions, unpinned action) |
-
-**Exceptions expire.** The only way past the vulnerability gate is an entry in
-[`.trivyignore.yaml`](.trivyignore.yaml). Each entry is scoped to one binary's path,
-carries a written reason, and expires within 30 days. After the expiry date the weekly
-rebuild fails until someone re-reviews the entry. Today the only entries cover Go
-libraries compiled into the upstream `tofu` and `tflint` binaries, where no fixed
-upstream release exists at the pinned version. The base and node images pass with **zero**
-exceptions.
-
-**Findings the gate doesn't block** (unfixed or allowlisted) are still uploaded to this
-repo's *Security → Code scanning* page on every publish, so nothing is hidden.
-
-**Every published digest carries two signed attestations** (Sigstore, stored on GitHub
-and in the registry): build provenance, meaning which commit and workflow run produced it,
-and a CycloneDX SBOM of what's inside it.
-
-**Runtime hardening, from the template:** the container runs as non-root uid 1000 with
-`--cap-drop=ALL` and `--security-opt=no-new-privileges`, and every setuid/setgid bit is
-stripped from the image. GitHub's SSH host key is pinned system-wide.
-
-**Rebuilds:** there's a weekly scheduled rebuild. apt packages aren't version-pinned
-(Ubuntu's archive drops superseded versions), so this is how OS security fixes arrive.
-Each rebuild publishes new digests under a new tag, and consuming repos pick them up
-through Dependabot PRs. Nothing changes under a repo without a reviewed diff.
+- Everything is pinned and verified: the base image by digest, each binary by version and
+  a sha256 from its release's own checksum file, and the Python tools by hash lock.
+- Nothing is published until the smoke test and a Trivy scan pass. The only way past the
+  scan is an entry in [`.trivyignore.yaml`](.trivyignore.yaml), and every entry expires
+  within 30 days.
+- Every published digest carries signed build provenance and an SBOM.
+- The container runs as non-root, with no Linux capabilities and no way to gain privileges.
 
 ## Disk, speed and volumes
 
@@ -129,17 +104,3 @@ ledger.
 
 Dependabot handles the base image digest, the GitHub Actions pins, and the Python tool
 lock (except `bc-detect-secrets`, which is held at 1.5.47 org-wide on purpose).
-
-## Known gaps
-
-These are stated plainly so nobody trusts the setup for more than it does:
-
-- **Node.js**: the tarball's sha256 is checked against `SHASUMS256.txt`, but that file's
-  GPG signature isn't verified yet. Doing so means pinning the Node release team's
-  keyring here.
-- **apt packages** aren't version-pinned. The base digest and the weekly rebuild bound
-  them instead.
-- **`--cap-drop=ALL`** in the template hasn't yet been proven against every repo's
-  workflow. The first pilot repos verify it, and this line is updated with the result.
-- **The VS Code server and extensions** download into the container on each rebuild.
-  That costs time, not safety.
