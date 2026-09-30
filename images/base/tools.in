@@ -1,8 +1,0 @@
-# Python tools every devcontainer carries. Compiled to tools.lock.txt with
-# hashes; install ONLY from the lock (pip --require-hashes).
-#
-# bc-detect-secrets is Bridgecrew's fork, NOT Yelp's detect-secrets: the two reject
-# each other's .secrets.baseline. 1.5.47 is the version every consuming repo's baseline and CI
-# job pin.
-bc-detect-secrets==1.5.47
-pre-commit
