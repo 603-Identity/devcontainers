@@ -14,8 +14,15 @@
   "runArgs": ["--cap-drop=ALL", "--security-opt=no-new-privileges"],
 
   "mounts": [
-    // Git identity and signing config, read-only. git-identity.sh wires it in at start.
-    "source=${localEnv:USERPROFILE}/.gitconfig-work,target=/home/app/.gitconfig-host,type=bind,readonly",
+    // HOST-WIDE git identity: the host's ~/.gitconfig.d (one <name>.gitconfig per GitHub
+    // account, each listing its orgs), read-only, in EVERY container. git-identity.sh
+    // picks the file that claims this repo's origin org and copies five identity keys
+    // from it at start. HOME is set on Linux, macOS and CI, USERPROFILE on Windows
+    // (and HOME too when the editor was started from Git Bash: then the path doubles
+    // and `devcontainer up` fails with "bind source path does not exist". Start from
+    // PowerShell or cmd, or `unset HOME` first). The directory must exist. See the
+    // README's "Git identity" section.
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.gitconfig.d,target=/home/app/.gitconfig.d,type=bind,readonly",
 
     // PER-REPO GitHub credential: a fine-grained PAT covering THIS repo only (the hub
     // repo's token also covers its satellites). Run `gh auth login --with-token` once;
@@ -44,8 +51,8 @@
     "source=${localWorkspaceFolderBasename}-venv,target=/workspace/.venv,type=volume"
   ],
 
-  // On every START, not just create: re-resolve the host gitconfig, and check that an
-  // editor-forwarded GPG agent is answering in THIS session.
+  // On every START, not just create: rebuild the git identity from the host's identity
+  // files, and check that an editor-forwarded GPG agent is answering in THIS session.
   "postStartCommand": "sh /usr/local/share/603identity/git-identity.sh; sh /usr/local/share/603identity/gpg-check.sh",
   "postCreateCommand": "if [ -f .pre-commit-config.yaml ]; then pre-commit install; fi",
 

@@ -30,6 +30,7 @@ at build and publish time, before any consumer pulls.
 | Pull-request content | `pull_request` runs of `build.yml` and `lint.yml` | The PR job holds `contents: read` only, never a write token, and pushes nothing. |
 | Issue, PR and review text | `architect-review-gate.yml`'s `issue_comment` and `pull_request_review` triggers | Read as data by a substring match. Event values reach the shell through `env`, never inline expressions. The repo is **public**, so anyone can post a comment. |
 | Linter and scanner images | `lint.yml` and `build-and-test.sh` | Pinned by digest, the same rule the images follow. |
+| Host identity directory | the host's `~/.gitconfig.d`, mounted read-only into **every** container | `git-identity.sh` copies an allowlist of five keys (`user.name`, `user.email`, `user.signingkey`, `commit.gpgsign`, `tag.gpgsign`) from the one file that claims the origin's org. It never includes or links the host file, so that file's credential, `gpg.*`, `url.*`, `core.*` and alias sections cannot reach the container's git config. |
 
 ## Sinks
 
@@ -56,7 +57,7 @@ at build and publish time, before any consumer pulls.
 
    | Check | Where | Fails the build when |
    |---|---|---|
-   | Smoke test ([`tests/smoke.sh`](../tests/smoke.sh)) | before push | a tool version differs from its Dockerfile pin; the user isn't uid 1000; any setuid/setgid binary exists; a volume mount point isn't app-owned |
+   | Smoke test ([`tests/smoke.sh`](../tests/smoke.sh)) | before push | a tool version differs from its Dockerfile pin; the user isn't uid 1000; any setuid/setgid binary exists; a volume mount point isn't app-owned; any credential helper other than gh's runs; the projected identity holds a non-allowlisted key; a token from the origin URL appears in output; an identity is left in place after a failed selection (no origin, a non-github or lookalike origin, an ambiguous, unreadable or missing identity file) |
    | Trivy image scan | before push | there's a HIGH/CRITICAL vulnerability **with a fix available**, or a secret is baked into a layer |
    | hadolint and Trivy config | lint | there's a Dockerfile anti-pattern |
    | shellcheck | lint | a script has a shell bug |
@@ -79,9 +80,12 @@ at build and publish time, before any consumer pulls.
    stripped from the image, and the smoke test asserts that none remain. GitHub's SSH host
    key is pinned system-wide.
 
-5. **Repos stay apart.** Each repo gets its own container and its own credential, Claude
-   Code, and scratch volumes. Only the download cache is shared, and every entry in it is
-   verified against the consuming repo's own lock file before use.
+5. **Repos stay apart; identity files do not.** Each repo gets its own container and its
+   own credential, Claude Code, and scratch volumes. Only the download cache is shared
+   among volumes, and every entry in it is verified against the consuming repo's own lock
+   file before use.
+   The host's identity files are shared by design: every container mounts the whole
+   `~/.gitconfig.d`, and identity is host-wide (see Known gaps).
 
 6. **Changes to `main` are reviewed.** The `main-required-checks` ruleset requires a pull
    request, the lint, build and smoke-test checks, and `architect-review` on any change to
@@ -90,6 +94,14 @@ at build and publish time, before any consumer pulls.
 7. **OS security fixes arrive on a schedule.** apt packages aren't version-pinned, so a
    weekly scheduled rebuild picks them up. Each rebuild publishes new digests under a new
    tag.
+
+8. **Host identity files cannot reach the container's effective credential helper.** The
+   identity file is generated from an allowlist of five keys, never included or linked, so
+   a host `[credential]` section (whose helper is a host path such as `gh.exe`) cannot
+   displace the image's `gh auth git-credential`. The smoke test proves it by behaviour.
+   This is narrower than "nothing can change the helper": code running in the container
+   can still edit `~/.gitconfig`, and `/workspace/.git/config` is host-checkout config that
+   the projection doesn't touch.
 
 ## Known gaps
 
@@ -107,3 +119,12 @@ These are stated plainly so nobody trusts the setup for more than it does:
   That costs time, not safety.
 - **The broad OAuth token** that containers used before this model can still be live
   until every repo has moved to the template (#6).
+- **Every container can read every account's identity file**, for example the other
+  org's email and signing-key ID, because the whole `~/.gitconfig.d` is mounted
+  read-only. A secret written inline in one of those files (a token in a URL, an
+  `http.extraHeader`) would be readable too, so the README forbids it.
+- **Identity selection is not authorization.** The forwarded GPG agent is the signing
+  boundary, and a container could name another key that the agent holds.
+- **`/workspace/.git` sits on the host bind mount** (pre-existing), so a container
+  process can plant hooks, `core.hooksPath` or `core.fsmonitor` that the **host's** git
+  then runs.

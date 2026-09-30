@@ -70,6 +70,8 @@ sessions installed dependencies into `/tmp`, which sat in the container's own fi
 where nothing ever cleaned it up, and several repos had been cloned into one container.
 The volume layout above makes that growth visible (`docker system df -v`) and
 disposable. The one-container-per-repo rule keeps each repo's credentials and data apart.
+Only the download cache and the host's git identity files (see
+[Git identity](#git-identity)) are shared by all containers.
 
 **Getting disk space back on Windows:** Docker Desktop keeps everything in
 `%LOCALAPPDATA%\Docker\wsl\disk\docker_data.vhdx`. Deleting data frees space inside that
@@ -90,6 +92,47 @@ needs:
 
 Tokens expire after 90 days at most. Record each one in infrastructure-core's credential
 ledger.
+
+## Git identity
+
+Identity (who commits) is **host-wide**. The GitHub credential (what may push) is **per
+repo**, see [Credentials](#credentials). Every container mounts the same host directory
+`~/.gitconfig.d/` (on Windows, `%USERPROFILE%\.gitconfig.d\`) read-only. It holds one
+git-config file per GitHub account, named `<anything>.gitconfig`, and each file lists the
+orgs it serves in a key host git ignores:
+
+```ini
+[user]
+	name = Jane Doe
+	email = jane@example.com
+	signingkey = ABCDEF0123456789
+[commit]
+	gpgsign = true
+[devcontainer]
+	org = 603-identity
+	org = jrg-consulting
+```
+
+At every container start `git-identity.sh` reads `/workspace`'s `origin`, takes the org from
+a `github.com` URL (case-insensitive, https or ssh), finds the **one** file that claims it,
+and copies only `user.name`, `user.email`, `user.signingkey`, `commit.gpgsign` and
+`tag.gpgsign` into `~/.gitconfig-identity`. Nothing else is copied: no `[credential]`
+section, no `include`, no `gpg.*`. A host credential helper in an identity file that points at `gh.exe` can
+therefore never reach the container's effective credential helper. When nothing matches (no origin, a non-GitHub or
+lookalike URL, no file or several files claiming the org, an unreadable file, an empty
+directory), the script prints a loud banner naming the reason, commits have no identity,
+and the container still starts.
+
+- The directory is mounted into **every** container, so it holds these files and nothing
+  else: no backups, no credential stores, and no secret of any kind inside the files (no
+  token in a URL, no `http.extraHeader`), because any container can read them.
+- **Prerequisite:** `~/.gitconfig.d` must exist on the host. The devcontainer CLI's
+  `--mount` fails on a missing source with `bind source path does not exist`.
+- **Windows:** start VS Code or the CLI from PowerShell or cmd. Git Bash also exports
+  `HOME`, so the template's source path doubles (`C:\Users\x` + `C:\Users\x/.gitconfig.d`)
+  and the same error appears. Run `unset HOME` in that shell first if you must use it.
+- Edits to the host files apply on the **next container start**.
+- Signing goes through the editor's forwarded GPG agent. SSH signing is out of scope.
 
 ## Updating a pinned tool
 

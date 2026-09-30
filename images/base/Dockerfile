@@ -80,14 +80,21 @@ RUN python3 -m venv /opt/603identity/tools \
 # A repo's devcontainer.json runs them from postStartCommand; see README.md.
 COPY --chmod=0755 files/git-identity.sh files/gpg-check.sh /usr/local/share/603identity/
 
-# --- git config layout. The host's gitconfig is bind-mounted READ-ONLY at
-# ~/.gitconfig-host. That mount cannot BE ~/.gitconfig, because every
-# `git config --global` would then fail. So a writable ~/.gitconfig includes
-# ~/.gitconfig-identity, which git-identity.sh points at the sidecar only when it is
-# a regular file. The empty placeholder is the safe default until that runs.
+# --- git config layout. A writable ~/.gitconfig includes ~/.gitconfig-identity, which
+# git-identity.sh GENERATES at every start: it projects five identity keys from the
+# host file that claims the origin's org (the host's ~/.gitconfig.d is mounted
+# read-only), and never includes the host file itself. The empty placeholder is the
+# safe default until the first start; an absent file means the same, since git ignores
+# an include whose path is missing.
 RUN printf '[include]\n\tpath = /home/app/.gitconfig-identity\n' > /home/app/.gitconfig \
     && : > /home/app/.gitconfig-identity \
     && chown app:app /home/app/.gitconfig /home/app/.gitconfig-identity
+
+# --- Mount point for the host's identity directory (~/.gitconfig.d, read-only). It
+# gives the bind mount a stable, app-owned target; once mounted, the host's ownership
+# shows instead. It is not what makes an unmounted run safe: git-identity.sh treats a
+# missing directory like an empty one.
+RUN install -d -o app -g app -m 0755 /home/app/.gitconfig.d
 
 # --- Mount points for named volumes, pre-created app-owned. Docker initialises an
 # empty named volume from the image directory at its mount point, ownership

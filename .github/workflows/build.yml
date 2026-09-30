@@ -28,11 +28,11 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io/603-identity
-  # Image tags are "<MAJOR>.<workflow run number>", for example 1.42. The run number
+  # Image tags are "<MAJOR>.<workflow run number>", for example 2.42. The run number
   # grows with every run, so the tag is version-shaped and Dependabot's docker
   # ecosystem can bump consumers' FROM lines. Raise MAJOR by hand when an image's
   # contract breaks (a tool removed, a path moved), so the bump reads as breaking.
-  MAJOR: "1"
+  MAJOR: "2"
 
 jobs:
   test:
