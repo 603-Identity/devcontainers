@@ -140,7 +140,8 @@ restore_a() {
 }
 
 cred_probe "before the script"
-# The system helper names gh by absolute path: ~/.local/bin leads PATH and is writable by app.
+# The system helper names gh by absolute path, so an accidental `gh` in ~/.local/bin (which
+# leads PATH) cannot shadow it.
 check "system credential helper is absolute gh" "!/usr/local/bin/gh auth git-credential" \
     "$(git config --system --get-all credential.https://github.com.helper | tail -n 1)"
 
