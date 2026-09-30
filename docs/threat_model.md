@@ -109,7 +109,7 @@ at build and publish time, before any consumer pulls.
    displace the image's `gh auth git-credential`. The helper is configured by absolute
    path (`/usr/local/bin/gh`), because `~/.local/bin`, which `app` can write, leads `PATH`
    and a bare `gh` could be shadowed there by accident. That is hygiene, not a boundary
-   against code running as `app`, which the next sentence covers. The smoke test proves
+   against code running as `app` (see the qualification below). The smoke test proves
    both by behaviour.
    This is narrower than "nothing can change the helper": code running in the container
    can still edit `~/.gitconfig`, and `/workspace/.git/config` is host-checkout config that
