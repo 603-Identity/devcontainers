@@ -27,7 +27,7 @@ at build and publish time, before any consumer pulls.
 | Release binaries (gh, yq, uv, tofu, tflint, node) | `curl` in each Dockerfile | Pinned by version and sha256. Each sha256 comes from that release's own published checksum file, never from a first download. |
 | uv-provisioned interpreters | `uv` at run time, when a repo's `.python-version` asks for an older Python | Not part of the image: uv downloads the interpreter from upstream on demand, into the container's own filesystem (`~/.local/share/uv`, cleared on rebuild; never the shared volume), checking it against a sha256 built into the pinned uv binary. Only a repo that cannot use the system 3.14 does this. |
 | Python tools | `uv sync --locked` in the base image | Installed only from `images/base/tools/uv.lock`, which carries hashes; `--locked` fails on any drift from `pyproject.toml`. |
-| npm | the node image | Checked against the registry's sha512 `integrity` value. |
+| npm, and the `brace-expansion` and `undici` copies replaced inside it | the node image | Each checked against the registry's sha512 `integrity` value, pinned as an `ARG`; the replaced versions are asserted after the swap. |
 | Pull-request content | `pull_request` runs of `build.yml` and `lint.yml` | The PR job holds `contents: read` only, never a write token, and pushes nothing. |
 | Issue, PR and review text | `architect-review-gate.yml`'s `issue_comment` and `pull_request_review` triggers | Read as data by a substring match. Event values reach the shell through `env`, never inline expressions. The repo is **public**, so anyone can post a comment. |
 | Linter and scanner images | `lint.yml` and `build-and-test.sh` | Pinned by digest, the same rule the images follow. |
