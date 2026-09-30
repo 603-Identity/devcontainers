@@ -6,9 +6,12 @@ costs almost no disk, because the image layers are stored once per machine.
 
 | Image | Contents |
 |---|---|
-| `ghcr.io/603-identity/devcontainer-base` | Ubuntu 26.04, non-root `app` (uid 1000), git, gh 2.102.0, jq, yq, Python 3.14 (system), uv 0.12.21, pre-commit, bc-detect-secrets 1.5.51, zizmor 1.30.1 |
-| `ghcr.io/603-identity/devcontainer-tofu` | base + OpenTofu 1.11.14 + tflint |
+| `ghcr.io/603-identity/devcontainer-base` | Ubuntu 26.04, non-root `app` (uid 1000), git, gh, jq, yq, Python 3.14 (system), uv, pre-commit, bc-detect-secrets, zizmor |
+| `ghcr.io/603-identity/devcontainer-tofu` | base + OpenTofu + tflint |
 | `ghcr.io/603-identity/devcontainer-node` | base + Node.js 24 + npm 11 |
+
+Exact versions live in one place each, not here: the Dockerfile `ARG`s for the downloaded
+binaries and [`images/base/tools/uv.lock`](images/base/tools/uv.lock) for the Python tools.
 
 The images are **linux/amd64 only**: every downloaded binary is amd64, so the base
 image's first build step fails with a clear message on any other architecture.
@@ -203,6 +206,6 @@ lines). Move the four together, taking the digest from `docker buildx imagetools
 docker/dockerfile:<tag>`.
 
 Dependabot handles the base image digest, the GitHub Actions pins, and the Python tool lock (`uv` ecosystem on `images/base/tools`). Dependabot
-may propose a `bc-detect-secrets` bump in the grouped `uv` PR (#22 removed the old ignore
-on purpose). Do not merge one until every 603 repo is ready to regenerate its
+proposes a `bc-detect-secrets` bump as a PR of its own: it is excluded from the grouped `uv`
+PR, not ignored (#22 removed the old ignore on purpose). Do not merge one until every 603 repo is ready to regenerate its
 `.secrets.baseline` and bump its CI pin in the same change.

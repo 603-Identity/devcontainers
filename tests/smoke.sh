@@ -86,7 +86,7 @@ cred_probe() { # cred_probe <label>
             timeout 10 git credential fill >/dev/null 2>&1 || true
     check "credential helpers run ($1)" 1 "$(grep -c 'run_command:' "$trace" || true)"
     check "credential helper is gh's ($1)" 1 \
-        "$(grep -c "run_command: 'gh auth git-credential get'\$" "$trace" || true)"
+        "$(grep -c "run_command: '/usr/local/bin/gh auth git-credential get'\$" "$trace" || true)"
     rm -f "$trace"
 }
 
@@ -140,6 +140,10 @@ restore_a() {
 }
 
 cred_probe "before the script"
+# The system helper names gh by absolute path, so an accidental `gh` in ~/.local/bin (which
+# leads PATH) cannot shadow it.
+check "system credential helper is absolute gh" "!/usr/local/bin/gh auth git-credential" \
+    "$(git config --system --get-all credential.https://github.com.helper | tail -n 1)"
 
 fx=$(mktemp -d); outside=$(mktemp -d); repo=$(mktemp -d); keep=$(mktemp -d)
 cat >"$outside/extra.cfg" <<EOF
