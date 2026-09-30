@@ -112,15 +112,3 @@ vulnerabilities:
     paths: ["usr/local/bin/tflint", "usr/local/bin/tofu"]
     statement: "HIGH in google.golang.org/grpc compiled into upstream tflint and tofu; no fixed upstream release at this pin."
     expired_at: 2026-10-28
-  - id: CVE-2026-102276
-    paths: ["usr/local/lib/node_modules/npm/node_modules/brace-expansion/package.json"]
-    statement: "HIGH DoS in brace-expansion bundled in npm; no fixed npm 11.x release; 11.20.0 is the newest and bundles it. npm 12 is a separate major move. Used only by the npm CLI at build time."
-    expired_at: 2026-10-28
-  - id: CVE-2026-102278
-    paths: ["usr/local/lib/node_modules/npm/node_modules/brace-expansion/package.json"]
-    statement: "HIGH DoS in brace-expansion bundled in npm; no fixed npm 11.x release; 11.20.0 is the newest and bundles it. npm 12 is a separate major move. Used only by the npm CLI at build time."
-    expired_at: 2026-10-28
-  - id: CVE-2026-19534
-    paths: ["usr/local/lib/node_modules/npm/node_modules/undici/package.json"]
-    statement: "HIGH DoS in undici bundled in npm; no fixed npm 11.x release; 11.20.0 is the newest and bundles it. npm 12 is a separate major move. Used only by the npm CLI at build time."
-    expired_at: 2026-10-28

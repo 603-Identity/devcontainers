@@ -8,7 +8,7 @@ costs almost no disk, because the image layers are stored once per machine.
 |---|---|
 | `ghcr.io/603-identity/devcontainer-base` | Ubuntu 26.04, non-root `app` (uid 1000), git, gh, jq, yq, Python 3.14 (system), uv, pre-commit, bc-detect-secrets, zizmor |
 | `ghcr.io/603-identity/devcontainer-tofu` | base + OpenTofu + tflint |
-| `ghcr.io/603-identity/devcontainer-node` | base + Node.js 24 + npm 11 |
+| `ghcr.io/603-identity/devcontainer-node` | base + Node.js 24 + npm 12 |
 
 Exact versions live in one place each, not here: the Dockerfile `ARG`s for the downloaded
 binaries and [`images/base/tools/uv.lock`](images/base/tools/uv.lock) for the Python tools.
@@ -52,7 +52,8 @@ GPG agent forwarding, and no other editor is supported.
 A container that validates with a different tool version than CI reports a result CI
 doesn't share. The OpenTofu and Node versions here are the ones every consuming repo's
 workflows pin, in every org. **Bump the image and every repo's workflow pin together**, never one
-without the other.
+without the other. The one known exception is npm: the image ships npm 12 ahead of CI's
+bundled npm 11 until each repo takes it (#27).
 
 ### Consuming from another org
 
