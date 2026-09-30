@@ -1,13 +1,19 @@
 # Next steps
 
-**Now:** P0: cross-org images — awaiting_review.
+**Now:** P0: cross-org images — implementing (#21's post-merge steps).
 
 **Just done:**
-- Implemented the #21 design spec as PR #39 (closes #21 and #9), head `ffb9cb7`: org-neutral `devc` names, the shared volume narrowed to tofu providers at `~/.cache/shared`, publish gated to `main`, MAJOR 3, VS Code only.
-- The local green gate passed and the D3 verify run is in the PR body. The critic pass (architect, security-critic, docs-consistency) ran 3 rounds and converged; the `fable` second-opinion round was offered and declined.
-- Accepted residuals are listed in the PR body: `--signer-workflow` is a prefix match, the tofu cache is checked at command start not at exec, and a stale v2 template can take a 3.x image.
+- Fresh-session architect review posted on PR #39 at head `ffb9cb7`: no blocking findings, `architect-review` green. Every claim was reproduced in an isolated sandbox: the acceptance greps, the build, smoke and Trivy gate, the D2 guards going red when violated, the shared-volume init from the node image, and the D3 verify (positive and negative).
+- The human merged #39 as `b4a490b`; #21 and #9 closed. The first publish from `main` is build.yml run 36753915960 (run #30).
+- Non-blocking review finding filed as #41 (prose wrap, and the template header comment repeats itself).
 
-**Next:** `/way-of-working:architect-review 39` — post the fresh-session Architect Review on PR #39 and verify the `architect-review` check is green on the head SHA. Model: opus (architect), in a **new session**. The human then merges. After merge, the coder confirms the first publish is tagged `3.<run>`, posts the §6 IAC-D draft on #12 and files the §5 folder-name enforcement follow-up (P0, links #23).
-**HITL Gate: NONE OPEN.** The next gate is the fresh-session review on #39, then the human merge.
+**Next:** Finish #21's post-merge steps. Model: sonnet (coder).
+1. Confirm build.yml run 36753915960 on `b4a490b` succeeded and published base, tofu and node tagged `3.30`.
+2. Post on #12 the IAC-D draft specified in §6 of the #21 design spec (issue comment 5915473715). The repo is public, so it must carry no private internals.
+3. File the §5 folder-name enforcement follow-up as a P0 issue in milestone 1, linking #23.
+
+**HITL Gate: OPEN** — first anchor for milestone 1 in this handoff chain (description sha `ebe3ff3e…`). It re-verified as `match` at handoff, but this session's resume did not verify it, so a human "go" confirms the milestone before the coder starts. The next gate after that is the owner confirming the #12 draft and landing it in infrastructure-core.
+
+Owner action from #39, if not done yet: `docker volume rm 603identity-cache 603identity-trivy-cache` (delete them, don't migrate).
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan: https://github.com/603-Identity/devcontainers/milestone/1
