@@ -50,6 +50,12 @@ jobs:
       - name: Build and test all images
         run: bash .github/scripts/build-and-test.sh local
 
+      # Brings up template/.devcontainer/ against the devcontainer-tofu:local image built
+      # above, with the pinned devcontainer CLI, and asserts its runArgs, volumes and
+      # startup scripts from inside the container (see the header of the script).
+      - name: Prove the template
+        run: bash tests/template-proof.sh
+
   publish:
     name: Build, test, push and attest
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'

@@ -61,6 +61,7 @@ at build and publish time, before any consumer pulls.
    | Check | Where | Fails the build when |
    |---|---|---|
    | Smoke test ([`tests/smoke.sh`](../tests/smoke.sh)) | before push | a tool version differs from its pin (a Dockerfile `ARG`, or `images/base/tools/uv.lock` for the Python tools); the user isn't uid 1000; any setuid/setgid binary exists; a volume mount point isn't app-owned; any credential helper other than gh's runs; the projected identity holds a non-allowlisted key; a token from the origin URL appears in output; an identity is left in place after a failed selection (no origin, a non-github or lookalike origin, an ambiguous, unreadable or missing identity file); the system Python isn't the expected major.minor; the tools venv or a cache path isn't where the image documents it; a mount point (`/home/app`, `~/.cache/tofu-plugins`, `/workspace/.venv`, `/workspace/node_modules`) or `~/.cache` isn't app-owned; any cache variable points into the shared `~/.cache/tofu-plugins` except tofu's; the image ships a `~/.gitconfig`; `git-identity.sh` fails to rewrite a stale, symlinked or directory `~/.gitconfig`, or to remove a planted `~/.config/git/config` |
+   | Template proof ([`tests/template-proof.sh`](../tests/template-proof.sh)) | pull request | a container brought up from `template/.devcontainer/` with the pinned devcontainer CLI is not uid 1000, has a non-empty capability bounding set or `NoNewPrivs` 0, has no init as PID 1, has a writable root filesystem (a write to `/usr/local` succeeds instead of failing with `EROFS`), lacks any of the `<repo>-home`, `-tmp`, `-node_modules`, `-venv`, `devc-tofu-plugins` or read-only identity mounts, cannot write the home, `/tmp`, `.venv` or shared cache paths, has no `~/.gitconfig` or fixture identity after start, runs a credential helper other than gh's, has a `tofu` other than the image's pin, or skips `pre-commit install` |
    | Trivy image scan | before push | there's a HIGH/CRITICAL vulnerability **with a fix available**, or a secret is baked into a layer |
    | hadolint and Trivy config | lint | there's a Dockerfile anti-pattern |
    | shellcheck | lint | a script has a shell bug |
@@ -141,9 +142,25 @@ These are stated plainly so nobody trusts the setup for more than it does:
   keyring here.
 - **apt packages** aren't version-pinned. The base digest and the weekly rebuild bound
   them instead.
-- **`--cap-drop=ALL`** in the template hasn't yet been proven against every repo's
-  workflow. The first pilot repos verify it (#10), and this line is updated with the
+- **`--cap-drop=ALL` is proven in force, not against every repo's workflow.** The template
+  proof ([`tests/template-proof.sh`](../tests/template-proof.sh), run in CI) asserts an
+  empty capability bounding set, `NoNewPrivs` and uid 1000 in a container brought up from
+  the template. Whether a given repo's own tooling runs without any capability is still
+  unverified: the first pilot repos check it (#10), and this line is updated with the
   result.
+- **The app user is uid 1000 on every host, so a Linux host with another uid loses
+  write access to `/workspace`.** The template sets `updateRemoteUserUID: false`: the
+  CLI's rewrite to the host uid would chown only `/home/app` and leave the dependency
+  volumes unwritable. A Linux developer whose uid is not 1000 can read the bind mount but
+  not write it from the container. macOS and Windows hosts are unaffected. The template
+  proof asserts uid 1000 and writes to the home, `/tmp`, `.venv` and shared-cache volumes; its CI
+  fixture is made world-writable, so it does not exercise this trade-off.
+- **The devcontainer CLI in the template proof is pinned by version, not by hash.** npm
+  checks the registry's integrity value for the tarball it resolves, but nothing here pins
+  that value, so a tarball the registry served differently for the same version would run.
+  In CI that is the build job, which holds no write permission and no secret, but it does reach the runner's Docker socket and the checkout. The same
+  script is in `gates.green`, so it also runs on a developer's machine as that user, with
+  access to the Docker daemon. The CLI itself has no dependencies and no install scripts.
 - **Verifying a new digest is manual** until #30: a Dependabot image bump merged without
   running the verify command takes whatever digest it proposes, including a branch-built one.
 - **The shared tofu provider cache is checked at command start, not at exec.** tofu links a
@@ -162,9 +179,12 @@ These are stated plainly so nobody trusts the setup for more than it does:
   check, which would be cross-org code execution). Private tofu providers fetched with a
   registry credential are readable from every container that mounts the volume.
 - **The read-only root is enforced by the template, not by the image.** A `.devcontainer/`
-  that drops `--read-only` is a modified template (boundary 5). The template's proof that
-  the mount is in force (`findmnt`, an `EROFS` write, PID 1) is the template CI issue
-  (#24), not yet built; the live pilot check is open too.
+  that drops `--read-only` is a modified template (boundary 5). The template proof
+  ([`tests/template-proof.sh`](../tests/template-proof.sh), #24) shows the mount is in
+  force in a container brought up from the template with the pinned devcontainer CLI
+  (`findmnt`, an `EROFS` write, init as PID 1, and the CLI's own setup succeeding under
+  `--read-only`). It runs against a fixture, so a repo's own edited copy of the template
+  is still unchecked; the live pilot check is open too.
 - **Folder-name uniqueness is unenforced.** A collision between two checkouts' folder names
   merges two repos' trust domains (up to four per-repo volumes).
 - **glunk-works has no credential ledger yet**, so its tokens have no recorded home.
