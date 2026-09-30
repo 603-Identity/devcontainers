@@ -55,9 +55,11 @@ for d in /home/app /home/app/.cache /home/app/.cache/tofu-plugins     /workspace
 done
 # Image-owned configuration must not live in the home directory: the home volume freezes
 # the image's copy at first mount. git-identity.sh writes ~/.gitconfig at every start.
+check "owner /home/app/.local" app "$(stat -c %U /home/app/.local)"
+check "GIT_CONFIG_GLOBAL" /home/app/.gitconfig "${GIT_CONFIG_GLOBAL:-}"
 check "no ~/.gitconfig in the image" "" "$(ls -A /home/app/.gitconfig /home/app/.gitconfig-identity 2>/dev/null || true)"
 
-# Only lock-verified content may live in the shared volume (~/.cache): the tofu provider
+# Only these caches are directed into the shared volume (~/.cache): the tofu provider
 # cache and npm's. Every other cache lives in the per-repo home volume (~/.local), so no
 # XDG-aware tool may default into ~/.cache. XDG_CACHE_HOME moves them all at once.
 check "XDG_CACHE_HOME" /home/app/.local/cache "${XDG_CACHE_HOME:-}"
@@ -266,12 +268,16 @@ check "home gitconfig: written by the script" "$stub" "$(cat /home/app/.gitconfi
 printf '[user]\n\tname = stale\n' >/home/app/.gitconfig
 setorigin "$POS_URL"; run_fx "stale gitconfig"; expect_id "stale gitconfig"
 check "home gitconfig: stale copy rewritten" "$stub" "$(cat /home/app/.gitconfig 2>/dev/null || true)"
-# So is a dangling symlink, and the link's target is not written through.
-rm -f /home/app/.gitconfig; ln -s /nonexistent/gitconfig /home/app/.gitconfig
+# So is a symlink, and the link's target is not written through.
+printf '# untouched\n' >"$fx/link-target"
+rm -f /home/app/.gitconfig; ln -s "$fx/link-target" /home/app/.gitconfig
 setorigin "$POS_URL"; run_fx "symlinked gitconfig"; expect_id "symlinked gitconfig"
 check "home gitconfig: symlink replaced" "$stub|0" \
     "$(cat /home/app/.gitconfig 2>/dev/null || true)|$([ -L /home/app/.gitconfig ] && echo 1 || echo 0)"
-# The identity is denied, yet the include is still in place.
+check "home gitconfig: symlink target untouched" '# untouched' "$(cat "$fx/link-target")"
+# The identity is denied, yet the include is still in place: start from no file, so only
+# a write on the denied path can produce it.
+rm -f /home/app/.gitconfig
 setorigin ""; run_fx "no origin gitconfig"
 check "home gitconfig: written on a denied identity" "$stub" "$(cat /home/app/.gitconfig 2>/dev/null || true)"
 

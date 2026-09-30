@@ -56,10 +56,13 @@ WORKSPACE=${GIT_IDENTITY_WORKSPACE:-/workspace}
 # is denied. Rewritten, not merged, at every start; temp file + rename, so a planted
 # symlink at the destination is replaced rather than written through. Failure is not
 # fatal (git then has no global config, which only means no identity).
+# A directory there would make every git call fail and defeat the rename; remove it, as
+# finish() does for $OUT.
+[ ! -d "$GITCONFIG" ] || [ -L "$GITCONFIG" ] || rm -rf -- "$GITCONFIG"
 stub=$(mktemp "$GITCONFIG.XXXXXX") || stub=
 if [ -n "$stub" ]; then
     if printf '[include]\n\tpath = %s\n' "$OUT" >"$stub" && mv -fT "$stub" "$GITCONFIG"; then :
-    else rm -f "$stub"; fi
+    else rm -f "$stub"; echo "git-identity: cannot write $GITCONFIG" >&2; fi
 else
     echo "git-identity: cannot write $GITCONFIG" >&2
 fi

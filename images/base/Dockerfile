@@ -126,18 +126,21 @@ COPY --chmod=0755 files/git-identity.sh files/gpg-check.sh /usr/local/share/devc
 #                      image's own /home/app is copied in at first mount and never again,
 #                      so image-owned configuration must not live there.
 #   ~/.cache           the ONE volume shared by every repo on the host, in every org. It
-#                      holds only the two caches that are re-verified against the
-#                      consuming repo's lock on use: tofu's provider cache (`tofu init`
-#                      checks .terraform.lock.hcl) and npm's (`npm ci` checks integrity).
+#                      holds only two caches: tofu's provider cache (`tofu init` checks
+#                      .terraform.lock.hcl) and npm's (`npm ci` checks integrity; `npx`
+#                      does not, see docs/threat_model.md).
 #                      The other caches (pre-commit, pip, uv, anything XDG-aware) are
 #                      moved into the home volume by the ENV block at the end of this file.
 #                      tofu-plugins is created here, in base, so it exists whichever flavor
 #                      first initialises the volume: tofu does not create a missing plugin
 #                      cache directory.
+#   ~/.local           created here so it is app-owned: it is the parent of every cache
+#                      directory below. A derived image must not install into /home/app
+#                      (the volume would never see it), least of all as root.
 #   /workspace/.venv and /workspace/node_modules
 #                      per-repo dependency volumes. /workspace itself is the host bind
 #                      mount, so these directories live in the image only as mount points.
-RUN install -d -o app -g app -m 0755 /home/app/.gitconfig.d \
+RUN install -d -o app -g app -m 0755 /home/app/.gitconfig.d /home/app/.local \
         /home/app/.cache /home/app/.cache/tofu-plugins /workspace/.venv /workspace/node_modules
 
 # System-level git settings, so they survive a rebuilt home directory and work from
@@ -169,12 +172,16 @@ RUN echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLs
 # puts executables) goes on PATH here, not in a profile script.
 ENV PATH=/home/app/.local/bin:$PATH
 
-# Every cache except the two shared, lock-verified ones lives in the per-repo home volume,
+# Every cache except the two shared ones lives in the per-repo home volume,
 # not in the shared ~/.cache and not in the read-only image. XDG_CACHE_HOME moves every
 # XDG-aware tool (pip included) off ~/.cache in one line. uv's cache and the project
 # environment (/workspace/.venv) are separate mounts, and hardlinks between mounts fail
 # with EXDEV, so uv copies instead.
-ENV XDG_CACHE_HOME=/home/app/.local/cache \
+# GIT_CONFIG_GLOBAL pins git's global file to ~/.gitconfig (which git-identity.sh rewrites
+# at every start), so a file planted in the persistent home volume at
+# ~/.config/git/config is ignored.
+ENV GIT_CONFIG_GLOBAL=/home/app/.gitconfig \
+    XDG_CACHE_HOME=/home/app/.local/cache \
     UV_CACHE_DIR=/home/app/.local/uv-cache \
     UV_LINK_MODE=copy \
     PRE_COMMIT_HOME=/home/app/.local/pre-commit

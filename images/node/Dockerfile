@@ -94,12 +94,14 @@ RUN set -eu; \
 # package metadata, so another repo's container could plant an entry that feeds those
 # commands a forged result. docs/threat_model.md records that as a known gap.
 # NPM_CONFIG_PREFIX puts `npm install -g` into the home volume (its bin is on PATH), since
-# /usr/local is read-only at run time.
+# /usr/local is read-only at run time. NPM_CONFIG_LOGS_DIR keeps npm's debug logs (package
+# names, registry URLs, paths) out of the shared cache, where they default to.
 # The update notifier is off because it phones home on every npm invocation.
 ENV NPM_CONFIG_CACHE=/home/app/.cache/npm \
     NPM_CONFIG_UPDATE_NOTIFIER=false \
     NPM_CONFIG_FUND=false \
-    NPM_CONFIG_PREFIX=/home/app/.local
+    NPM_CONFIG_PREFIX=/home/app/.local \
+    NPM_CONFIG_LOGS_DIR=/home/app/.local/npm-logs
 RUN install -d -o app -g app -m 0755 /home/app/.cache/npm
 
 USER 1000:1000
