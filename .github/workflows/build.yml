@@ -47,13 +47,50 @@ jobs:
         with:
           persist-credentials: false
 
+      # A docs-only PR skips the slow steps below. The JOB still runs and passes, because
+      # this job's name is a required check: a workflow filtered out with `on.paths` never
+      # reports, and the check would stay pending forever. A `case` over the changed files,
+      # not a path-filter action, so no third-party Action holds this job's token.
+      # Only what decides an image's or the template's behaviour counts: images/, template/,
+      # tests/, the build script, this workflow, and the two root files that shape images.
+      # The diff is base..merge-commit, so a base that moved since the branch was cut only
+      # adds files (more runs, never fewer). `--no-renames` lists a renamed file's old path
+      # too, so moving a file out of scope cannot skip the build. `set -euo pipefail` is
+      # load-bearing: a failed fetch or an empty list fails the job, it never reads as
+      # "nothing changed".
+      - name: Did the images or the template change?
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          files="$(git diff --name-only --no-renames "$BASE_SHA" HEAD)"
+          if [ -z "$files" ]; then
+            echo "::error::git diff listed no changed files. Failing closed rather than skipping the build."
+            exit 1
+          fi
+          build=0
+          while IFS= read -r f; do
+            case "$f" in
+              images/*|template/*|tests/*|.github/scripts/*|.github/workflows/build.yml) build=1 ;;
+              .trivyignore.yaml|.gitattributes) build=1 ;;
+            esac
+          done <<< "$files"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          if [ "$build" != 1 ]; then
+            echo "No image, template, test or build file changed: build and smoke test skipped." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Build and test all images
+        if: steps.scope.outputs.build == '1'
         run: bash .github/scripts/build-and-test.sh local
 
       # Brings up template/.devcontainer/ against the devcontainer-tofu:local image built
       # above, with the pinned devcontainer CLI, and asserts its runArgs, volumes and
       # startup scripts from inside the container (see the header of the script).
       - name: Prove the template
+        if: steps.scope.outputs.build == '1'
         run: bash tests/template-proof.sh
 
   publish:
