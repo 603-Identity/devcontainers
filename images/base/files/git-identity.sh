@@ -64,7 +64,11 @@ WORKSPACE=${GIT_IDENTITY_WORKSPACE:-/workspace}
 # that git reads it: a file planted there by a process in the home volume would survive
 # rebuilds and apply to every hook clone. This bounds the persistence; it cannot stop a
 # file planted and used within one session.
-rm -rf -- /home/app/.config/git/config
+# rm follows a symlinked PARENT, so a dotfiles tool that links ~/.config or ~/.config/git into
+# a checkout must not have that checkout's file deleted: leave the file alone then.
+if [ ! -L /home/app/.config ] && [ ! -L /home/app/.config/git ]; then
+    rm -rf -- /home/app/.config/git/config
+fi
 stub=$(mktemp "$GITCONFIG.XXXXXX") || stub=
 if [ -n "$stub" ]; then
     if printf '[include]\n\tpath = %s\n' "$OUT" >"$stub" && mv -fT "$stub" "$GITCONFIG"; then :

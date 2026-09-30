@@ -286,6 +286,14 @@ check "home gitconfig: directory replaced" "$stub" "$(cat /home/app/.gitconfig 2
 mkdir -p /home/app/.config/git; printf '[user]\n\tname = planted\n' >/home/app/.config/git/config
 setorigin "$POS_URL"; run_fx "planted xdg git config"; expect_id "planted xdg git config"
 check "XDG git config removed" 0 "$([ -e /home/app/.config/git/config ] && echo 1 || echo 0)"
+# A symlinked ~/.config/git is not followed: its target's file survives.
+rm -rf /home/app/.config/git; mkdir -p "$fx/dot-git"; printf '[user]
+	name = dotfile
+' >"$fx/dot-git/config"
+ln -s "$fx/dot-git" /home/app/.config/git
+setorigin "$POS_URL"; run_fx "symlinked xdg dir"; expect_id "symlinked xdg dir"
+check "symlinked XDG git dir not followed" 1 "$([ -e "$fx/dot-git/config" ] && echo 1 || echo 0)"
+rm -f /home/app/.config/git
 # The identity is denied, yet the include is still in place: start from no file, so only
 # a write on the denied path can produce it.
 rm -f /home/app/.gitconfig
