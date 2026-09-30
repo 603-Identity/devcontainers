@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 #
-# 603-Identity devcontainer NODE image: base + Node.js 24 (npm included).
-# Used by trust-anchors and jrg-consulting-site, whose CI runs `node-version: 24`.
+# Shared devcontainer NODE image: base + Node.js 24 (npm included), matching
+# consuming repos' CI, which runs `node-version: 24`.
 #
 # BASE_IMAGE is always passed by digest; see images/tofu/Dockerfile.
 ARG BASE_IMAGE=devcontainer-base:local
@@ -9,7 +9,7 @@ ARG BASE_IMAGE=devcontainer-base:local
 FROM ${BASE_IMAGE}
 
 LABEL org.opencontainers.image.source="https://github.com/603-Identity/devcontainers" \
-      org.opencontainers.image.description="603-Identity devcontainer: base + Node.js 24"
+      org.opencontainers.image.description="Shared devcontainer: base + Node.js 24"
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 USER 0
@@ -43,9 +43,11 @@ RUN curl -fsSL "https://registry.npmjs.org/npm/-/npm-${NPM_VERSION}.tgz" -o /tmp
     && rm /tmp/npm.tgz \
     && test "$(npm --version)" = "${NPM_VERSION}"
 
-# npm's download cache lives in ~/.cache (the shared volume), not ~/.npm. `npm ci`
-# verifies every tarball against package-lock.json's sha512 `integrity` field, so a
-# cache shared between repos cannot substitute a package.
+# npm's download cache lives in ~/.cache/npm, not ~/.npm, and is per container: it is
+# NOT in the shared volume. Only `npm ci` verifies tarballs against package-lock.json's
+# sha512 `integrity` field. `npx`, `npm exec` and `npm install <pkg>` trust cached
+# package metadata, so a cache shared between repos could feed one repo's install a
+# forged entry planted by another.
 # The update notifier is off because it phones home on every npm invocation.
 ENV NPM_CONFIG_CACHE=/home/app/.cache/npm \
     NPM_CONFIG_UPDATE_NOTIFIER=false \

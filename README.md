@@ -1,14 +1,17 @@
 # 603-Identity devcontainers
 
-These are the shared devcontainer images for 603-Identity repositories. Every repo gets its
+These are the shared devcontainer images for 603-Identity and glunk-works repositories. Every repo gets its
 **own container**, built from **shared, digest-pinned images**. Isolation between repos
 costs almost no disk, because the image layers are stored once per machine.
 
-| Image | Contents | Used by |
-|---|---|---|
-| `ghcr.io/603-identity/devcontainer-base` | Ubuntu 24.04, non-root `app` (uid 1000), git, gh, jq, yq, Python 3.12, pre-commit, bc-detect-secrets 1.5.47 | tenant-posture-assessment, checkov-ledger-action |
-| `ghcr.io/603-identity/devcontainer-tofu` | base + OpenTofu 1.11.14 + tflint | infrastructure-core, terraform-cloudflare-dns, terraform-microsoft365-entra |
-| `ghcr.io/603-identity/devcontainer-node` | base + Node.js 24 + npm 11 | trust-anchors, jrg-consulting-site |
+| Image | Contents |
+|---|---|
+| `ghcr.io/603-identity/devcontainer-base` | Ubuntu 26.04, non-root `app` (uid 1000), git, gh, jq, yq, Python 3.14, pre-commit, bc-detect-secrets 1.5.47 |
+| `ghcr.io/603-identity/devcontainer-tofu` | base + OpenTofu 1.11.14 + tflint |
+| `ghcr.io/603-identity/devcontainer-node` | base + Node.js 24 + npm 11 |
+
+No repo has adopted the images yet. Adoption is tracked in #10 (pilots) and the wave
+issues #26 to #28.
 
 Local sizes measured on 2026-09-28: base 445 MB, tofu 664 MB, node 752 MB. Shared layers
 are stored only once, so all three together take about 0.95 GB.
@@ -18,15 +21,22 @@ Work on these images is planned on this repo's issues and milestones. See
 
 ## Using an image in a repo
 
+Open the repo with VS Code and its Dev Containers extension. Commit signing depends on its
+GPG agent forwarding, and no other editor is supported.
+
 1. Copy [`template/.devcontainer/`](template/.devcontainer/) into the repo unchanged.
 2. In its `Dockerfile`, set `FROM` to one image, by tag **and** digest. Take both from the
-   latest *Build images* run summary. Verify the image before its first use:
+   latest *Build images* run summary. Verify the image before its first use, and every new
+   digest after it (see step 3):
    ```sh
    gh attestation verify oci://ghcr.io/603-identity/devcontainer-tofu@sha256:<digest> \
-     --repo 603-Identity/devcontainers
+     --repo 603-Identity/devcontainers \
+     --signer-workflow 603-Identity/devcontainers/.github/workflows/build.yml \
+     --source-ref refs/heads/main --deny-self-hosted-runners
    ```
 3. Add `.devcontainer` to the repo's `.github/dependabot.yml` under the `docker`
-   ecosystem. Image bumps then arrive as reviewed PRs.
+   ecosystem. Image bumps then arrive as reviewed PRs. Verify each bump's digest with the
+   command above before merging it.
 4. Delete the dependency-volume lines the repo doesn't use (`node_modules`, `.venv`).
 5. Open the repo in the container, then store its GitHub credential once:
    `gh auth login --with-token` (see [Credentials](#credentials)).
@@ -35,8 +45,31 @@ Work on these images is planned on this repo's issues and milestones. See
 
 A container that validates with a different tool version than CI reports a result CI
 doesn't share. The OpenTofu and Node versions here are the ones every consuming repo's
-workflows pin. **Bump the image and every repo's workflow pin together**, never one
+workflows pin, in every org. **Bump the image and every repo's workflow pin together**, never one
 without the other.
+
+### Consuming from another org
+
+1. Every org pulls `ghcr.io/603-identity/devcontainer-*` and verifies it against this
+   repo's `build.yml` on `main`, with the command in step 2 above. There is no per-org
+   image or fork: this repo is the single publisher.
+2. **The GHCR packages must stay public.** Package visibility is set per package, separately
+   from the repo's visibility. A private package fails the next pull or rebuild of every
+   container outside 603-Identity, and every Dependabot bump there. It changes
+   availability, not security.
+3. **Checkout folder names must be unique across every checkout on the host, in every
+   org**, including forks, reference clones of third-party repos, and a second clone of the
+   same repo. Each per-repo volume is named `<folder>-<suffix>`. Two checkouts with one
+   folder name share every one they both mount, up to all five: `-gh` (the token, usable from both), `-claude` (sessions
+   and, on Linux, Claude Code's own login and settings hooks), `-tmp`, `-node_modules` and
+   `-venv` (each repo runs the other's dependency trees). **A collision merges two repos
+   into one trust domain.** Rename the second folder. Docker volume names are
+   case-sensitive and Windows folders are not, so `Foo` and `foo` get separate volumes.
+   That fails safe, but it orphans a credential volume.
+4. Tokens stay per repo, tiered as in [Credentials](#credentials), inside the repo's own
+   org. A token never covers another org's repos.
+5. Identity takes one `~/.gitconfig.d` file per account, listing every org it serves; see
+   [Git identity](#git-identity).
 
 ## Security model
 
@@ -55,7 +88,9 @@ the known gaps. In short:
 ## Disk, speed and volumes
 
 Code stays in the Windows checkout, bind-mounted at `/workspace`. Everything heavy or
-growing lives in **named volumes**, never in the container's own filesystem:
+growing lives in **named volumes**, except the rest of `~/.cache` (pre-commit, pip and npm
+caches), which stays in the container's own filesystem until #23 moves the home directory
+onto a per-repo volume, and which a rebuild clears:
 
 | Volume | Scope | Why |
 |---|---|---|
@@ -63,14 +98,14 @@ growing lives in **named volumes**, never in the container's own filesystem:
 | `<repo>-node_modules`, `<repo>-venv` | per repo | Many small files are the slowest thing across the Windows bind mount. |
 | `<repo>-claude` → `~/.claude` | per repo | Claude Code sessions and memory. Every repo mounts at `/workspace`, and Claude keys projects by path, so sharing this volume would mix repos' histories. |
 | `<repo>-gh` → `~/.config/gh` | per repo | That repo's GitHub credential. |
-| `603identity-cache` → `~/.cache` | shared | tofu providers and npm tarballs, each verified against the consuming repo's lock file before use. |
+| `devc-cache` → `~/.cache/shared` | shared, every repo on the host | tofu providers only, each verified against the consuming repo's `.terraform.lock.hcl` before use. The rest of `~/.cache` is per container. |
 
 **Why this matters:** the previous single devcontainer grew to **331 GB**. Claude Code
 sessions installed dependencies into `/tmp`, which sat in the container's own filesystem
 where nothing ever cleaned it up, and several repos had been cloned into one container.
 The volume layout above makes that growth visible (`docker system df -v`) and
-disposable. The one-container-per-repo rule keeps each repo's credentials and data apart.
-Only the download cache and the host's git identity files (see
+disposable, for everything in a volume. The one-container-per-repo rule keeps each repo's credentials and data apart.
+Only the tofu provider cache and the host's git identity files (see
 [Git identity](#git-identity)) are shared by all containers.
 
 **Getting disk space back on Windows:** Docker Desktop keeps everything in
@@ -78,6 +113,18 @@ Only the download cache and the host's git identity files (see
 file, but Windows gets it back only when the file is compacted, or automatically if the
 file is marked sparse (`fsutil sparse setflag`, run with Docker stopped). Check that it
 still works after Docker Desktop updates.
+
+Microsoft's WSL docs describe `sparseVhd` under `[experimental]` in `.wslconfig` as: "When
+set to `true`, any newly created VHD will be set to sparse automatically." It applies to
+newly created VHDs, so it does not by itself keep an existing `docker_data.vhdx` sparse.
+To have new VHDs sparse from the start, add to `%USERPROFILE%\.wslconfig`:
+
+```ini
+[experimental]
+sparseVhd=true
+```
+
+The monthly prune routine is tracked in #31.
 
 ## Credentials
 
@@ -90,8 +137,8 @@ needs:
 - **Admin work** (rulesets, repo settings, applying `tenants/*/github*`): **never** done
   with a container token. It happens from the host's org login, or in CI, when needed.
 
-Tokens expire after 90 days at most. Record each one in infrastructure-core's credential
-ledger.
+Tokens expire after 90 days at most. Record each one in the owning org's credential
+ledger (603-Identity: infrastructure-core's).
 
 ## Git identity
 
@@ -132,7 +179,7 @@ and the container still starts.
   `HOME`, so the template's source path doubles (`C:\Users\x` + `C:\Users\x/.gitconfig.d`)
   and the same error appears. Run `unset HOME` in that shell first if you must use it.
 - Edits to the host files apply on the **next container start**.
-- Signing goes through the editor's forwarded GPG agent. SSH signing is out of scope.
+- Signing goes through VS Code's forwarded GPG agent. SSH signing is out of scope.
 
 ## Updating a pinned tool
 
@@ -146,4 +193,4 @@ and the container still starts.
    entry in the same PR.
 
 Dependabot handles the base image digest, the GitHub Actions pins, and the Python tool
-lock (except `bc-detect-secrets`, which is held at 1.5.47 org-wide on purpose).
+lock (except `bc-detect-secrets`, which is held at 1.5.47 on purpose: every consuming repo's baseline pins it).

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 #
-# 603-Identity devcontainer BASE image: the tools every org repo needs, and nothing
+# Shared devcontainer BASE image: the tools every consuming repo needs, and nothing
 # a specific toolchain needs. `tofu` and `node` build FROM this image; a repo's own
 # .devcontainer/Dockerfile builds FROM one of the three and adds only its extras.
 #
@@ -12,18 +12,19 @@
 #   * Python tools install only from a hash-locked file (pip --require-hashes).
 # apt packages are the one deliberate exception (see the apt block).
 #
-# Ubuntu 24.04 tracks GitHub Actions' `ubuntu-latest` runner, so the container's
-# system Python (3.12) and libc match CI. Re-pin deliberately when the runner moves.
+# Ubuntu 26.04. Its system Python 3.14 is the Python standard for consuming repos. The
+# major tracks GitHub's `ubuntu-latest` runner. Re-pin it deliberately, together with
+# tests/smoke.sh's Python check.
 FROM ubuntu:26.04@sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78
 
 LABEL org.opencontainers.image.source="https://github.com/603-Identity/devcontainers" \
-      org.opencontainers.image.description="603-Identity devcontainer base: git, gh, jq, yq, pre-commit, bc-detect-secrets, non-root app user" \
+      org.opencontainers.image.description="Shared devcontainer base: git, gh, jq, yq, pre-commit, bc-detect-secrets, non-root app user" \
       org.opencontainers.image.licenses="NOASSERTION"
 
 ARG DEBIAN_FRONTEND=noninteractive
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# ubuntu:24.04 ships a built-in `ubuntu` user at uid/gid 1000. Remove it so `app` can
+# Ubuntu's base image ships a built-in `ubuntu` user at uid/gid 1000. Remove it so `app` can
 # take the conventional 1000:1000, which matches the Windows host's file ownership
 # as Docker Desktop presents it on the /workspace bind mount.
 RUN userdel -r ubuntu 2>/dev/null || true \
@@ -66,19 +67,19 @@ RUN curl -fsSL "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}
 # --- Python tools (pre-commit, bc-detect-secrets) in their own venv, NOT the system
 # site-packages. That avoids --break-system-packages, and it keeps a repo's own
 # `python3 -m venv .venv` from inheriting them. Installed only from the hash lock.
-# bc-detect-secrets is pinned to 1.5.47 because every org repo's .secrets.baseline
+# bc-detect-secrets is pinned to 1.5.47 because every consuming repo's .secrets.baseline
 # and CI secret-scan job pins that version (see tools.in).
-COPY tools.lock.txt /opt/603identity/tools.lock.txt
-RUN python3 -m venv /opt/603identity/tools \
-    && /opt/603identity/tools/bin/pip install --no-cache-dir --require-hashes \
-        -r /opt/603identity/tools.lock.txt \
+COPY tools.lock.txt /opt/devc/tools.lock.txt
+RUN python3 -m venv /opt/devc/tools \
+    && /opt/devc/tools/bin/pip install --no-cache-dir --require-hashes \
+        -r /opt/devc/tools.lock.txt \
     && for b in pre-commit detect-secrets detect-secrets-hook; do \
-        ln -s "/opt/603identity/tools/bin/$b" "/usr/local/bin/$b"; \
+        ln -s "/opt/devc/tools/bin/$b" "/usr/local/bin/$b"; \
     done
 
 # --- Start-up scripts, shipped in the image so repos do not each carry a copy.
 # A repo's devcontainer.json runs them from postStartCommand; see README.md.
-COPY --chmod=0755 files/git-identity.sh files/gpg-check.sh /usr/local/share/603identity/
+COPY --chmod=0755 files/git-identity.sh files/gpg-check.sh /usr/local/share/devc/
 
 # --- git config layout. A writable ~/.gitconfig includes ~/.gitconfig-identity, which
 # git-identity.sh GENERATES at every start: it projects five identity keys from the
@@ -100,10 +101,19 @@ RUN install -d -o app -g app -m 0755 /home/app/.gitconfig.d
 # empty named volume from the image directory at its mount point, ownership
 # included; a path missing from the image comes up root-owned and unwritable as
 # uid 1000.
-#   ~/.config/gh  per-repo GitHub credential (a fine-grained PAT, see README.md)
-#   ~/.claude     per-repo Claude Code sessions and memory
-#   ~/.cache      shared, integrity-checked download caches (tofu providers, npm)
+#   ~/.config/gh     per-repo GitHub credential (a fine-grained PAT, see README.md)
+#   ~/.claude        per-repo Claude Code sessions and memory
+#   ~/.cache/shared  the ONE volume shared by every repo on the host, in every org. It
+#                    holds only the tofu provider cache, because `tofu init` verifies
+#                    each cached provider against the consuming repo's
+#                    .terraform.lock.hcl before use. pre-commit and pip reuse what they
+#                    cached with no hash check, and npm verifies only under `npm ci`,
+#                    so the rest of ~/.cache stays per container. shared/tofu-plugins
+#                    is created here, in base, so it exists whichever flavor first
+#                    initialises the volume: tofu does not create a missing plugin
+#                    cache directory.
 RUN install -d -o app -g app -m 0755 /home/app/.config /home/app/.cache \
+        /home/app/.cache/shared /home/app/.cache/shared/tofu-plugins \
     && install -d -o app -g app -m 0700 /home/app/.config/gh /home/app/.claude \
     && install -o app -g app -m 0600 /dev/null /home/app/.config/gh/.keep \
     && install -o app -g app -m 0600 /dev/null /home/app/.claude/.keep

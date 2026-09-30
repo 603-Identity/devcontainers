@@ -17,7 +17,9 @@
 #
 # Expected versions are read from the Dockerfiles' own ARG lines by the CI step and
 # passed in as environment variables. That keeps one source of truth: a version
-# bumped in a Dockerfile but not built would fail here.
+# bumped in a Dockerfile but not built would fail here. Two are hardcoded below, by
+# design: bc-detect-secrets (the version every consuming repo's baseline pins) and the
+# system Python's major.minor (the standard for consuming repos; apt moves the patch).
 set -eu
 
 flavor="${1:?usage: smoke.sh <base|tofu|node>}"
@@ -36,6 +38,8 @@ check "user" app "$(id -un)"
 check "gh" "$EXPECT_GH" "$(gh --version | awk 'NR==1{print $3}')"
 check "yq" "v$EXPECT_YQ" "$(yq --version | awk '{print $NF}')"
 check "bc-detect-secrets" 1.5.47 "$(detect-secrets --version)"
+check "python3" 3.14 "$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
+check "tools venv" /opt/devc/tools/bin/pre-commit "$(readlink /usr/local/bin/pre-commit)"
 if command -v pre-commit >/dev/null; then
     echo "ok   pre-commit present"
 else
@@ -44,13 +48,29 @@ else
 fi
 check "safe.directory" /workspace "$(git config --system --get-all safe.directory)"
 check "setuid/setgid binaries" 0 "$(find / -xdev -perm /6000 -type f 2>/dev/null | wc -l)"
-for d in /home/app/.config/gh /home/app/.claude /home/app/.cache; do
+for d in /home/app/.config/gh /home/app/.claude /home/app/.cache \
+    /home/app/.cache/shared /home/app/.cache/shared/tofu-plugins; do
     check "owner $d" app "$(stat -c %U "$d")"
+done
+
+# Only lock-verified content may live in the shared volume (~/.cache/shared): no other
+# cache may resolve into it, now or after a later ENV. XDG_CACHE_HOME would move every
+# XDG-aware tool's cache at once.
+check "XDG_CACHE_HOME" "" "${XDG_CACHE_HOME:-}"
+# Unset, or an unverified cache entry could be used and written into a repo's lock file.
+check "TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE" "" "${TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE:-}"
+for v in PRE_COMMIT_HOME PIP_CACHE_DIR UV_CACHE_DIR NPM_CONFIG_CACHE; do
+    val=$(printenv "$v" || true)
+    case "$val" in
+        /home/app/.cache/shared|/home/app/.cache/shared/*)
+            echo "FAIL $v=$val is inside the shared cache volume"; fail=1 ;;
+        *) echo "ok   $v not in the shared cache volume (${val:-unset})" ;;
+    esac
 done
 
 # --- git identity (see the header). The script and its output file are fixed paths;
 # only the identity directory and the workspace are overridable, for these tests.
-SCRIPT=/usr/local/share/603identity/git-identity.sh
+SCRIPT=/usr/local/share/devc/git-identity.sh
 OUT=/home/app/.gitconfig-identity
 # Token-bearing, so a leak of the origin URL on ANY denial path shows up in $alllogs.
 POS_URL=https://x-token:secret@github.com/fixture-org/r
@@ -241,7 +261,7 @@ case "$flavor" in
     check "tofu" "v$EXPECT_TOFU" "$(tofu version | awk 'NR==1{print $2}')"
     check "tflint" "$EXPECT_TFLINT" "$(tflint --version | awk 'NR==1{print $3}')"
     check "TF_DATA_DIR" .terraform-devcontainer "${TF_DATA_DIR:-}"
-    check "owner tofu cache" app "$(stat -c %U /home/app/.cache/tofu-plugins)"
+    check "TF_PLUGIN_CACHE_DIR" /home/app/.cache/shared/tofu-plugins "${TF_PLUGIN_CACHE_DIR:-}"
     ;;
   node)
     check "node" "v$EXPECT_NODE" "$(node --version)"

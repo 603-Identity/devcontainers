@@ -1,5 +1,8 @@
-// Copy this directory to <repo>/.devcontainer/ unchanged. Every name below is derived
-// from ${localWorkspaceFolderBasename}, so each repo gets its own volumes with no edits.
+// Copy this directory to <repo>/.devcontainer/ unchanged. Every per-repo volume name
+// below is derived from ${localWorkspaceFolderBasename}, so each repo gets its own volumes
+// with no edits.
+// Volume names derive from the checkout FOLDER name: no two checkouts on one host may
+// share one (README § Consuming from another org).
 // See 603-Identity/devcontainers README.md for the reasoning behind each line.
 {
   "name": "${localWorkspaceFolderBasename}",
@@ -18,7 +21,7 @@
     // account, each listing its orgs), read-only, in EVERY container. git-identity.sh
     // picks the file that claims this repo's origin org and copies five identity keys
     // from it at start. HOME is set on Linux, macOS and CI, USERPROFILE on Windows
-    // (and HOME too when the editor was started from Git Bash: then the path doubles
+    // (and HOME too when VS Code was started from Git Bash: then the path doubles
     // and `devcontainer up` fails with "bind source path does not exist". Start from
     // PowerShell or cmd, or `unset HOME` first). The directory must exist. See the
     // README's "Git identity" section.
@@ -40,9 +43,10 @@
     // `docker volume rm <repo>-tmp` without touching anything else.
     "source=${localWorkspaceFolderBasename}-tmp,target=/tmp,type=volume",
 
-    // SHARED download cache (tofu providers, npm tarballs). Safe to share: every entry
-    // is verified against the consuming repo's own lock file before use.
-    "source=603identity-cache,target=/home/app/.cache,type=volume",
+    // SHARED by every repo on the host, in every org: only the tofu provider cache,
+    // which `tofu init` verifies against the consuming repo's lock before use. The rest
+    // of ~/.cache stays per container.
+    "source=devc-cache,target=/home/app/.cache/shared,type=volume",
 
     // Dependency directories on per-repo volumes. They are the heavy, many-small-file
     // trees that are slowest across the Windows bind mount. Keep the ones this repo
@@ -52,8 +56,8 @@
   ],
 
   // On every START, not just create: rebuild the git identity from the host's identity
-  // files, and check that an editor-forwarded GPG agent is answering in THIS session.
-  "postStartCommand": "sh /usr/local/share/603identity/git-identity.sh; sh /usr/local/share/603identity/gpg-check.sh",
+  // files, and check that VS Code's forwarded GPG agent is answering in THIS session.
+  "postStartCommand": "sh /usr/local/share/devc/git-identity.sh; sh /usr/local/share/devc/gpg-check.sh",
   "postCreateCommand": "if [ -f .pre-commit-config.yaml ]; then pre-commit install; fi",
 
   "customizations": {

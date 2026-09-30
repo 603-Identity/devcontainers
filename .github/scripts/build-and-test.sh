@@ -48,7 +48,7 @@ TRIVY="aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9
 trivy() {
   docker run --rm \
     -v /var/run/docker.sock:/var/run/docker.sock \
-    -v 603identity-trivy-cache:/root/.cache/trivy \
+    -v devc-trivy-cache:/root/.cache/trivy \
     -v "$root:/src" "$TRIVY" "$@"
 }
 
