@@ -61,6 +61,32 @@ pattern: each repo keeps a local series, and anything shared is `IAC-D`.
 **Consequences.** Each series has a single numbering authority. IAC-D48 says a new repo adds
 its prefix to that decision's series list; adding `DEVC-D` there is tracked in #12.
 
+#### DEVC-D2: Git identity is chosen by the origin's org, from host files that declare their own orgs
+
+**Resolved** 2026-09-30, in the design spec on #20.
+
+**Context.** The host identity files gained a `[credential]` section whose helper is a host
+path (`gh.exe`). Linking the whole file into the container's global git config let it
+displace the image's `gh auth git-credential`, and every HTTPS fetch and push failed.
+
+**Decision.**
+- Identity is chosen by the org in `/workspace`'s `origin` URL. The host's `~/.gitconfig.d/`
+  is mounted read-only, and each `*.gitconfig` file names the orgs it serves in
+  `[devcontainer] org` keys. No account or org name goes into the public images.
+- Projection is allowlist-only: `user.name`, `user.email`, `user.signingkey`,
+  `commit.gpgsign` and `tag.gpgsign`. The host file is never included or linked.
+- `includeIf "hasconfig:remote.*.url:..."` was rejected. Its patterns are case-sensitive
+  (GitHub URLs are not), scp-style SSH remotes need separate patterns, cross-org forks fire
+  both rules with last-wins precedence, and a relative `path=` resolves through the symlink.
+
+**Why DEVC-D and not IAC-D.** Under DEVC-D1's own test, no other repo has to change *yet*,
+because none has adopted the template. The image major version is 2 because a template
+from before this change gets no identity from the new image.
+
+**Consequences.** #12 must record the host-wide identity / per-repo credential split in
+the `IAC-D` entry for the image and token model. A comment on #12 carries this when the
+PR lands.
+
 ### Org-wide IAC-D decisions that bind this repo
 
 Each of these is recorded in full in infrastructure-core's log. They are cited here only.
