@@ -143,11 +143,12 @@ RUN install -d -o app -g app -m 0755 /home/app/.config /home/app/.cache \
 # System-level git settings, so they survive a rebuilt home directory and work from
 # the first command in a fresh shell:
 #   * GitHub HTTPS credentials come from gh, whose credential lives in the
-#     per-repo volume above;
+#     per-repo volume above. The helper is an absolute path because ~/.local/bin
+#     (writable by app) leads PATH, and a bare `gh` could be shadowed there;
 #   * /workspace is a bind mount owned by the host's uid, which git would
 #     otherwise refuse as "dubious ownership".
 RUN git config --system credential."https://github.com".helper "" \
-    && git config --system --add credential."https://github.com".helper "!gh auth git-credential" \
+    && git config --system --add credential."https://github.com".helper "!/usr/local/bin/gh auth git-credential" \
     && git config --system --add safe.directory /workspace
 
 # Hardening: strip every setuid/setgid bit (su, passwd, chsh, mount, ...). The app

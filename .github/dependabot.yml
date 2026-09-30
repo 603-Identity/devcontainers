@@ -19,6 +19,7 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+        exclude-patterns: ["bc-detect-secrets"]
 
   - package-ecosystem: docker
     directory: /images/base
