@@ -1,15 +1,13 @@
 # Next steps
 
-**Now:** P0: cross-org images — awaiting review.
+**Now:** P0: cross-org images — implementing.
 
 **Just done:**
-- Implemented the #20 design spec as [PR #35](https://github.com/603-Identity/devcontainers/pull/35) (head 945a2aa, branch `feat/20-git-identity-projection`): `git-identity.sh` rewrite, template mount, Dockerfile, `MAJOR` 2, `smoke.sh`, README, threat model, DEVC-D2. The PR's required CI checks were green when this was written.
-- Full local green gate passed. Critic gate (security-critic, architect, docs-consistency): 2 rounds, converged with tightenings only; the optional `second_opinion` round was offered and skipped.
-- Added one thing the spec does not list: a seventh deny reason for a failed `mktemp` (fails closed; the PR body says so).
-- Acceptance check passed from PowerShell: `devcontainer up` on a 603-Identity origin and a glunk-works origin gave the right `user.email` and only gh's credential helper. `git ls-remote` was not run (needs a gh token in the `<repo>-gh` volume).
-- Commented on #25 (#35 delivers three of its threat-model items) and on #12 (the identity/credential split it must record).
+- Fresh-session architect review of [PR #35](https://github.com/603-Identity/devcontainers/pull/35) posted: no blocking findings. Its smoke test passed on an image built from the PR head, and every planted mutation of `git-identity.sh` made it fail. The `architect-review` check went green on the head commit.
+- #35 merged as 1c84e64 and closed #20.
+- Three non-blocking notes are in the review body, and none was filed as an issue. The one that matters: #20's acceptance check with `git ls-remote` over HTTPS and a gh token was never run by hand. The smoke test's credential check stands in for it.
 
-**Next:** `/way-of-working:architect-review 35` in a genuinely new session, then the human merges #35. Model: opus (architect).
-**HITL Gate: NONE OPEN** — the next gate is that review and the merge.
+**Next:** task #21 — write the design spec for org-neutral names, VS Code only and the cross-org consumption rules (folding #9 and #12, per the P0 plan of record), post it as a comment on #21, run a critic pass on it, then hand to coder. Model: opus (architect).
+**HITL Gate: OPEN — no verified baseline for the milestone 1 anchor (resume did not verify it this session; a handoff-time re-check printed match, description sha `ebe3ff3ec67c50484995e6e1705c2b4492a684903b330de87d7c2b9601f28839`). Confirm #21 is P0's next task before work starts.**
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan: https://github.com/603-Identity/devcontainers/milestone/1
