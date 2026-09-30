@@ -1,7 +1,10 @@
 #!/bin/sh
 # Builds the container's git identity (~/.gitconfig-identity) from the host's identity
-# files, at every container start. The Dockerfile gives ~/.gitconfig an `include` of
-# that file, so nothing else here touches git's global config.
+# files, at every container start. It first (re)writes ~/.gitconfig, whose only content
+# is an `include` of that file, so nothing else here touches git's global config.
+# ~/.gitconfig is written HERE and not shipped in the image because /home/app is a
+# per-repo volume: the image's copy would be frozen at first mount, and a stale or
+# hand-edited one could never be corrected by a rebuild.
 #
 # The template mounts the host's ~/.gitconfig.d/ read-only at ~/.gitconfig.d/. It
 # holds one git-config file per GitHub account, named <anything>.gitconfig, each
@@ -45,8 +48,21 @@
 set -u
 
 OUT=/home/app/.gitconfig-identity
+GITCONFIG=/home/app/.gitconfig
 IDENTITY_DIR=${GIT_IDENTITY_DIR:-/home/app/.gitconfig.d}
 WORKSPACE=${GIT_IDENTITY_WORKSPACE:-/workspace}
+
+# The include stub, before anything else, so it is in place even when the identity below
+# is denied. Rewritten, not merged, at every start; temp file + rename, so a planted
+# symlink at the destination is replaced rather than written through. Failure is not
+# fatal (git then has no global config, which only means no identity).
+stub=$(mktemp "$GITCONFIG.XXXXXX") || stub=
+if [ -n "$stub" ]; then
+    if printf '[include]\n\tpath = %s\n' "$OUT" >"$stub" && mv -fT "$stub" "$GITCONFIG"; then :
+    else rm -f "$stub"; fi
+else
+    echo "git-identity: cannot write $GITCONFIG" >&2
+fi
 
 tmp= ; ok=0                        # initialised BEFORE the traps (set -u)
 finish() {

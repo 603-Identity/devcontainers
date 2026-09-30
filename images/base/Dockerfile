@@ -103,42 +103,42 @@ RUN UV_PYTHON_DOWNLOADS=never UV_PROJECT_ENVIRONMENT=/opt/devc/tools \
 # A repo's devcontainer.json runs them from postStartCommand; see README.md.
 COPY --chmod=0755 files/git-identity.sh files/gpg-check.sh /usr/local/share/devc/
 
-# --- git config layout. A writable ~/.gitconfig includes ~/.gitconfig-identity, which
-# git-identity.sh GENERATES at every start: it projects five identity keys from the
-# host file that claims the origin's org (the host's ~/.gitconfig.d is mounted
-# read-only), and never includes the host file itself. The empty placeholder is the
-# safe default until the first start; an absent file means the same, since git ignores
-# an include whose path is missing.
-RUN printf '[include]\n\tpath = /home/app/.gitconfig-identity\n' > /home/app/.gitconfig \
-    && : > /home/app/.gitconfig-identity \
-    && chown app:app /home/app/.gitconfig /home/app/.gitconfig-identity
+# --- git config layout. ~/.gitconfig (an include of ~/.gitconfig-identity) is NOT in the
+# image: /home/app is a per-repo volume, which freezes whatever the image holds there at
+# first mount. git-identity.sh writes ~/.gitconfig at every start, and GENERATES
+# ~/.gitconfig-identity beside it: it projects five identity keys from the host file that
+# claims the origin's org (the host's ~/.gitconfig.d is mounted read-only), and never
+# includes the host file itself. An absent identity file means "no identity"; git ignores
+# an include whose path is missing. System git settings stay in /etc/gitconfig below.
 
-# --- Mount point for the host's identity directory (~/.gitconfig.d, read-only). It
-# gives the bind mount a stable, app-owned target; once mounted, the host's ownership
-# shows instead. It is not what makes an unmounted run safe: git-identity.sh treats a
-# missing directory like an empty one.
-RUN install -d -o app -g app -m 0755 /home/app/.gitconfig.d
+# --- Mount point for the host's identity directory (~/.gitconfig.d, read-only), created
+# in the RUN below. It gives the bind mount a stable, app-owned target; once mounted, the
+# host's ownership shows instead. It is not what makes an unmounted run safe:
+# git-identity.sh treats a missing directory like an empty one.
 
 # --- Mount points for named volumes, pre-created app-owned. Docker initialises an
 # empty named volume from the image directory at its mount point, ownership
 # included; a path missing from the image comes up root-owned and unwritable as
-# uid 1000.
-#   ~/.config/gh     per-repo GitHub credential (a fine-grained PAT, see README.md)
-#   ~/.claude        per-repo Claude Code sessions and memory
-#   ~/.cache/shared  the ONE volume shared by every repo on the host, in every org. It
-#                    holds only the tofu provider cache, because `tofu init` verifies
-#                    each cached provider against the consuming repo's
-#                    .terraform.lock.hcl before use. pre-commit, pip and uv reuse what they
-#                    cached with no hash check, and npm verifies only under `npm ci`,
-#                    so the rest of ~/.cache stays per container. shared/tofu-plugins
-#                    is created here, in base, so it exists whichever flavor first
-#                    initialises the volume: tofu does not create a missing plugin
-#                    cache directory.
-RUN install -d -o app -g app -m 0755 /home/app/.config /home/app/.cache \
-        /home/app/.cache/shared /home/app/.cache/shared/tofu-plugins \
-    && install -d -o app -g app -m 0700 /home/app/.config/gh /home/app/.claude \
-    && install -o app -g app -m 0600 /dev/null /home/app/.config/gh/.keep \
-    && install -o app -g app -m 0600 /dev/null /home/app/.claude/.keep
+# uid 1000. The template mounts (see its devcontainer.json):
+#   ~/ (/home/app)     per-repo home volume. It holds every user-scoped file: the gh
+#                      credential, Claude sessions, the editor server and extensions, uv's
+#                      interpreters and cache, the pre-commit and tflint caches. The
+#                      image's own /home/app is copied in at first mount and never again,
+#                      so image-owned configuration must not live there.
+#   ~/.cache           the ONE volume shared by every repo on the host, in every org. It
+#                      holds only the two caches that are re-verified against the
+#                      consuming repo's lock on use: tofu's provider cache (`tofu init`
+#                      checks .terraform.lock.hcl) and npm's (`npm ci` checks integrity).
+#                      The other caches (pre-commit, pip, uv, anything XDG-aware) are
+#                      moved into the home volume by the ENV block at the end of this file.
+#                      tofu-plugins is created here, in base, so it exists whichever flavor
+#                      first initialises the volume: tofu does not create a missing plugin
+#                      cache directory.
+#   /workspace/.venv and /workspace/node_modules
+#                      per-repo dependency volumes. /workspace itself is the host bind
+#                      mount, so these directories live in the image only as mount points.
+RUN install -d -o app -g app -m 0755 /home/app/.gitconfig.d \
+        /home/app/.cache /home/app/.cache/tofu-plugins /workspace/.venv /workspace/node_modules
 
 # System-level git settings, so they survive a rebuilt home directory and work from
 # the first command in a fresh shell:
@@ -168,6 +168,16 @@ RUN echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLs
 # Devcontainer shells are not login shells, so ~/.local/bin (where `uv tool install`
 # puts executables) goes on PATH here, not in a profile script.
 ENV PATH=/home/app/.local/bin:$PATH
+
+# Every cache except the two shared, lock-verified ones lives in the per-repo home volume,
+# not in the shared ~/.cache and not in the read-only image. XDG_CACHE_HOME moves every
+# XDG-aware tool (pip included) off ~/.cache in one line. uv's cache and the project
+# environment (/workspace/.venv) are separate mounts, and hardlinks between mounts fail
+# with EXDEV, so uv copies instead.
+ENV XDG_CACHE_HOME=/home/app/.local/cache \
+    UV_CACHE_DIR=/home/app/.local/uv-cache \
+    UV_LINK_MODE=copy \
+    PRE_COMMIT_HOME=/home/app/.local/pre-commit
 
 USER 1000:1000
 WORKDIR /workspace

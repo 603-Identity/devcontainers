@@ -18,11 +18,10 @@
 #     --source-ref refs/heads/main --deny-self-hosted-runners
 FROM ghcr.io/603-identity/devcontainer-tofu:TAG@sha256:DIGEST
 
-# Mount points for the per-repo dependency volumes in devcontainer.json, pre-created
-# app-owned so each volume comes up writable as uid 1000 (Docker copies the image
-# path's ownership into an empty named volume). Delete the lines you do not mount.
-USER 0
-RUN install -d -o app -g app /workspace/node_modules /workspace/.venv
+# The mount points for the home, dependency and cache volumes in devcontainer.json are
+# pre-created app-owned in the shared images, so there is nothing to add here for them.
+# The container's root filesystem is read-only at run time (devcontainer.json runArgs):
+# install anything extra in this Dockerfile, not in a running container.
 USER 1000:1000
 
 # Repo-specific extras go here, following the same rules as the shared images:

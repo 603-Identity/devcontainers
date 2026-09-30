@@ -44,6 +44,7 @@ GPG agent forwarding, and no other editor is supported.
    ecosystem. Image bumps then arrive as reviewed PRs. Verify each bump's digest with the
    command above before merging it.
 4. Delete the dependency-volume lines the repo doesn't use (`node_modules`, `.venv`).
+   Leave the `--read-only` and tmpfs `runArgs`, the `init` line and the home volume alone.
 5. Open the repo in the container, then store its GitHub credential once:
    `gh auth login --with-token` (see [Credentials](#credentials)).
 
@@ -67,9 +68,10 @@ bundled npm 11 until each repo takes it (#27).
 3. **Checkout folder names must be unique across every checkout on the host, in every
    org**, including forks, reference clones of third-party repos, and a second clone of the
    same repo. Each per-repo volume is named `<folder>-<suffix>`. Two checkouts with one
-   folder name share every one they both mount, up to all five: `-gh` (the token, usable from both), `-claude` (sessions
-   and, on Linux, Claude Code's own login and settings hooks), `-tmp`, `-node_modules` and
-   `-venv` (each repo runs the other's dependency trees). **A collision merges two repos
+   folder name share every one they both mount, up to all four: `-home` (the token, usable
+   from both, plus Claude sessions and, on Linux, Claude Code's own login and settings
+   hooks), `-tmp`, `-node_modules` and `-venv` (each repo runs the other's dependency
+   trees). **A collision merges two repos
    into one trust domain.** Rename the second folder. Docker volume names are
    case-sensitive and Windows folders are not, so `Foo` and `foo` get separate volumes.
    That fails safe, but it orphans a credential volume.
@@ -94,26 +96,67 @@ the known gaps. In short:
 
 ## Disk, speed and volumes
 
-Code stays in the Windows checkout, bind-mounted at `/workspace`. Everything heavy or
-growing lives in **named volumes**, except the rest of `~/.cache` (pre-commit, pip, uv and npm
-caches), which stays in the container's own filesystem until #23 moves the home directory
-onto a per-repo volume, and which a rebuild clears:
+Code stays in the Windows checkout, bind-mounted at `/workspace`. **Nothing grows in the
+container's own filesystem**, and that is enforced rather than left to convention: the root
+filesystem is **read-only** (`--read-only` in `runArgs`), so every write outside the mounts
+below fails with `EROFS` and names the next disk hog instead of hiding it.
 
-| Volume | Scope | Why |
+| Mount | Kind | Holds |
 |---|---|---|
-| `<repo>-tmp` → `/tmp` | per repo | Session scratch and task output. Wipe it with `docker volume rm <repo>-tmp`. |
-| `<repo>-node_modules`, `<repo>-venv` | per repo | Many small files are the slowest thing across the Windows bind mount. |
-| `<repo>-claude` → `~/.claude` | per repo | Claude Code sessions and memory. Every repo mounts at `/workspace`, and Claude keys projects by path, so sharing this volume would mix repos' histories. |
-| `<repo>-gh` → `~/.config/gh` | per repo | That repo's GitHub credential. |
-| `devc-cache` → `~/.cache/shared` | shared, every repo on the host | tofu providers only, each verified against the consuming repo's `.terraform.lock.hcl` before use. The rest of `~/.cache` is per container. |
+| `/workspace` | bind (host checkout) | the repo |
+| `/workspace/.venv`, `/workspace/node_modules` | per-repo volumes `<repo>-venv`, `<repo>-node_modules` | the uv project environment and npm dependencies (many small files are the slowest thing across the Windows bind mount) |
+| `/home/app` | per-repo volume `<repo>-home` | everything user-scoped: the gh credential, Claude Code sessions and memory, the VS Code server and extensions, uv's managed interpreters and cache (`UV_CACHE_DIR=~/.local/uv-cache`), `PRE_COMMIT_HOME=~/.local/pre-commit`, `TFLINT_PLUGIN_DIR=~/.local/tflint-plugins` (tofu image), `NPM_CONFIG_PREFIX=~/.local` (node image), the forwarded GPG agent socket in `~/.gnupg`. `XDG_CACHE_HOME=~/.local/cache` moves every other XDG-aware cache here too. |
+| `/home/app/.cache` | shared volume `devc-cache`, nested in the home volume | **only** the two caches re-verified against the consuming repo's lock on use: `TF_PLUGIN_CACHE_DIR` (`tofu init` checks `.terraform.lock.hcl`) and npm's cache (`npm ci` checks integrity) |
+| `/tmp` | per-repo volume `<repo>-tmp` | scratch and task output |
+| `/run`, `/var/tmp` | tmpfs | runtime files, gone when the container stops |
+| everything else | **read-only** | the image |
+
+`"init": true` gives the container a real PID 1 that reaps the zombies VS Code and Claude
+Code leave behind. The base image sets `UV_LINK_MODE=copy`, because uv's cache and the
+project environment are separate mounts and hardlinks between them fail with `EXDEV`.
+`postCreateCommand`'s `pre-commit install` writes `/workspace/.git/hooks`, which is the
+bind mount, so it still works.
+
+**Wiping a repo's state:** `docker volume rm <repo>-home <repo>-tmp <repo>-venv <repo>-node_modules`.
+That also removes the repo's GitHub credential, so run `gh auth login --with-token` again.
+
+**The home volume is frozen at first mount.** Docker copies the image's `/home/app` into an
+empty volume once and never again, so image-owned configuration must not live in the home
+directory. The `~/.gitconfig` include stub is therefore written by `git-identity.sh` at
+every start, not shipped in the image; system git settings stay in `/etc/gitconfig`, and
+scripts in `/usr/local/share`. Each mount point above is pre-created app-owned in the
+image (`tests/smoke.sh` asserts it), because Docker copies the image path's ownership into
+an empty volume and a missing path comes up root-owned and unwritable as uid 1000.
+
+**Migrating from the old layout.** infrastructure-core is the one adopter: its containers
+hold the old credential and session volumes (`infrastructure-core-gh-config` and
+`infrastructure-core-claude-config`). With the container stopped and before rebuilding it,
+copy them once into the new home volume (substitute the old volumes' names if they differ,
+for example the template's own `<repo>-gh` and `<repo>-claude`):
+
+```sh
+docker run --rm --user 0 \
+  -v infrastructure-core-gh-config:/from-gh:ro \
+  -v infrastructure-core-claude-config:/from-claude:ro \
+  -v infrastructure-core-home:/to \
+  ghcr.io/603-identity/devcontainer-base:<tag>@sha256:<digest> \
+  sh -c 'mkdir -p /to/.config/gh /to/.claude && cp -a /from-gh/. /to/.config/gh/ && cp -a /from-claude/. /to/.claude/ && chown -R 1000:1000 /to'
+```
+
+Check `gh auth status` in the rebuilt container, then remove the old volumes with
+`docker volume rm`. The copy runs as root and ends with a `chown`, because a home volume
+that is not empty at first mount is not seeded from the image: its root directory would
+otherwise stay root-owned and unwritable as uid 1000. Run it before the first container
+start on the new layout, never after.
 
 **Why this matters:** the previous single devcontainer grew to **331 GB**. Claude Code
 sessions installed dependencies into `/tmp`, which sat in the container's own filesystem
 where nothing ever cleaned it up, and several repos had been cloned into one container.
-The volume layout above makes that growth visible (`docker system df -v`) and
-disposable, for everything in a volume. The one-container-per-repo rule keeps each repo's credentials and data apart.
-Only the tofu provider cache and the host's git identity files (see
-[Git identity](#git-identity)) are shared by all containers.
+The layout above makes growth visible (`docker system df -v`) and disposable, for everything
+in a volume, and the read-only root stops anything else from accumulating. The
+one-container-per-repo rule keeps each repo's credentials and data apart. Only the tofu and
+npm caches and the host's git identity files (see [Git identity](#git-identity)) are shared
+by all containers.
 
 **Getting disk space back on Windows:** Docker Desktop keeps everything in
 `%LOCALAPPDATA%\Docker\wsl\disk\docker_data.vhdx`. Deleting data frees space inside that
