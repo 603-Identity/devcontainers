@@ -25,7 +25,7 @@ FROM ghcr.io/603-identity/devcontainer-tofu:TAG@sha256:DIGEST
 # /home/app: the home volume copies the image's /home/app once, at first mount, so an
 # install there never reaches an existing volume, and a root install that writes there
 # (npm's cache, ~/.local) leaves it root-owned and breaks the app user. As root, send
-# caches elsewhere, for example:
+# caches elsewhere, for example (this one assumes the devcontainer-node image):
 #   USER 0
 #   RUN npm install -g --prefix /usr/local --cache /tmp/npm-cache <pkg>@<ver> \
 #       && rm -rf /tmp/npm-cache

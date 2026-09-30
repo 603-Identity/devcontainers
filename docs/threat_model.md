@@ -60,7 +60,7 @@ at build and publish time, before any consumer pulls.
 
    | Check | Where | Fails the build when |
    |---|---|---|
-   | Smoke test ([`tests/smoke.sh`](../tests/smoke.sh)) | before push | a tool version differs from its pin (a Dockerfile `ARG`, or `images/base/tools/uv.lock` for the Python tools); the user isn't uid 1000; any setuid/setgid binary exists; a volume mount point isn't app-owned; any credential helper other than gh's runs; the projected identity holds a non-allowlisted key; a token from the origin URL appears in output; an identity is left in place after a failed selection (no origin, a non-github or lookalike origin, an ambiguous, unreadable or missing identity file); the system Python isn't the expected major.minor; the tools venv or a cache path isn't where the image documents it; a mount point (`/home/app`, `~/.cache`, `/workspace/.venv`, `/workspace/node_modules`) isn't app-owned; any cache variable points into the shared `~/.cache` except tofu's; the image ships a `~/.gitconfig`; `git-identity.sh` fails to rewrite a stale or symlinked `~/.gitconfig` |
+   | Smoke test ([`tests/smoke.sh`](../tests/smoke.sh)) | before push | a tool version differs from its pin (a Dockerfile `ARG`, or `images/base/tools/uv.lock` for the Python tools); the user isn't uid 1000; any setuid/setgid binary exists; a volume mount point isn't app-owned; any credential helper other than gh's runs; the projected identity holds a non-allowlisted key; a token from the origin URL appears in output; an identity is left in place after a failed selection (no origin, a non-github or lookalike origin, an ambiguous, unreadable or missing identity file); the system Python isn't the expected major.minor; the tools venv or a cache path isn't where the image documents it; a mount point (`/home/app`, `~/.cache`, `/workspace/.venv`, `/workspace/node_modules`) isn't app-owned; any cache variable points into the shared `~/.cache` except tofu's; the image ships a `~/.gitconfig`; `git-identity.sh` fails to rewrite a stale, symlinked or directory `~/.gitconfig`, or to remove a planted `~/.config/git/config` |
    | Trivy image scan | before push | there's a HIGH/CRITICAL vulnerability **with a fix available**, or a secret is baked into a layer |
    | hadolint and Trivy config | lint | there's a Dockerfile anti-pattern |
    | shellcheck | lint | a script has a shell bug |
@@ -97,8 +97,8 @@ at build and publish time, before any consumer pulls.
    ignored by git. pre-commit strips `GIT_*` variables from the git it runs, so that file
    would still apply there: `git-identity.sh` therefore also deletes it at every start,
    which bounds its persistence across restarts but not its use within one session. A
-   script that wants git isolated from the container's config sets
-   `GIT_CONFIG_GLOBAL=/dev/null`, not `HOME=<dir>`. A
+   script that wants git isolated from the home volume's config sets
+   `GIT_CONFIG_GLOBAL=/dev/null` (`/etc/gitconfig` still applies), not `HOME=<dir>`. A
    hostile `.devcontainer/` can simply drop the flag (boundary 5). The template's
    `init: true` gives the container a real PID 1. GitHub's SSH host key is pinned
    system-wide.
