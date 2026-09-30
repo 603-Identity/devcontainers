@@ -1,7 +1,10 @@
 #!/bin/sh
 # Builds the container's git identity (~/.gitconfig-identity) from the host's identity
-# files, at every container start. The Dockerfile gives ~/.gitconfig an `include` of
-# that file, so nothing else here touches git's global config.
+# files, at every container start. It first (re)writes ~/.gitconfig, whose only content
+# is an `include` of that file, so nothing else here touches git's global config.
+# ~/.gitconfig is written HERE and not shipped in the image because /home/app is a
+# per-repo volume: the image's copy would be frozen at first mount, and a stale or
+# hand-edited one could never be corrected by a rebuild.
 #
 # The template mounts the host's ~/.gitconfig.d/ read-only at ~/.gitconfig.d/. It
 # holds one git-config file per GitHub account, named <anything>.gitconfig, each
@@ -45,8 +48,34 @@
 set -u
 
 OUT=/home/app/.gitconfig-identity
+GITCONFIG=/home/app/.gitconfig
 IDENTITY_DIR=${GIT_IDENTITY_DIR:-/home/app/.gitconfig.d}
 WORKSPACE=${GIT_IDENTITY_WORKSPACE:-/workspace}
+
+# The include stub, before anything else, so it is in place even when the identity below
+# is denied. Rewritten, not merged, at every start; temp file + rename, so a planted
+# symlink at the destination is replaced rather than written through. Failure is not
+# fatal (git then has no global config, which only means no identity).
+# A directory there would make every git call fail and defeat the rename; remove it, as
+# finish() does for $OUT.
+[ ! -d "$GITCONFIG" ] || [ -L "$GITCONFIG" ] || rm -rf -- "$GITCONFIG"
+# git's XDG global file is also removed. GIT_CONFIG_GLOBAL (base image ENV) makes git ignore
+# it, but pre-commit strips GIT_* variables from the environment of the git it runs, and
+# that git reads it: a file planted there by a process in the home volume would survive
+# rebuilds and apply to every hook clone. This bounds the persistence; it cannot stop a
+# file planted and used within one session.
+# rm follows a symlinked PARENT, so a dotfiles tool that links ~/.config or ~/.config/git into
+# a checkout must not have that checkout's file deleted: leave the file alone then.
+if [ ! -L /home/app/.config ] && [ ! -L /home/app/.config/git ]; then
+    rm -rf -- /home/app/.config/git/config
+fi
+stub=$(mktemp "$GITCONFIG.XXXXXX") || stub=
+if [ -n "$stub" ]; then
+    if printf '[include]\n\tpath = %s\n' "$OUT" >"$stub" && mv -fT "$stub" "$GITCONFIG"; then :
+    else rm -f "$stub"; echo "git-identity: cannot write $GITCONFIG" >&2; fi
+else
+    echo "git-identity: cannot write $GITCONFIG" >&2
+fi
 
 tmp= ; ok=0                        # initialised BEFORE the traps (set -u)
 finish() {

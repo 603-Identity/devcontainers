@@ -105,14 +105,19 @@ chains.
 - One publisher, 603-Identity/devcontainers. The GHCR packages must stay public.
 - The shared `devc-cache` volume mounts at `~/.cache/shared` and holds only the tofu
   provider cache, which `tofu init` verifies against the consuming repo's lock. pre-commit,
-  pip and npm caches stay per container: none is verified on every use.
+  pip and npm caches stay per container: none is verified on every use. (Superseded by
+  #23: the shared volume is now `devc-tofu-plugins`, mounted at `~/.cache/tofu-plugins`
+  only, and holds only the tofu provider cache; everything else, npm's cache included, is
+  per repo in the `<repo>-home` volume.)
 - Only `main` publishes. Consumers pin the signer workflow and `refs/heads/main` when
   they verify, on every new digest.
-- The image MAJOR goes from 2 to 3, because paths moved. This overrides #21's "no MAJOR
+- The image MAJOR goes from 2 to 3, because paths moved. (#23 moved them again, so it
+  goes to 4.) This overrides #21's "no MAJOR
   bump" line.
 - VS Code is the only supported editor. Volume names keep keying on the checkout folder
   name, so folder-name uniqueness is a documented host rule, not enforced here. The
-  residual: a collision merges two repos' trust domains (up to five per-repo volumes).
+  residual: a collision merges two repos' trust domains (up to five per-repo volumes; four
+  after #23 folded `-gh` and `-claude` into `-home`).
 - Prose names 603-Identity and glunk-works. Host rules say "every checkout on the host",
   which covers the other orgs there.
 - Tokens are recorded in the owning org's credential ledger.

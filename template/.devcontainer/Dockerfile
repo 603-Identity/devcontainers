@@ -18,11 +18,19 @@
 #     --source-ref refs/heads/main --deny-self-hosted-runners
 FROM ghcr.io/603-identity/devcontainer-tofu:TAG@sha256:DIGEST
 
-# Mount points for the per-repo dependency volumes in devcontainer.json, pre-created
-# app-owned so each volume comes up writable as uid 1000 (Docker copies the image
-# path's ownership into an empty named volume). Delete the lines you do not mount.
-USER 0
-RUN install -d -o app -g app /workspace/node_modules /workspace/.venv
+# The mount points for the home, dependency and cache volumes in devcontainer.json are
+# pre-created app-owned in the shared images, so there is nothing to add here for them.
+# The container's root filesystem is read-only at run time (devcontainer.json runArgs):
+# install anything extra in this Dockerfile, not in a running container. Install it outside
+# /home/app: the home volume copies the image's /home/app once, at first mount, so an
+# install there never reaches an existing volume, and a root install that writes there
+# (npm's cache, ~/.local) leaves it root-owned and breaks the app user. As root, send
+# caches elsewhere, for example (this one assumes the devcontainer-node image; a package that downloads a
+# browser also needs PUPPETEER_CACHE_DIR=/tmp/... as root):
+#   USER 0
+#   RUN npm install -g --prefix /usr/local --cache /tmp/npm-cache <pkg>@<ver> \
+#       && rm -rf /tmp/npm-cache
+#   USER 1000:1000
 USER 1000:1000
 
 # Repo-specific extras go here, following the same rules as the shared images:

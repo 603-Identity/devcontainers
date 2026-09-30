@@ -57,13 +57,17 @@ RUN curl -fsSL "https://github.com/terraform-linters/tflint/releases/download/v$
 # a Windows-host `tofu init` through the bind mount. (A host-side init leaves a backend
 # record behind, and `-backend=false` REUSES that record rather than ignoring it.)
 #
-# TF_PLUGIN_CACHE_DIR points into ~/.cache/shared, which the template mounts as a
+# TF_PLUGIN_CACHE_DIR is ~/.cache/tofu-plugins, which the template mounts as the one
 # volume SHARED by every repo on the host, in every org, so each provider version is
 # downloaded and stored once per machine. Sharing a cache between repos is safe only
 # because tofu verifies every cached provider against the repo's own
 # .terraform.lock.hcl hashes when a command starts, so a tampered entry fails init. It
 # is checked then, not at exec: see docs/threat_model.md, Known gaps.
+#
+# TFLINT_PLUGIN_DIR is per repo, in the home volume: tflint plugins are not re-verified
+# against a lock on use, so they never go near the shared cache.
 ENV TF_DATA_DIR=.terraform-devcontainer \
-    TF_PLUGIN_CACHE_DIR=/home/app/.cache/shared/tofu-plugins
+    TF_PLUGIN_CACHE_DIR=/home/app/.cache/tofu-plugins \
+    TFLINT_PLUGIN_DIR=/home/app/.local/tflint-plugins
 
 USER 1000:1000

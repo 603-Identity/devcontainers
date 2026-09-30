@@ -1,7 +1,7 @@
 #!/bin/sh
 # Asserts what a built image promises: pinned tool versions, the non-root user, the
-# app-owned mount points the template's named volumes rely on, and the git identity
-# projection (git-identity.sh):
+# app-owned mount points the template's named volumes rely on, the cache and home
+# layout (what is shared, what is per repo), and the git identity projection (git-identity.sh):
 #   * no host config reaches the credential path: the only credential helper that
 #     runs is gh's, checked by behaviour (GIT_TRACE on `git credential fill`);
 #   * an org URL selects exactly one identity file, and only five allowlisted keys
@@ -46,21 +46,33 @@ check "python3" 3.14 "$(python3 -c 'import sys; print("%d.%d" % sys.version_info
 check "tools venv" /opt/devc/tools/bin/pre-commit "$(readlink /usr/local/bin/pre-commit)"
 check "safe.directory" /workspace "$(git config --system --get-all safe.directory)"
 check "setuid/setgid binaries" 0 "$(find / -xdev -perm /6000 -type f 2>/dev/null | wc -l)"
-for d in /home/app/.config/gh /home/app/.claude /home/app/.cache \
-    /home/app/.cache/shared /home/app/.cache/shared/tofu-plugins; do
+# The template mounts /home/app (per-repo), /home/app/.cache/tofu-plugins (shared) and
+# the two dependency directories as volumes. Docker copies the image path's ownership into
+# an empty volume, so each mount point must exist in the image and be app-owned, or it
+# comes up root-owned and unwritable as uid 1000. ~/.cache is the shared mount's parent,
+# seeded into the home volume, so it must be app-owned too.
+for d in /home/app /home/app/.cache /home/app/.cache/tofu-plugins     /workspace/.venv /workspace/node_modules; do
     check "owner $d" app "$(stat -c %U "$d")"
 done
+# Image-owned configuration must not live in the home directory: the home volume freezes
+# the image's copy at first mount. git-identity.sh writes ~/.gitconfig at every start.
+check "owner /home/app/.local" app "$(stat -c %U /home/app/.local)"
+check "GIT_CONFIG_GLOBAL" /home/app/.gitconfig "${GIT_CONFIG_GLOBAL:-}"
+check "no ~/.gitconfig in the image" "" "$(ls -A /home/app/.gitconfig /home/app/.gitconfig-identity 2>/dev/null || true)"
 
-# Only lock-verified content may live in the shared volume (~/.cache/shared): no other
-# cache may resolve into it, now or after a later ENV. XDG_CACHE_HOME would move every
-# XDG-aware tool's cache at once.
-check "XDG_CACHE_HOME" "" "${XDG_CACHE_HOME:-}"
+# Only the tofu provider cache is directed into the shared volume (~/.cache/tofu-plugins).
+# Every other cache lives in the per-repo home volume (~/.local); XDG_CACHE_HOME moves the
+# XDG-aware tools there all at once.
+check "XDG_CACHE_HOME" /home/app/.local/cache "${XDG_CACHE_HOME:-}"
+check "UV_CACHE_DIR" /home/app/.local/uv-cache "${UV_CACHE_DIR:-}"
+check "UV_LINK_MODE" copy "${UV_LINK_MODE:-}"
+check "PRE_COMMIT_HOME" /home/app/.local/pre-commit "${PRE_COMMIT_HOME:-}"
 # Unset, or an unverified cache entry could be used and written into a repo's lock file.
 check "TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE" "" "${TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE:-}"
-for v in PRE_COMMIT_HOME PIP_CACHE_DIR UV_CACHE_DIR NPM_CONFIG_CACHE; do
+for v in XDG_CACHE_HOME PRE_COMMIT_HOME PIP_CACHE_DIR UV_CACHE_DIR NPM_CONFIG_CACHE PUPPETEER_CACHE_DIR; do
     val=$(printenv "$v" || true)
     case "$val" in
-        /home/app/.cache/shared|/home/app/.cache/shared/*)
+        /home/app/.cache/tofu-plugins|/home/app/.cache/tofu-plugins/*)
             echo "FAIL $v=$val is inside the shared cache volume"; fail=1 ;;
         *) echo "ok   $v not in the shared cache volume (${val:-unset})" ;;
     esac
@@ -250,6 +262,45 @@ setorigin "$POS_URL"; run_fx "bad boolean"; expect_id "bad boolean"
 check "commit.gpgsign skipped" "" "$(git config -f "$OUT" --get commit.gpgsign || true)"
 cred_probe "after the identity runs"
 
+# ~/.gitconfig is written by the script at every start, and only ever holds the include.
+stub=$(printf '[include]\n\tpath = %s' "$OUT")
+check "home gitconfig: written by the script" "$stub" "$(cat /home/app/.gitconfig 2>/dev/null || true)"
+# A stale or hand-edited copy (the home volume outlives image rebuilds) is rewritten.
+printf '[user]\n\tname = stale\n' >/home/app/.gitconfig
+setorigin "$POS_URL"; run_fx "stale gitconfig"; expect_id "stale gitconfig"
+check "home gitconfig: stale copy rewritten" "$stub" "$(cat /home/app/.gitconfig 2>/dev/null || true)"
+# So is a symlink, and the link's target is not written through.
+printf '# untouched\n' >"$fx/link-target"
+rm -f /home/app/.gitconfig; ln -s "$fx/link-target" /home/app/.gitconfig
+setorigin "$POS_URL"; run_fx "symlinked gitconfig"; expect_id "symlinked gitconfig"
+check "home gitconfig: symlink replaced" "$stub|0" \
+    "$(cat /home/app/.gitconfig 2>/dev/null || true)|$([ -L /home/app/.gitconfig ] && echo 1 || echo 0)"
+check "home gitconfig: symlink target untouched" '# untouched' "$(cat "$fx/link-target")"
+# A directory there is removed and replaced.
+setorigin "$POS_URL"
+rm -f /home/app/.gitconfig; mkdir -p /home/app/.gitconfig/sub
+run_fx "directory gitconfig"; expect_id "directory gitconfig"
+check "home gitconfig: directory replaced" "$stub" "$(cat /home/app/.gitconfig 2>/dev/null || true)"
+# git's XDG config file is removed at every start. GIT_CONFIG_GLOBAL already makes plain git
+# ignore it, but pre-commit strips GIT_* variables from the environment of the git it runs,
+# and that git reads it.
+mkdir -p /home/app/.config/git; printf '[user]\n\tname = planted\n' >/home/app/.config/git/config
+setorigin "$POS_URL"; run_fx "planted xdg git config"; expect_id "planted xdg git config"
+check "XDG git config removed" 0 "$([ -e /home/app/.config/git/config ] && echo 1 || echo 0)"
+# A symlinked ~/.config/git is not followed: its target's file survives.
+rm -rf /home/app/.config/git; mkdir -p "$fx/dot-git"; printf '[user]
+	name = dotfile
+' >"$fx/dot-git/config"
+ln -s "$fx/dot-git" /home/app/.config/git
+setorigin "$POS_URL"; run_fx "symlinked xdg dir"; expect_id "symlinked xdg dir"
+check "symlinked XDG git dir not followed" 1 "$([ -e "$fx/dot-git/config" ] && echo 1 || echo 0)"
+rm -f /home/app/.config/git
+# The identity is denied, yet the include is still in place: start from no file, so only
+# a write on the denied path can produce it.
+rm -f /home/app/.gitconfig
+setorigin ""; run_fx "no origin gitconfig"
+check "home gitconfig: written on a denied identity" "$stub" "$(cat /home/app/.gitconfig 2>/dev/null || true)"
+
 # The origin URL carried a token in these runs: neither it nor its user may be echoed.
 if grep -qF -e secret -e x-token "$alllogs"; then
     echo "FAIL origin token leaked into git-identity output"; fail=1
@@ -263,12 +314,15 @@ case "$flavor" in
     check "tofu" "v$EXPECT_TOFU" "$(tofu version | awk 'NR==1{print $2}')"
     check "tflint" "$EXPECT_TFLINT" "$(tflint --version | awk 'NR==1{print $3}')"
     check "TF_DATA_DIR" .terraform-devcontainer "${TF_DATA_DIR:-}"
-    check "TF_PLUGIN_CACHE_DIR" /home/app/.cache/shared/tofu-plugins "${TF_PLUGIN_CACHE_DIR:-}"
+    check "TF_PLUGIN_CACHE_DIR" /home/app/.cache/tofu-plugins "${TF_PLUGIN_CACHE_DIR:-}"
+    check "TFLINT_PLUGIN_DIR" /home/app/.local/tflint-plugins "${TFLINT_PLUGIN_DIR:-}"
     ;;
   node)
     check "node" "v$EXPECT_NODE" "$(node --version)"
     check "npm" "$EXPECT_NPM" "$(npm --version)"
-    check "npm cache" /home/app/.cache/npm "$(npm config get cache)"
+    check "npm cache" /home/app/.local/npm-cache "$(npm config get cache)"
+    check "npm global prefix" /home/app/.local "$(npm config get prefix)"
+    check "PUPPETEER_CACHE_DIR" /home/app/.local/puppeteer "${PUPPETEER_CACHE_DIR:-}"
     ;;
   *) echo "FAIL unknown flavor $flavor"; fail=1 ;;
 esac
