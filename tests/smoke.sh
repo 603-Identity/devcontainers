@@ -17,8 +17,8 @@
 #
 # Expected versions are read from the Dockerfiles' own ARG lines by the CI step and
 # passed in as environment variables. That keeps one source of truth: a version
-# bumped in a Dockerfile but not built would fail here. Two are hardcoded below, by
-# design: bc-detect-secrets (the version every consuming repo's baseline pins) and the
+# bumped in a Dockerfile but not built would fail here. The Python tools' versions come
+# from images/base/tools/uv.lock the same way. One is hardcoded below, by design: the
 # system Python's major.minor (the standard for consuming repos; apt moves the patch).
 set -eu
 
@@ -37,15 +37,13 @@ check "uid" 1000 "$(id -u)"
 check "user" app "$(id -un)"
 check "gh" "$EXPECT_GH" "$(gh --version | awk 'NR==1{print $3}')"
 check "yq" "v$EXPECT_YQ" "$(yq --version | awk '{print $NF}')"
-check "bc-detect-secrets" 1.5.47 "$(detect-secrets --version)"
+check "uv" "$EXPECT_UV" "$(uv --version | awk '{print $2}')"
+check "bc-detect-secrets" "$EXPECT_BC_DETECT_SECRETS" "$(detect-secrets --version)"
+check "zizmor" "$EXPECT_ZIZMOR" "$(zizmor --version | awk '{print $2}')"
+check "pre-commit" "$EXPECT_PRE_COMMIT" "$(pre-commit --version | awk '{print $2}')"
+check "PATH has ~/.local/bin" 1 "$(printf '%s' ":$PATH:" | grep -c ':/home/app/.local/bin:')"
 check "python3" 3.14 "$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
 check "tools venv" /opt/devc/tools/bin/pre-commit "$(readlink /usr/local/bin/pre-commit)"
-if command -v pre-commit >/dev/null; then
-    echo "ok   pre-commit present"
-else
-    echo "FAIL pre-commit missing"
-    fail=1
-fi
 check "safe.directory" /workspace "$(git config --system --get-all safe.directory)"
 check "setuid/setgid binaries" 0 "$(find / -xdev -perm /6000 -type f 2>/dev/null | wc -l)"
 for d in /home/app/.config/gh /home/app/.claude /home/app/.cache \

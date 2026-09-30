@@ -6,9 +6,12 @@ costs almost no disk, because the image layers are stored once per machine.
 
 | Image | Contents |
 |---|---|
-| `ghcr.io/603-identity/devcontainer-base` | Ubuntu 26.04, non-root `app` (uid 1000), git, gh, jq, yq, Python 3.14, pre-commit, bc-detect-secrets 1.5.47 |
+| `ghcr.io/603-identity/devcontainer-base` | Ubuntu 26.04, non-root `app` (uid 1000), git, gh 2.102.0, jq, yq, Python 3.14 (system), uv 0.12.21, pre-commit, bc-detect-secrets 1.5.51, zizmor 1.30.1 |
 | `ghcr.io/603-identity/devcontainer-tofu` | base + OpenTofu 1.11.14 + tflint |
 | `ghcr.io/603-identity/devcontainer-node` | base + Node.js 24 + npm 11 |
+
+The images are **linux/amd64 only**: every downloaded binary is amd64, so the base
+image's first build step fails with a clear message on any other architecture.
 
 No repo has adopted the images yet. Adoption is tracked in #10 (pilots) and the wave
 issues #26 to #28.
@@ -88,7 +91,7 @@ the known gaps. In short:
 ## Disk, speed and volumes
 
 Code stays in the Windows checkout, bind-mounted at `/workspace`. Everything heavy or
-growing lives in **named volumes**, except the rest of `~/.cache` (pre-commit, pip and npm
+growing lives in **named volumes**, except the rest of `~/.cache` (pre-commit, pip, uv and npm
 caches), which stays in the container's own filesystem until #23 moves the home directory
 onto a per-repo volume, and which a rebuild clears:
 
@@ -187,10 +190,19 @@ and the container still starts.
 2. Take the new sha256 from **that release's published checksum file**. Never
    `sha256sum` a download and paste the result.
 3. Change the `ARG`s in the Dockerfile. `tests/smoke.sh` reads the expected version from
-   those same lines, so there is nothing else to edit.
+   those same lines, so there is nothing else to edit. (The Python tools are not `ARG`s:
+   they live in `images/base/tools/pyproject.toml` and `uv.lock`, and smoke reads their
+   versions from the lock.)
 4. For OpenTofu or Node, also open the matching CI-pin PRs in every consuming repo.
 5. If the Trivy scan now passes without an entry in `.trivyignore.yaml`, delete that
    entry in the same PR.
 
-Dependabot handles the base image digest, the GitHub Actions pins, and the Python tool
-lock (except `bc-detect-secrets`, which is held at 1.5.47 on purpose: every consuming repo's baseline pins it).
+The `# syntax=docker/dockerfile:...@sha256:...` line on line 1 of all four Dockerfiles is
+pinned by digest but no bot bumps it (Dependabot's docker updater reads only `FROM`
+lines). Move the four together, taking the digest from `docker buildx imagetools inspect
+docker/dockerfile:<tag>`.
+
+Dependabot handles the base image digest, the GitHub Actions pins, and the Python tool lock (`uv` ecosystem on `images/base/tools`). Dependabot
+may propose a `bc-detect-secrets` bump in the grouped `uv` PR (#22 removed the old ignore
+on purpose). Do not merge one until every 603 repo is ready to regenerate its
+`.secrets.baseline` and bump its CI pin in the same change.

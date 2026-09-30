@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1.27@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 #
 # Shared devcontainer BASE image: the tools every consuming repo needs, and nothing
 # a specific toolchain needs. `tofu` and `node` build FROM this image; a repo's own
@@ -9,7 +9,9 @@
 #   * every binary is pinned by version AND sha256, and the sha256 was read from the
 #     project's own published checksum file for that release, not computed from a
 #     first download (trust-on-first-use);
-#   * Python tools install only from a hash-locked file (pip --require-hashes).
+#   * Python tools install only from a hash-carrying lock (uv sync --locked);
+#   * the `# syntax=` frontend on line 1 is pinned by digest too, so no floating image
+#     is left in the build.
 # apt packages are the one deliberate exception (see the apt block).
 #
 # Ubuntu 26.04. Its system Python 3.14 is the Python standard for consuming repos. The
@@ -18,11 +20,16 @@
 FROM ubuntu:26.04@sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78
 
 LABEL org.opencontainers.image.source="https://github.com/603-Identity/devcontainers" \
-      org.opencontainers.image.description="Shared devcontainer base: git, gh, jq, yq, pre-commit, bc-detect-secrets, non-root app user" \
+      org.opencontainers.image.description="Shared devcontainer base: git, gh, jq, yq, uv, pre-commit, bc-detect-secrets, zizmor, non-root app user" \
       org.opencontainers.image.licenses="NOASSERTION"
 
 ARG DEBIAN_FRONTEND=noninteractive
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Every binary downloaded below is linux amd64. Fail here, with a clear message, on any
+# other architecture instead of letting each tool die at runtime with `exec format error`.
+RUN [ "$(uname -m)" = x86_64 ] \
+    || { echo "devc images are linux/amd64 only; this host reports $(uname -m)" >&2; exit 1; }
 
 # Ubuntu's base image ships a built-in `ubuntu` user at uid/gid 1000. Remove it so `app` can
 # take the conventional 1000:1000, which matches the Windows host's file ownership
@@ -45,8 +52,8 @@ RUN apt-get update \
 
 # --- gh CLI, from the release tarball rather than the apt repo so the version is
 # pinned and checksum-verified like every other binary here.
-ARG GH_VERSION=2.101.0
-ARG GH_SHA256=9bca2d1c16825f109907a23307628a2f0698fbf99662b73a5cf0b020293072b8
+ARG GH_VERSION=2.102.0
+ARG GH_SHA256=bb766f710eef8ede859c18578c72c327597cd4c8a85b06001b1f3843c6019386
 RUN curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" \
         -o /tmp/gh.tar.gz \
     && echo "${GH_SHA256}  /tmp/gh.tar.gz" | sha256sum -c - \
@@ -64,16 +71,31 @@ RUN curl -fsSL "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}
     && install -m 0755 /tmp/yq /usr/local/bin/yq \
     && rm /tmp/yq
 
-# --- Python tools (pre-commit, bc-detect-secrets) in their own venv, NOT the system
-# site-packages. That avoids --break-system-packages, and it keeps a repo's own
-# `python3 -m venv .venv` from inheriting them. Installed only from the hash lock.
-# bc-detect-secrets is pinned to 1.5.47 because every consuming repo's .secrets.baseline
-# and CI secret-scan job pins that version (see tools.in).
-COPY tools.lock.txt /opt/devc/tools.lock.txt
-RUN python3 -m venv /opt/devc/tools \
-    && /opt/devc/tools/bin/pip install --no-cache-dir --require-hashes \
-        -r /opt/devc/tools.lock.txt \
-    && for b in pre-commit detect-secrets detect-secrets-hook; do \
+# --- uv, the project manager for every Python repo. The sha256 is the release's own
+# published `.sha256` asset (also verifiable with `gh attestation verify --repo
+# astral-sh/uv`). uv provisions an older interpreter only for a repo whose
+# `.python-version` asks for one; the image itself carries no alternate interpreter.
+ARG UV_VERSION=0.12.21
+ARG UV_SHA256=23f02075b652bb1df64178cfae41b5caf160822e720e2663568f3f5d63bc52c0
+RUN curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" \
+        -o /tmp/uv.tar.gz \
+    && echo "${UV_SHA256}  /tmp/uv.tar.gz" | sha256sum -c - \
+    && tar -xzf /tmp/uv.tar.gz -C /tmp \
+    && install -m 0755 /tmp/uv-x86_64-unknown-linux-gnu/uv /tmp/uv-x86_64-unknown-linux-gnu/uvx /usr/local/bin/ \
+    && rm -rf /tmp/uv.tar.gz /tmp/uv-x86_64-unknown-linux-gnu
+
+# --- Python tools (pre-commit, bc-detect-secrets, zizmor) in their own venv, NOT the
+# system site-packages. That avoids --break-system-packages, and it keeps a repo's own
+# `python3 -m venv .venv` from inheriting them. Installed only from tools/uv.lock:
+# `uv sync --locked` fails on any drift from pyproject.toml and verifies every hash.
+# They land on the system interpreter; --no-cache keeps uv's cache out of the image and
+# --no-build refuses source builds, whose build requirements are not in the lock.
+# bc-detect-secrets is pinned in tools/pyproject.toml because every consuming repo's
+# .secrets.baseline and CI secret-scan job pin that version.
+COPY tools/pyproject.toml tools/uv.lock /opt/devc/tools-src/
+RUN UV_PYTHON_DOWNLOADS=never UV_PROJECT_ENVIRONMENT=/opt/devc/tools \
+        uv sync --locked --no-cache --no-build --python /usr/bin/python3 --project /opt/devc/tools-src \
+    && for b in pre-commit detect-secrets detect-secrets-hook zizmor; do \
         ln -s "/opt/devc/tools/bin/$b" "/usr/local/bin/$b"; \
     done
 
@@ -106,7 +128,7 @@ RUN install -d -o app -g app -m 0755 /home/app/.gitconfig.d
 #   ~/.cache/shared  the ONE volume shared by every repo on the host, in every org. It
 #                    holds only the tofu provider cache, because `tofu init` verifies
 #                    each cached provider against the consuming repo's
-#                    .terraform.lock.hcl before use. pre-commit and pip reuse what they
+#                    .terraform.lock.hcl before use. pre-commit, pip and uv reuse what they
 #                    cached with no hash check, and npm verifies only under `npm ci`,
 #                    so the rest of ~/.cache stays per container. shared/tofu-plugins
 #                    is created here, in base, so it exists whichever flavor first
@@ -139,6 +161,10 @@ RUN find / -xdev -perm /6000 -type f -exec chmod a-s {} + 2>/dev/null || true
 # no trust-on-first-use prompt. Source: GitHub docs, "GitHub's SSH key fingerprints".
 RUN echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
         > /etc/ssh/ssh_known_hosts
+
+# Devcontainer shells are not login shells, so ~/.local/bin (where `uv tool install`
+# puts executables) goes on PATH here, not in a profile script.
+ENV PATH=/home/app/.local/bin:$PATH
 
 USER 1000:1000
 WORKDIR /workspace

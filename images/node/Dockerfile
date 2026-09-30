@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1.27@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 #
 # Shared devcontainer NODE image: base + Node.js 24 (npm included), matching
 # consuming repos' CI, which runs `node-version: 24`.

@@ -20,11 +20,22 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 # MSYS_NO_PATHCONV=1 stops Git Bash rewriting the in-container /tests path. No-op in CI.
 if command -v cygpath >/dev/null 2>&1; then root="$(cygpath -m "$root")"; export MSYS_NO_PATHCONV=1; fi
 
-# Expected versions come from the Dockerfiles' own ARG lines, so tests/smoke.sh has
-# no second copy of any version to drift.
+# Expected versions come from the Dockerfiles' own ARG lines and the tools venv's
+# uv.lock, so tests/smoke.sh has no second copy of any version to drift.
 arg() { sed -n "s/^ARG $2=//p" "$root/images/$1/Dockerfile"; }
-export EXPECT_GH EXPECT_YQ EXPECT_TOFU EXPECT_TFLINT EXPECT_NODE EXPECT_NPM
+lockver() { # lockver <package>: the version uv.lock resolved for it
+  sed -n "/^name = \"$1\"\$/{n;s/^version = \"\(.*\)\"\$/\1/p;q;}" "$root/images/base/tools/uv.lock"
+}
+export EXPECT_GH EXPECT_YQ EXPECT_UV EXPECT_TOFU EXPECT_TFLINT EXPECT_NODE EXPECT_NPM
+export EXPECT_PRE_COMMIT EXPECT_BC_DETECT_SECRETS EXPECT_ZIZMOR
 EXPECT_GH="$(arg base GH_VERSION)"
+EXPECT_UV="$(arg base UV_VERSION)"
+EXPECT_PRE_COMMIT="$(lockver pre-commit)"
+EXPECT_BC_DETECT_SECRETS="$(lockver bc-detect-secrets)"
+EXPECT_ZIZMOR="$(lockver zizmor)"
+for v in EXPECT_UV EXPECT_PRE_COMMIT EXPECT_BC_DETECT_SECRETS EXPECT_ZIZMOR; do
+  [ -n "${!v}" ] || { echo "::error::could not read $v from the Dockerfile or images/base/tools/uv.lock"; exit 1; }
+done
 EXPECT_YQ="$(arg base YQ_VERSION)"
 EXPECT_TOFU="$(arg tofu TOFU_VERSION)"
 EXPECT_TFLINT="$(arg tofu TFLINT_VERSION)"
@@ -37,7 +48,8 @@ ref() { # ref <flavor> -> the tag this run builds
 
 smoke() { # smoke <flavor>
   docker run --rm \
-    -e EXPECT_GH -e EXPECT_YQ -e EXPECT_TOFU -e EXPECT_TFLINT -e EXPECT_NODE -e EXPECT_NPM \
+    -e EXPECT_GH -e EXPECT_YQ -e EXPECT_UV -e EXPECT_PRE_COMMIT -e EXPECT_BC_DETECT_SECRETS \
+    -e EXPECT_ZIZMOR -e EXPECT_TOFU -e EXPECT_TFLINT -e EXPECT_NODE -e EXPECT_NPM \
     -v "$root/tests:/tests:ro" "$(ref "$1")" sh /tests/smoke.sh "$1"
 }
 
