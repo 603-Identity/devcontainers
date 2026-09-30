@@ -1,13 +1,13 @@
 # Next steps
 
-**Now:** P0: cross-org images — implementing.
+**Now:** P0: cross-org images — awaiting_review.
 
 **Just done:**
-- Fresh-session architect review of [PR #35](https://github.com/603-Identity/devcontainers/pull/35) posted: no blocking findings. Its smoke test passed on an image built from the PR head, and every planted mutation of `git-identity.sh` made it fail. The `architect-review` check went green on the head commit.
-- #35 merged as 1c84e64 and closed #20.
-- Three non-blocking notes are in the review body, and none was filed as an issue. The one that matters: #20's acceptance check with `git ls-remote` over HTTPS and a gh token was never run by hand. The smoke test's credential check stands in for it.
+- Implemented the #21 design spec as PR #39 (closes #21 and #9), head `ffb9cb7`: org-neutral `devc` names, the shared volume narrowed to tofu providers at `~/.cache/shared`, publish gated to `main`, MAJOR 3, VS Code only.
+- The local green gate passed and the D3 verify run is in the PR body. The critic pass (architect, security-critic, docs-consistency) ran 3 rounds and converged; the `fable` second-opinion round was offered and declined.
+- Accepted residuals are listed in the PR body: `--signer-workflow` is a prefix match, the tofu cache is checked at command start not at exec, and a stale v2 template can take a 3.x image.
 
-**Next:** task #21 — write the design spec for org-neutral names, VS Code only and the cross-org consumption rules (folding #9 and #12, per the P0 plan of record), post it as a comment on #21, run a critic pass on it, then hand to coder. Model: opus (architect).
-**HITL Gate: OPEN — no verified baseline for the milestone 1 anchor (resume did not verify it this session; a handoff-time re-check printed match, description sha `ebe3ff3ec67c50484995e6e1705c2b4492a684903b330de87d7c2b9601f28839`). Confirm #21 is P0's next task before work starts.**
+**Next:** `/way-of-working:architect-review 39` — post the fresh-session Architect Review on PR #39 and verify the `architect-review` check is green on the head SHA. Model: opus (architect), in a **new session**. The human then merges. After merge, the coder confirms the first publish is tagged `3.<run>`, posts the §6 IAC-D draft on #12 and files the §5 folder-name enforcement follow-up (P0, links #23).
+**HITL Gate: NONE OPEN.** The next gate is the fresh-session review on #39, then the human merge.
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan: https://github.com/603-Identity/devcontainers/milestone/1
