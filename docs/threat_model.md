@@ -31,7 +31,7 @@ at build and publish time, before any consumer pulls.
 | Pull-request content | `pull_request` runs of `build.yml` and `lint.yml` | The PR job holds `contents: read` only, never a write token, and pushes nothing. |
 | Issue, PR and review text | `architect-review-gate.yml`'s `issue_comment` and `pull_request_review` triggers | Read as data by a substring match. Event values reach the shell through `env`, never inline expressions. The repo is **public**, so anyone can post a comment. |
 | Linter and scanner images | `lint.yml` and `build-and-test.sh` | Pinned by digest, the same rule the images follow. |
-| Other repos' and orgs' code, through the shared cache volume | `devc-cache` at `~/.cache` | Only the tofu provider cache lives there. `tofu` verifies each cached provider against the consuming repo's lock when a command starts, but runs it from the shared, writable path (see Known gaps). npm's cache is per repo, because `npx` runs packages from it without a check; pre-commit, pip, uv and every other XDG-aware cache are per repo too, in the home volume (`XDG_CACHE_HOME=~/.local/cache`). A modified `.devcontainer/` is outside this control (boundary 5). |
+| Other repos' and orgs' code, through the shared cache volume | `devc-tofu-plugins` at `~/.cache/tofu-plugins` | Only the tofu provider cache lives there: the volume is mounted at that one directory, not over `~/.cache`, so a tool that hard-codes `~/.cache` writes into the per-repo home volume. `tofu` verifies each cached provider against the consuming repo's lock when a command starts, but runs it from the shared, writable path (see Known gaps). npm's cache is per repo, because `npx` runs packages from it without a check; pre-commit, pip, uv and every other XDG-aware cache are per repo too, in the home volume (`XDG_CACHE_HOME=~/.local/cache`). A modified `.devcontainer/` is outside this control (boundary 5). |
 | Home-volume contents | `~/.vscode-server` and extensions, uv interpreters and cache, pre-commit and tflint plugins, `npm install -g` packages, dotfiles and `~/.local/bin`, all in `<repo>-home` | Installed at container create and first use, from their upstream sources, into a volume that outlives rebuilds. **Never scanned by the build's Trivy gate and never re-pinned by an image bump**: a rebuild does not refresh or remove them. Wipe the volume to start clean. |
 | Host identity directory | the host's `~/.gitconfig.d`, mounted read-only into **every** container | `git-identity.sh` copies an allowlist of five keys (`user.name`, `user.email`, `user.signingkey`, `commit.gpgsign`, `tag.gpgsign`) from the one file that claims the origin's org. It never includes or links the host file, so that file's credential, `gpg.*`, `url.*`, `core.*` and alias sections cannot reach the container's git config. |
 
@@ -60,7 +60,7 @@ at build and publish time, before any consumer pulls.
 
    | Check | Where | Fails the build when |
    |---|---|---|
-   | Smoke test ([`tests/smoke.sh`](../tests/smoke.sh)) | before push | a tool version differs from its pin (a Dockerfile `ARG`, or `images/base/tools/uv.lock` for the Python tools); the user isn't uid 1000; any setuid/setgid binary exists; a volume mount point isn't app-owned; any credential helper other than gh's runs; the projected identity holds a non-allowlisted key; a token from the origin URL appears in output; an identity is left in place after a failed selection (no origin, a non-github or lookalike origin, an ambiguous, unreadable or missing identity file); the system Python isn't the expected major.minor; the tools venv or a cache path isn't where the image documents it; a mount point (`/home/app`, `~/.cache`, `/workspace/.venv`, `/workspace/node_modules`) isn't app-owned; any cache variable points into the shared `~/.cache` except tofu's; the image ships a `~/.gitconfig`; `git-identity.sh` fails to rewrite a stale, symlinked or directory `~/.gitconfig`, or to remove a planted `~/.config/git/config` |
+   | Smoke test ([`tests/smoke.sh`](../tests/smoke.sh)) | before push | a tool version differs from its pin (a Dockerfile `ARG`, or `images/base/tools/uv.lock` for the Python tools); the user isn't uid 1000; any setuid/setgid binary exists; a volume mount point isn't app-owned; any credential helper other than gh's runs; the projected identity holds a non-allowlisted key; a token from the origin URL appears in output; an identity is left in place after a failed selection (no origin, a non-github or lookalike origin, an ambiguous, unreadable or missing identity file); the system Python isn't the expected major.minor; the tools venv or a cache path isn't where the image documents it; a mount point (`/home/app`, `~/.cache/tofu-plugins`, `/workspace/.venv`, `/workspace/node_modules`) or `~/.cache` isn't app-owned; any cache variable points into the shared `~/.cache/tofu-plugins` except tofu's; the image ships a `~/.gitconfig`; `git-identity.sh` fails to rewrite a stale, symlinked or directory `~/.gitconfig`, or to remove a planted `~/.config/git/config` |
    | Trivy image scan | before push | there's a HIGH/CRITICAL vulnerability **with a fix available**, or a secret is baked into a layer |
    | hadolint and Trivy config | lint | there's a Dockerfile anti-pattern |
    | shellcheck | lint | a script has a shell bug |
@@ -149,21 +149,18 @@ These are stated plainly so nobody trusts the setup for more than it does:
 - **The shared tofu provider cache is checked at command start, not at exec.** tofu links a
   cached provider into the repo's data directory and runs it from the shared volume, so a
   hostile process in another container could swap the binary between the check and the
-  exec. It needs code already running in any container that mounts `devc-cache` (a hostile
-  dependency in another repo or org, say). The `devc-cache` volume is the one cross-container
+  exec. It needs code already running in any container that mounts `devc-tofu-plugins` (a hostile
+  dependency in another repo or org, say). The `devc-tofu-plugins` volume is the one cross-container
   channel left. `plugin_cache_may_break_dependency_lock_file` must stay unset: the smoke test asserts its
   environment-variable form, and no image ships a tofu CLI config file.
-- **The shared cache volume is only as narrow as the variables that direct into it.** Only
-  `TF_PLUGIN_CACHE_DIR` points at `~/.cache`; `XDG_CACHE_HOME` moves XDG-aware tools out, and
-  the smoke test asserts the variables. A tool with a hard-coded `~/.cache` path that ignores
-  `XDG_CACHE_HOME`, or a process started with a cleared environment, still lands in it, and
-  where that cache holds executables (a downloaded browser) another org's container can
-  swap one, which is execution, not only disclosure. The node image redirects Puppeteer's
-  (`PUPPETEER_CACHE_DIR`); others are unknown. npm's
-  cache is deliberately not shared (#23 first shared it; `npx` runs installed packages from
-  `<cache>/_npx` with no integrity check, which would be cross-org code execution). Anything
-  cached in the volume is readable from every container that mounts it, private tofu
-  providers fetched with a registry credential included.
+- **The shared cache volume is readable and writable from every container that mounts it.**
+  It holds only the tofu provider cache and is mounted at `~/.cache/tofu-plugins` alone, so
+  a tool that hard-codes `~/.cache` (Puppeteer, say) or ignores `XDG_CACHE_HOME` stays in
+  the per-repo home volume; a cache variable pointed into the shared directory is the only
+  way in, and the smoke test asserts the variables. npm's cache is deliberately not shared
+  (#23 first shared it; `npx` runs installed packages from `<cache>/_npx` with no integrity
+  check, which would be cross-org code execution). Private tofu providers fetched with a
+  registry credential are readable from every container that mounts the volume.
 - **The read-only root is enforced by the template, not by the image.** A `.devcontainer/`
   that drops `--read-only` is a modified template (boundary 5). The template's proof that
   the mount is in force (`findmnt`, an `EROFS` write, PID 1) is the template CI issue

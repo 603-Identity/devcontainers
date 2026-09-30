@@ -106,7 +106,7 @@ below fails with `EROFS` and names the next disk hog instead of hiding it.
 | `/workspace` | bind (host checkout) | the repo |
 | `/workspace/.venv`, `/workspace/node_modules` | per-repo volumes `<repo>-venv`, `<repo>-node_modules` | the uv project environment and npm dependencies (many small files are the slowest thing across the Windows bind mount) |
 | `/home/app` | per-repo volume `<repo>-home` | everything user-scoped: the gh credential, Claude Code sessions and memory, the VS Code server and extensions, uv's managed interpreters and cache (`UV_CACHE_DIR=~/.local/uv-cache`), `PRE_COMMIT_HOME=~/.local/pre-commit`, `TFLINT_PLUGIN_DIR=~/.local/tflint-plugins` (tofu image), `NPM_CONFIG_CACHE=~/.local/npm-cache` and `NPM_CONFIG_PREFIX=~/.local` (node image), the forwarded GPG agent socket in `~/.gnupg`. `XDG_CACHE_HOME=~/.local/cache` moves every other XDG-aware cache here too. |
-| `/home/app/.cache` | shared volume `devc-cache`, nested in the home volume | **only** `TF_PLUGIN_CACHE_DIR`, the tofu provider cache, which `tofu init` checks against the consuming repo's `.terraform.lock.hcl`. npm's cache is per repo, in the home volume, because `npx` runs packages from it without a check |
+| `/home/app/.cache/tofu-plugins` | shared volume `devc-tofu-plugins`, nested in the home volume | **only** `TF_PLUGIN_CACHE_DIR`, the tofu provider cache, which `tofu init` checks against the consuming repo's `.terraform.lock.hcl`. It is mounted at that one directory, not over `~/.cache`, so a tool that hard-codes `~/.cache` stays in the per-repo home volume. npm's cache is per repo too, because `npx` runs packages from it without a check |
 | `/tmp` | per-repo volume `<repo>-tmp` | scratch and task output |
 | `/var/tmp`, `/dev/shm` | tmpfs | scratch that is gone when the container stops. `/run` is tmpfs too, but root-owned, so only root-run tooling writes there |
 | everything else | **read-only** | the image |
@@ -146,7 +146,9 @@ docker run --rm --user 0 --network none \
 ```
 
 Check `gh auth status` in the rebuilt container, then remove the old volumes with
-`docker volume rm`. The copy runs as root and ends with a `chown`, because a home volume
+`docker volume rm`. The old shared `devc-cache` volume is unused on the new layout (the
+tofu cache is now `devc-tofu-plugins`) and can be removed once no container on the host
+still runs the old template. The copy runs as root and ends with a `chown`, because a home volume
 that is not empty at first mount is not seeded from the image: its root directory would
 otherwise stay root-owned and unwritable as uid 1000. Run it before the first container
 start on the new layout, never after.

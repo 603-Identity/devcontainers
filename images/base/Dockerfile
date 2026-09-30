@@ -125,13 +125,14 @@ COPY --chmod=0755 files/git-identity.sh files/gpg-check.sh /usr/local/share/devc
 #                      interpreters and cache, the pre-commit and tflint caches. The
 #                      image's own /home/app is copied in at first mount and never again,
 #                      so image-owned configuration must not live there.
-#   ~/.cache           the ONE volume shared by every repo on the host, in every org. It
+#   ~/.cache/tofu-plugins
+#                      the ONE volume shared by every repo on the host, in every org. It
 #                      holds only tofu's provider cache, which `tofu init` checks against
-#                      the consuming repo's .terraform.lock.hcl.
-#                      The other caches (pre-commit, pip, uv, anything XDG-aware) are
-#                      moved into the home volume by the ENV block at the end of this file.
-#                      tofu-plugins is created here, in base, so it exists whichever flavor
-#                      first initialises the volume: tofu does not create a missing plugin
+#                      the consuming repo's .terraform.lock.hcl. It is mounted at this one
+#                      directory, not over ~/.cache, so the rest of ~/.cache (and anything
+#                      that hard-codes it) is ordinary per-repo home-volume space.
+#                      It is created here, in base, so it exists whichever flavor first
+#                      initialises the volume: tofu does not create a missing plugin
 #                      cache directory.
 #   ~/.local           created here so it is app-owned: it is the parent of every cache
 #                      directory below. A derived image must not install into /home/app
@@ -171,9 +172,9 @@ RUN echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLs
 # puts executables) goes on PATH here, not in a profile script.
 ENV PATH=/home/app/.local/bin:$PATH
 
-# Every cache except tofu's shared one lives in the per-repo home volume,
-# not in the shared ~/.cache and not in the read-only image. XDG_CACHE_HOME moves every
-# XDG-aware tool (pip included) off ~/.cache in one line. uv's cache and the project
+# Every cache except tofu's shared one lives under ~/.local in the per-repo home volume,
+# not in the read-only image and never beside the shared ~/.cache/tofu-plugins.
+# XDG_CACHE_HOME moves every XDG-aware tool (pip included) there in one line. uv's cache and the project
 # environment (/workspace/.venv) are separate mounts, and hardlinks between mounts fail
 # with EXDEV, so uv copies instead.
 # GIT_CONFIG_GLOBAL pins git's global file to ~/.gitconfig (which git-identity.sh rewrites

@@ -57,7 +57,7 @@ RUN curl -fsSL "https://github.com/terraform-linters/tflint/releases/download/v$
 # a Windows-host `tofu init` through the bind mount. (A host-side init leaves a backend
 # record behind, and `-backend=false` REUSES that record rather than ignoring it.)
 #
-# TF_PLUGIN_CACHE_DIR points into ~/.cache, which the template mounts as a
+# TF_PLUGIN_CACHE_DIR is ~/.cache/tofu-plugins, which the template mounts as the one
 # volume SHARED by every repo on the host, in every org, so each provider version is
 # downloaded and stored once per machine. Sharing a cache between repos is safe only
 # because tofu verifies every cached provider against the repo's own

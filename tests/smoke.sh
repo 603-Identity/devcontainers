@@ -46,10 +46,11 @@ check "python3" 3.14 "$(python3 -c 'import sys; print("%d.%d" % sys.version_info
 check "tools venv" /opt/devc/tools/bin/pre-commit "$(readlink /usr/local/bin/pre-commit)"
 check "safe.directory" /workspace "$(git config --system --get-all safe.directory)"
 check "setuid/setgid binaries" 0 "$(find / -xdev -perm /6000 -type f 2>/dev/null | wc -l)"
-# The template mounts /home/app (per-repo), /home/app/.cache (shared) and the two
-# dependency directories as volumes. Docker copies the image path's ownership into an
-# empty volume, so each mount point must exist in the image and be app-owned, or it comes
-# up root-owned and unwritable as uid 1000.
+# The template mounts /home/app (per-repo), /home/app/.cache/tofu-plugins (shared) and
+# the two dependency directories as volumes. Docker copies the image path's ownership into
+# an empty volume, so each mount point must exist in the image and be app-owned, or it
+# comes up root-owned and unwritable as uid 1000. ~/.cache is the shared mount's parent,
+# seeded into the home volume, so it must be app-owned too.
 for d in /home/app /home/app/.cache /home/app/.cache/tofu-plugins     /workspace/.venv /workspace/node_modules; do
     check "owner $d" app "$(stat -c %U "$d")"
 done
@@ -59,9 +60,9 @@ check "owner /home/app/.local" app "$(stat -c %U /home/app/.local)"
 check "GIT_CONFIG_GLOBAL" /home/app/.gitconfig "${GIT_CONFIG_GLOBAL:-}"
 check "no ~/.gitconfig in the image" "" "$(ls -A /home/app/.gitconfig /home/app/.gitconfig-identity 2>/dev/null || true)"
 
-# Only the tofu provider cache is directed into the shared volume (~/.cache). Every other
-# cache lives in the per-repo home volume (~/.local), so no
-# XDG-aware tool may default into ~/.cache. XDG_CACHE_HOME moves them all at once.
+# Only the tofu provider cache is directed into the shared volume (~/.cache/tofu-plugins).
+# Every other cache lives in the per-repo home volume (~/.local); XDG_CACHE_HOME moves the
+# XDG-aware tools there all at once.
 check "XDG_CACHE_HOME" /home/app/.local/cache "${XDG_CACHE_HOME:-}"
 check "UV_CACHE_DIR" /home/app/.local/uv-cache "${UV_CACHE_DIR:-}"
 check "UV_LINK_MODE" copy "${UV_LINK_MODE:-}"
@@ -71,7 +72,7 @@ check "TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE" "" "${TF_PLUGIN_CACHE_MAY
 for v in XDG_CACHE_HOME PRE_COMMIT_HOME PIP_CACHE_DIR UV_CACHE_DIR NPM_CONFIG_CACHE PUPPETEER_CACHE_DIR; do
     val=$(printenv "$v" || true)
     case "$val" in
-        /home/app/.cache|/home/app/.cache/*)
+        /home/app/.cache/tofu-plugins|/home/app/.cache/tofu-plugins/*)
             echo "FAIL $v=$val is inside the shared cache volume"; fail=1 ;;
         *) echo "ok   $v not in the shared cache volume (${val:-unset})" ;;
     esac

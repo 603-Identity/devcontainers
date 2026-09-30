@@ -59,10 +59,11 @@
     "source=${localWorkspaceFolderBasename}-tmp,target=/tmp,type=volume",
 
     // SHARED by every repo on the host, in every org, and nested inside the home volume
-    // above: only the tofu provider cache, which `tofu init` checks against the consuming repo's
-    // lock. Every other cache, npm's included, is in the home volume (the image sets
-    // XDG_CACHE_HOME there).
-    "source=devc-cache,target=/home/app/.cache,type=volume",
+    // above: the tofu provider cache (TF_PLUGIN_CACHE_DIR) and nothing else, which
+    // `tofu init` checks against the consuming repo's lock. It is mounted at that one
+    // directory, not over ~/.cache, so a tool that hard-codes ~/.cache stays in the
+    // per-repo home volume. Every other cache, npm's included, is per repo.
+    "source=devc-tofu-plugins,target=/home/app/.cache/tofu-plugins,type=volume",
 
     // Dependency directories on per-repo volumes. They are the heavy, many-small-file
     // trees that are slowest across the Windows bind mount. Keep the ones this repo
