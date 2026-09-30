@@ -1,15 +1,15 @@
 # Next steps
 
-**Now:** P0: cross-org images — implementing.
+**Now:** P0: cross-org images — awaiting review.
 
 **Just done:**
-- Closed the first-anchor HITL gate for milestone 1: #20 confirmed as P0's first task.
-- Wrote and posted the #20 design spec as [a comment on #20](https://github.com/603-Identity/devcontainers/issues/20#issuecomment-5912888115). Each identity file names the orgs it serves, only five identity keys are copied from the host file, and the image major version goes to 2. The spec has the full detail.
-- Critic gate on the spec (a plan, not a diff): security-critic, architect and docs-consistency. It ran 5 rounds, hit the cap while still converging, then one human-authorised delta re-check (architect + security-critic) came back with no new defect. Final wording fixes were applied after that and checked by running them, not by another critic round. The spec's own change log says what each round moved.
-- Host step (outside the repo): added `[devcontainer] org` lines to both `~/.gitconfig.d/*.gitconfig`, appended in place so the old `.gitconfig-work` / `.gitconfig-personal` hard links still match.
-- No code changed; HEAD is ad0a614.
+- Implemented the #20 design spec as [PR #35](https://github.com/603-Identity/devcontainers/pull/35) (head 945a2aa, branch `feat/20-git-identity-projection`): `git-identity.sh` rewrite, template mount, Dockerfile, `MAJOR` 2, `smoke.sh`, README, threat model, DEVC-D2. The PR's required CI checks were green when this was written.
+- Full local green gate passed. Critic gate (security-critic, architect, docs-consistency): 2 rounds, converged with tightenings only; the optional `second_opinion` round was offered and skipped.
+- Added one thing the spec does not list: a seventh deny reason for a failed `mktemp` (fails closed; the PR body says so).
+- Acceptance check passed from PowerShell: `devcontainer up` on a 603-Identity origin and a glunk-works origin gave the right `user.email` and only gh's credential helper. `git ls-remote` was not run (needs a gh token in the `<repo>-gh` volume).
+- Commented on #25 (#35 delivers three of its threat-model items) and on #12 (the identity/credential split it must record).
 
-**Next:** task #20 — implement the design spec in https://github.com/603-Identity/devcontainers/issues/20#issuecomment-5912888115 as one PR, run the full green gate and `/way-of-working:critic-gate`, then comment on #25 per the spec's hand-off. Model: sonnet (coder).
-**HITL Gate: NONE OPEN** — the next gate is the #20 PR: `/way-of-working:architect-review` in a fresh session, plus the manual `devcontainer up` acceptance check from PowerShell, not Git Bash.
+**Next:** `/way-of-working:architect-review 35` in a genuinely new session, then the human merges #35. Model: opus (architect).
+**HITL Gate: NONE OPEN** — the next gate is that review and the merge.
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan: https://github.com/603-Identity/devcontainers/milestone/1
