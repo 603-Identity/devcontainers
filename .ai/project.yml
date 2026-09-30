@@ -59,9 +59,10 @@ code_paths:
 
 # ── the local green gate ─────────────────────────────────────────────────────
 # A local pre-check, not the gate of record; CI on the PR is. Mirrors lint.yml's four jobs
-# and build.yml's test job, with the same digest-pinned linter images. Needs Docker and a
-# POSIX shell. The last step builds all three images and runs the smoke test and Trivy gate,
-# so it takes several minutes.
+# and build.yml's test job, with the same digest-pinned linter images. Needs Docker, git, node
+# with npm, and a POSIX shell. The second-to-last step builds all three images and runs the smoke test and
+# Trivy gate, so it takes several minutes; the last brings up the template against the tofu
+# image it just built, with the pinned devcontainer CLI (about a minute).
 gates:
   green:
     - { cwd: ".", run: "for f in images/*/Dockerfile template/.devcontainer/Dockerfile; do docker run --rm -i hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d < \"$f\" || exit 1; done" }
@@ -69,6 +70,7 @@ gates:
     - { cwd: ".", run: "shellcheck images/base/files/*.sh tests/*.sh .github/scripts/*.sh" }
     - { cwd: ".", run: "docker run --rm -v \"$PWD:/repo:ro\" -w /repo ghcr.io/zizmorcore/zizmor:1.30.1@sha256:a2eb396d886c053073405c7a980f2139ba2248ec172243cfa3841e57196e8101 --offline .github/workflows" }
     - { cwd: ".", run: "bash .github/scripts/build-and-test.sh local" }
+    - { cwd: ".", run: "bash tests/template-proof.sh" }
 
 # ── branch protection ────────────────────────────────────────────────────────
 # `main-required-checks` (ruleset id 24183176), created 2026-09-29, `enforcement: active`,

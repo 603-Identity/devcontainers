@@ -12,6 +12,13 @@
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
   "remoteUser": "app",
 
+  // The app user stays uid 1000 on every host. On Linux the CLI would otherwise rewrite it to
+  // the host user's uid and chown only /home/app, leaving the dependency volumes below owned by
+  // 1000 and unwritable. Cost: on a Linux host whose own uid is not 1000, files in the
+  // /workspace bind mount are not writable by the container (Docker Desktop on macOS and
+  // Windows is unaffected).
+  "updateRemoteUserUID": false,
+
   // Least privilege. The app user needs no Linux capabilities, and no process in the
   // container may gain privileges through setuid binaries.
   //
