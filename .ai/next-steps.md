@@ -1,18 +1,18 @@
 # Next steps
 
-**Now:** P0: cross-org images — awaiting_review; PR #56 (task #7) is open, head `af222eb`.
+**Now:** P0: cross-org images — awaiting_review; PR #56 (task #7) is reviewed and READY, waiting on the human's merge.
 
 **Just done:**
-- Moved the tofu image to OpenTofu 1.12.6 (`TOFU_VERSION`/`TOFU_SHA256` in `images/tofu/Dockerfile`, checksum from the release's own SHA256SUMS), opened as PR #56 with `Closes #7`. Local green gate passed; the built image reports `OpenTofu v1.12.6`.
-- All 14 tofu-scoped `.trivyignore.yaml` entries still match the 1.12.6 binary, so none were dropped. 1.13.0 (released 2026-09-30) clears 11 of them but is a further minor, not this move.
-- Critic pass (security-critic + architect): 2 rounds, converged, no second-opinion round (declined). It found only comment-level gaps, all fixed: the consumer-CI coupling note and the Trivy result are now recorded. It is not the review gate.
-- Plan anchor re-verified at handoff: `match`, description sha `ebe3ff3…` unchanged; `task_issue` is null because the next action is a review, not a build.
+- Posted the fresh-session architect review on PR #56 (head `af222eb`), as a comment only. Verdict: in scope, correct, no blocking findings. The `architect-review` gate went green; the PR reads MERGEABLE/CLEAN.
+- The review reproduced the PR's claims in an isolated sandbox. The checksum matches upstream `tofu_1.12.6_SHA256SUMS`. The binary reports v1.12.6. The tofu allowlist entries equal the binary's HIGH findings exactly, with none stale. The comment's 1.13.0 claim holds. A checksum mutation and a dropped allowlist entry both go red. The full image build and smoke were taken from CI's `pull_request` run on the same SHA: the sandbox has no buildx, and passing the host Docker config would expose its credential store.
+- Filed the review's non-blocking finding as #58: OpenTofu signs its `SHA256SUMS` (cosign and GPG), unverified here, and the threat model's Known gaps names this gap for Node only. #58 is unmilestoned, for triage. The 1.13.0 move (clears 11 of the 14 tofu entries) is left to #8's re-review before the 2026-10-28 expiry.
+- Consumer coordination: opened terraform-microsoft365-entra#25 (CI `tofu_version` 1.11.14 → 1.12.6, raise `required_version`). infrastructure-core already tracks its move in infrastructure-core#544 (it builds its own devcontainer, so no digest coupling yet). terraform-cloudflare-dns#40 is open.
+- Plan anchor re-verified at handoff: `match`, description sha `ebe3ff3…` unchanged; `task_issue` stays null until #16 has a decision.
 
-**Next:** `/way-of-working:architect-review 56` in a new session — model opus (architect). Then the human merges.
-- The image moves before the consumers' CI pins: consumers must move `tofu_version` in the same PR that takes the new digest. terraform-cloudflare-dns#40 is open; infrastructure-core and terraform-microsoft365-entra have no issues filed yet. File them.
-- Not yet filed: the unsigned `SHA256SUMS` (pre-existing; the threat model's Known gaps names it for Node only). Not yet recorded: the version standard as an IAC-D decision in infrastructure-core (DEVC-D1).
-- #16 waits on an owner decision: npm 12 or an override of the bundled `brace-expansion`/`undici`. Its `.trivyignore.yaml` entries expire 2026-10-28.
+**Next:** after the human merges PR #56 and decides #16 (npm 12, or an override of the bundled `brace-expansion`/`undici`), record the decision on #16 as its spec, re-anchor on #16 with `/way-of-working:handoff`, and hand #16 to the coder. Model: opus (architect).
+- #16's `.trivyignore.yaml` entries expire 2026-10-28, the same day as #8's tofu entries.
+- Not yet recorded: the version standard as an IAC-D decision in infrastructure-core (DEVC-D1).
 
-**HITL Gate: NONE OPEN** — next gates are the fresh-session architect-review on PR #56, then the human's merge.
+**HITL Gate: OPEN** — the human's merge of PR #56, and the owner decision on #16.
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan: https://github.com/603-Identity/devcontainers/milestone/1
