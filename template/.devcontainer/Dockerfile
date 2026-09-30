@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 #
-# This repo's devcontainer: one published 603-Identity image, pinned by tag AND digest,
+# This repo's devcontainer: one published shared image, pinned by tag AND digest,
 # plus this repo's own extras (if any) below. Dependabot's docker ecosystem bumps the
 # FROM line; add this directory to the repo's .github/dependabot.yml:
 #
@@ -10,9 +10,12 @@
 #
 # Choose ONE image: devcontainer-base, devcontainer-tofu or devcontainer-node. Take the
 # tag@digest from the latest "Build images" run summary in 603-Identity/devcontainers,
-# and verify it before first use:
+# and verify it before first use AND for every new digest (each Dependabot bump), not
+# only the first:
 #   gh attestation verify oci://ghcr.io/603-identity/devcontainer-tofu@sha256:<digest> \
-#     --repo 603-Identity/devcontainers
+#     --repo 603-Identity/devcontainers \
+#     --signer-workflow 603-Identity/devcontainers/.github/workflows/build.yml \
+#     --source-ref refs/heads/main --deny-self-hosted-runners
 FROM ghcr.io/603-identity/devcontainer-tofu:TAG@sha256:DIGEST
 
 # Mount points for the per-repo dependency volumes in devcontainer.json, pre-created

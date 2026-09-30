@@ -4,8 +4,8 @@
 # capable container fails on the FIRST commit, after the work is done --
 # which is how Sprint 04 lost a commit to an unreachable pinentry prompt.
 #
-# Signing here is provided entirely by the EDITOR's GPG agent forwarding
-# (VS Code / Cursor Dev Containers), which creates a real unix socket at
+# Signing here is provided entirely by VS Code's GPG agent forwarding
+# (VS Code Dev Containers), which creates a real unix socket at
 # ~/.gnupg/S.gpg-agent over the server's stdio channel before postStart runs,
 # and connects it to the host's RESTRICTED agent endpoint -- `GETINFO
 # restricted` returns OK through it, so the host will sign but will not
@@ -18,7 +18,7 @@
 # single signature. Gpg4win binds the agent to the Windows host's 127.0.0.1
 # and Docker Desktop's gateway does not reach host loopback, so every
 # connection timed out. It also forwarded the FULL agent socket, i.e. it was
-# strictly less restricted than what the editor already provides. Verify with
+# strictly less restricted than what VS Code already provides. Verify with
 # `timeout 5 socat -u TCP:host.docker.internal:<port> /dev/null` before
 # believing otherwise.
 set -eu
@@ -40,10 +40,10 @@ echo '  # This repo sets commit.gpgsign=true, so "git commit" will  #' >&2
 echo '  # fail until an agent answers at:                           #' >&2
 echo "  #   $AGENT_SOCK" >&2
 echo '  #                                                           #' >&2
-echo '  # Signing is provided by the EDITOR agent forwarding, so    #' >&2
-echo '  # this is expected in a session with no editor attached     #' >&2
+echo '  # Signing is provided by VS Code agent forwarding, so       #' >&2
+echo '  # this is expected in a session with no VS Code attached    #' >&2
 echo '  # ("devcontainer up", a bare "docker exec", CI). Commit     #' >&2
-echo '  # from the editor own terminal, or sign on the host.        #' >&2
+echo '  # from a VS Code terminal, or sign on the host.             #' >&2
 echo '  ############################################################' >&2
 echo '' >&2
 exit 0

@@ -1,13 +1,13 @@
 version: 2
 # What Dependabot can bump here, and what it cannot:
 #   * github-actions: the SHA-pinned actions in .github/workflows/.
-#   * docker: images/base's `FROM ubuntu:24.04@sha256:...` digest. The tofu and node
+#   * docker: images/base's `FROM ubuntu:26.04@sha256:...` digest. The tofu and node
 #     Dockerfiles have no fixed FROM to bump (it is a build arg, set by CI).
 #   * pip: images/base/tools.in -> tools.lock.txt (pip-compile, hashes kept).
 # NOT bumped by any bot: the ARG-pinned binaries (gh, yq, tofu, tflint, node). Each
 # bump is a manual PR that takes the new sha256 from that release's own checksum
 # file (see README.md § Updating a pinned tool). Tofu moves only in step with
-# every org repo's setup-opentofu pin.
+# every consuming repo's setup-opentofu pin.
 updates:
   - package-ecosystem: github-actions
     directory: /
@@ -30,7 +30,7 @@ updates:
       python-tools:
         patterns: ["*"]
     ignore:
-      # 1.5.47 is pinned org-wide: every .secrets.baseline and CI secret-scan job uses
-      # it, and a baseline written by one version is rejected by others. Move it
-      # deliberately, across every repo at once.
+      # 1.5.47 is pinned for every consuming repo: every .secrets.baseline and CI
+      # secret-scan job uses it, and a baseline written by one version is rejected by
+      # others. Move it deliberately, across every repo at once.
       - dependency-name: bc-detect-secrets

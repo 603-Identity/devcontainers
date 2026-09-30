@@ -8,7 +8,8 @@ This file points into that log and does not duplicate it.
 ## Status
 
 The three images (`base`, `tofu`, `node`) are published to GHCR as public packages, each
-with signed build provenance and an SBOM. Since #2 they are built on Ubuntu 26.04. The
+with signed build provenance and an SBOM. They serve 603-Identity and glunk-works, and the
+packages must stay public (DEVC-D3). Since #2 they are built on Ubuntu 26.04. The
 `main-required-checks` ruleset and the `architect-review` gate protect `main`, and
 `.ai/project.yml` records both.
 
@@ -21,9 +22,10 @@ The next piece of work is set by the open milestone on this repo, since
 `planning.kind: github_milestones`. With no open milestone, run
 `/way-of-working:plan-sprint` to triage the open issues into one.
 
-Two issues have fixed dates:
+Two dates are fixed:
 - #8: the `tofu` image's Trivy exceptions expire on 2026-10-28.
-- #9: GitHub's `ubuntu-latest` moves to 26.04 between 2026-10-19 and 2026-11-19.
+- GitHub's `ubuntu-latest` moves to 26.04 between 2026-10-19 and 2026-11-19. Until then CI
+  runners (24.04) and the images (26.04) differ.
 
 ## Planning and backlog
 
@@ -86,6 +88,41 @@ from before this change gets no identity from the new image.
 **Consequences.** #12 must record the host-wide identity / per-repo credential split in
 the `IAC-D` entry for the image and token model. A comment on #12 carries this when the
 PR lands.
+
+#### DEVC-D3: Org-neutral names, one publisher, VS Code only
+
+**Resolved** 2026-09-30, in the design spec on #21 (which also folds #9).
+
+**Context.** The images become the shared devcontainer images for 603-Identity and
+glunk-works. Several names assumed one org, and the cross-org move joins two orgs' supply
+chains.
+
+**Decision.**
+- The org-named paths and volumes were renamed to the org-neutral token `devc`
+  (`/opt/devc`, `/usr/local/share/devc`, `devc-cache`, `devc-trivy-cache`). The org stays
+  only where it names the publisher: the source repo, `ghcr.io/603-identity/*`, the
+  attestation signer and the OCI source label.
+- One publisher, 603-Identity/devcontainers. The GHCR packages must stay public.
+- The shared `devc-cache` volume mounts at `~/.cache/shared` and holds only the tofu
+  provider cache, which `tofu init` verifies against the consuming repo's lock. pre-commit,
+  pip and npm caches stay per container: none is verified on every use.
+- Only `main` publishes. Consumers pin the signer workflow and `refs/heads/main` when
+  they verify, on every new digest.
+- The image MAJOR goes from 2 to 3, because paths moved. This overrides #21's "no MAJOR
+  bump" line.
+- VS Code is the only supported editor. Volume names keep keying on the checkout folder
+  name, so folder-name uniqueness is a documented host rule, not enforced here. The
+  residual: a collision merges two repos' trust domains (up to five per-repo volumes).
+- Prose names 603-Identity and glunk-works. Host rules say "every checkout on the host",
+  which covers the other orgs there.
+- Tokens are recorded in the owning org's credential ledger.
+
+**Why DEVC-D and not IAC-D.** These are this repo's own obligations as publisher. What
+consumers in every org must do is carried by #12's `IAC-D` entry.
+
+**Consequences.** #12 carries the consumer obligations. A follow-up enforces folder-name
+uniqueness at container start. glunk-works has no credential ledger yet, a named gap in
+the threat model.
 
 ### Org-wide IAC-D decisions that bind this repo
 
