@@ -94,10 +94,13 @@ RUN set -eu; \
 # shared between repos would let one repo's container plant code another runs.
 # NPM_CONFIG_PREFIX puts `npm install -g` into the home volume (its bin is on PATH), since
 # /usr/local is read-only at run time.
+# PUPPETEER_CACHE_DIR: Puppeteer hard-codes ~/.cache/puppeteer and ignores XDG_CACHE_HOME, so
+# its downloaded Chrome would land in the shared cache volume.
 # The update notifier is off because it phones home on every npm invocation.
 ENV NPM_CONFIG_CACHE=/home/app/.local/npm-cache \
     NPM_CONFIG_UPDATE_NOTIFIER=false \
     NPM_CONFIG_FUND=false \
-    NPM_CONFIG_PREFIX=/home/app/.local
+    NPM_CONFIG_PREFIX=/home/app/.local \
+    PUPPETEER_CACHE_DIR=/home/app/.local/puppeteer
 
 USER 1000:1000

@@ -59,6 +59,12 @@ WORKSPACE=${GIT_IDENTITY_WORKSPACE:-/workspace}
 # A directory there would make every git call fail and defeat the rename; remove it, as
 # finish() does for $OUT.
 [ ! -d "$GITCONFIG" ] || [ -L "$GITCONFIG" ] || rm -rf -- "$GITCONFIG"
+# git's XDG global file is also removed. GIT_CONFIG_GLOBAL (base image ENV) makes git ignore
+# it, but pre-commit strips GIT_* variables from the environment of the git it runs, and
+# that git reads it: a file planted there by a process in the home volume would survive
+# rebuilds and apply to every hook clone. This bounds the persistence; it cannot stop a
+# file planted and used within one session.
+rm -rf -- /home/app/.config/git/config
 stub=$(mktemp "$GITCONFIG.XXXXXX") || stub=
 if [ -n "$stub" ]; then
     if printf '[include]\n\tpath = %s\n' "$OUT" >"$stub" && mv -fT "$stub" "$GITCONFIG"; then :

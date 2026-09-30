@@ -108,7 +108,7 @@ below fails with `EROFS` and names the next disk hog instead of hiding it.
 | `/home/app` | per-repo volume `<repo>-home` | everything user-scoped: the gh credential, Claude Code sessions and memory, the VS Code server and extensions, uv's managed interpreters and cache (`UV_CACHE_DIR=~/.local/uv-cache`), `PRE_COMMIT_HOME=~/.local/pre-commit`, `TFLINT_PLUGIN_DIR=~/.local/tflint-plugins` (tofu image), `NPM_CONFIG_CACHE=~/.local/npm-cache` and `NPM_CONFIG_PREFIX=~/.local` (node image), the forwarded GPG agent socket in `~/.gnupg`. `XDG_CACHE_HOME=~/.local/cache` moves every other XDG-aware cache here too. |
 | `/home/app/.cache` | shared volume `devc-cache`, nested in the home volume | **only** `TF_PLUGIN_CACHE_DIR`, the tofu provider cache, which `tofu init` checks against the consuming repo's `.terraform.lock.hcl`. npm's cache is per repo, in the home volume, because `npx` runs packages from it without a check |
 | `/tmp` | per-repo volume `<repo>-tmp` | scratch and task output |
-| `/run`, `/var/tmp` | tmpfs | runtime files, gone when the container stops |
+| `/var/tmp`, `/dev/shm` | tmpfs | scratch that is gone when the container stops. `/run` is tmpfs too, but root-owned, so only root-run tooling writes there |
 | everything else | **read-only** | the image |
 
 `"init": true` gives the container a real PID 1 that reaps the zombies VS Code and Claude
@@ -124,7 +124,7 @@ That also removes the repo's GitHub credential, so run `gh auth login --with-tok
 empty volume once and never again, so image-owned configuration must not live in the home
 directory. The `~/.gitconfig` include stub is therefore written by `git-identity.sh` at
 every start, not shipped in the image; system git settings stay in `/etc/gitconfig`, and
-scripts in `/usr/local/share`. Each volume mount point above is pre-created app-owned in the
+scripts in `/usr/local/share`. Each home, cache and dependency volume mount point above is pre-created app-owned in the
 image (`tests/smoke.sh` asserts it), because Docker copies the image path's ownership into
 an empty volume and a missing path comes up root-owned and unwritable as uid 1000.
 

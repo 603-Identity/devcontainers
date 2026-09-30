@@ -68,7 +68,7 @@ check "UV_LINK_MODE" copy "${UV_LINK_MODE:-}"
 check "PRE_COMMIT_HOME" /home/app/.local/pre-commit "${PRE_COMMIT_HOME:-}"
 # Unset, or an unverified cache entry could be used and written into a repo's lock file.
 check "TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE" "" "${TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE:-}"
-for v in XDG_CACHE_HOME PRE_COMMIT_HOME PIP_CACHE_DIR UV_CACHE_DIR NPM_CONFIG_CACHE; do
+for v in XDG_CACHE_HOME PRE_COMMIT_HOME PIP_CACHE_DIR UV_CACHE_DIR NPM_CONFIG_CACHE PUPPETEER_CACHE_DIR; do
     val=$(printenv "$v" || true)
     case "$val" in
         /home/app/.cache|/home/app/.cache/*)
@@ -275,6 +275,17 @@ setorigin "$POS_URL"; run_fx "symlinked gitconfig"; expect_id "symlinked gitconf
 check "home gitconfig: symlink replaced" "$stub|0" \
     "$(cat /home/app/.gitconfig 2>/dev/null || true)|$([ -L /home/app/.gitconfig ] && echo 1 || echo 0)"
 check "home gitconfig: symlink target untouched" '# untouched' "$(cat "$fx/link-target")"
+# A directory there is removed and replaced.
+setorigin "$POS_URL"
+rm -f /home/app/.gitconfig; mkdir -p /home/app/.gitconfig/sub
+run_fx "directory gitconfig"; expect_id "directory gitconfig"
+check "home gitconfig: directory replaced" "$stub" "$(cat /home/app/.gitconfig 2>/dev/null || true)"
+# git's XDG config file is removed at every start. GIT_CONFIG_GLOBAL already makes plain git
+# ignore it, but pre-commit strips GIT_* variables from the environment of the git it runs,
+# and that git reads it.
+mkdir -p /home/app/.config/git; printf '[user]\n\tname = planted\n' >/home/app/.config/git/config
+setorigin "$POS_URL"; run_fx "planted xdg git config"; expect_id "planted xdg git config"
+check "XDG git config removed" 0 "$([ -e /home/app/.config/git/config ] && echo 1 || echo 0)"
 # The identity is denied, yet the include is still in place: start from no file, so only
 # a write on the denied path can produce it.
 rm -f /home/app/.gitconfig
@@ -302,6 +313,7 @@ case "$flavor" in
     check "npm" "$EXPECT_NPM" "$(npm --version)"
     check "npm cache" /home/app/.local/npm-cache "$(npm config get cache)"
     check "npm global prefix" /home/app/.local "$(npm config get prefix)"
+    check "PUPPETEER_CACHE_DIR" /home/app/.local/puppeteer "${PUPPETEER_CACHE_DIR:-}"
     ;;
   *) echo "FAIL unknown flavor $flavor"; fail=1 ;;
 esac

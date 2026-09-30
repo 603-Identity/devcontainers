@@ -22,9 +22,14 @@ FROM ghcr.io/603-identity/devcontainer-tofu:TAG@sha256:DIGEST
 # pre-created app-owned in the shared images, so there is nothing to add here for them.
 # The container's root filesystem is read-only at run time (devcontainer.json runArgs):
 # install anything extra in this Dockerfile, not in a running container. Install it outside
-# /home/app (for example `npm install -g --prefix /usr/local`): the home volume copies the
-# image's /home/app once, at first mount, so an install there never reaches an existing
-# volume, and one made as root leaves ~/.local root-owned.
+# /home/app: the home volume copies the image's /home/app once, at first mount, so an
+# install there never reaches an existing volume, and a root install that writes there
+# (npm's cache, ~/.local) leaves it root-owned and breaks the app user. As root, send
+# caches elsewhere, for example:
+#   USER 0
+#   RUN npm install -g --prefix /usr/local --cache /tmp/npm-cache <pkg>@<ver> \
+#       && rm -rf /tmp/npm-cache
+#   USER 1000:1000
 USER 1000:1000
 
 # Repo-specific extras go here, following the same rules as the shared images:

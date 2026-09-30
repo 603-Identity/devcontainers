@@ -89,12 +89,16 @@ at build and publish time, before any consumer pulls.
    `runArgs`): code running as `app` cannot replace `/usr/local/bin/gh`, `git`, the
    tools venv or `/etc/gitconfig`, and a write to the image fails with `EROFS`. It
    can still write the mounts (the home volume, `/tmp`, the dependency volumes, the shared
-   cache) and the tmpfs directories (`/var/tmp`, `/dev/shm`), so this closes the image, not
+   cache) and the tmpfs directories (`/var/tmp`, `/dev/shm`; `/run` is tmpfs too but root-owned), so this closes the image, not
    the volumes. In particular the home volume's `~/.local/bin` leads `PATH`, so a planted
    `gh` there shadows the image's (boundary 8: hygiene, not a boundary), and it now
    persists across rebuilds. `GIT_CONFIG_GLOBAL` pins git's global file to `~/.gitconfig`,
    which `git-identity.sh` rewrites at every start, so a planted `~/.config/git/config` is
-   ignored. A
+   ignored by git. pre-commit strips `GIT_*` variables from the git it runs, so that file
+   would still apply there: `git-identity.sh` therefore also deletes it at every start,
+   which bounds its persistence across restarts but not its use within one session. A
+   script that wants git isolated from the container's config sets
+   `GIT_CONFIG_GLOBAL=/dev/null`, not `HOME=<dir>`. A
    hostile `.devcontainer/` can simply drop the flag (boundary 5). The template's
    `init: true` gives the container a real PID 1. GitHub's SSH host key is pinned
    system-wide.
@@ -152,7 +156,10 @@ These are stated plainly so nobody trusts the setup for more than it does:
 - **The shared cache volume is only as narrow as the variables that direct into it.** Only
   `TF_PLUGIN_CACHE_DIR` points at `~/.cache`; `XDG_CACHE_HOME` moves XDG-aware tools out, and
   the smoke test asserts the variables. A tool with a hard-coded `~/.cache` path that ignores
-  `XDG_CACHE_HOME`, or a process started with a cleared environment, still lands in it. npm's
+  `XDG_CACHE_HOME`, or a process started with a cleared environment, still lands in it, and
+  where that cache holds executables (a downloaded browser) another org's container can
+  swap one, which is execution, not only disclosure. The node image redirects Puppeteer's
+  (`PUPPETEER_CACHE_DIR`); others are unknown. npm's
   cache is deliberately not shared (#23 first shared it; `npx` runs installed packages from
   `<cache>/_npx` with no integrity check, which would be cross-org code execution). Anything
   cached in the volume is readable from every container that mounts it, private tofu

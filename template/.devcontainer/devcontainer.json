@@ -18,7 +18,8 @@
   // --read-only makes the image read-only at run time, so nothing can grow in the
   // container's own filesystem: a write outside a mount below fails with EROFS, which
   // names the next disk hog instead of hiding it. The only writable places are the
-  // mounts below and the two tmpfs directories (runtime files, cleared on stop).
+  // mounts below and the tmpfs directories /var/tmp and /dev/shm (cleared on stop). /run is
+  // tmpfs as well, for root-run tooling: it is root-owned, so the app user cannot write it.
   "runArgs": [
     "--cap-drop=ALL", "--security-opt=no-new-privileges",
     "--read-only", "--tmpfs=/run", "--tmpfs=/var/tmp"
