@@ -58,9 +58,9 @@
     "source=${localWorkspaceFolderBasename}-tmp,target=/tmp,type=volume",
 
     // SHARED by every repo on the host, in every org, and nested inside the home volume
-    // above: only two caches, the tofu provider cache (checked against the repo's lock by
-    // `tofu init`) and npm's cache (checked by `npm ci` only; see the threat model). Every
-    // other cache is in the home volume (the image sets XDG_CACHE_HOME there).
+    // above: only the tofu provider cache, which `tofu init` checks against the consuming repo's
+    // lock. Every other cache, npm's included, is in the home volume (the image sets
+    // XDG_CACHE_HOME there).
     "source=devc-cache,target=/home/app/.cache,type=volume",
 
     // Dependency directories on per-repo volumes. They are the heavy, many-small-file

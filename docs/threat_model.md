@@ -31,7 +31,7 @@ at build and publish time, before any consumer pulls.
 | Pull-request content | `pull_request` runs of `build.yml` and `lint.yml` | The PR job holds `contents: read` only, never a write token, and pushes nothing. |
 | Issue, PR and review text | `architect-review-gate.yml`'s `issue_comment` and `pull_request_review` triggers | Read as data by a substring match. Event values reach the shell through `env`, never inline expressions. The repo is **public**, so anyone can post a comment. |
 | Linter and scanner images | `lint.yml` and `build-and-test.sh` | Pinned by digest, the same rule the images follow. |
-| Other repos' and orgs' code, through the shared cache volume | `devc-cache` at `~/.cache` | Only the tofu provider cache and npm's cache live there. `tofu` verifies each cached provider against the consuming repo's lock when a command starts, but runs it from the shared, writable path, and `npm ci` verifies tarballs against `package-lock.json`'s integrity values, but `npx`, `npm exec` and `npm install <pkg>` trust cached metadata (both in Known gaps). pre-commit, pip, uv and every other XDG-aware cache are per repo, in the home volume (`XDG_CACHE_HOME=~/.local/cache`). A modified `.devcontainer/` is outside this control (boundary 5). |
+| Other repos' and orgs' code, through the shared cache volume | `devc-cache` at `~/.cache` | Only the tofu provider cache lives there. `tofu` verifies each cached provider against the consuming repo's lock when a command starts, but runs it from the shared, writable path (see Known gaps). npm's cache is per repo, because `npx` runs packages from it without a check; pre-commit, pip, uv and every other XDG-aware cache are per repo too, in the home volume (`XDG_CACHE_HOME=~/.local/cache`). A modified `.devcontainer/` is outside this control (boundary 5). |
 | Home-volume contents | `~/.vscode-server` and extensions, uv interpreters and cache, pre-commit and tflint plugins, `npm install -g` packages, dotfiles and `~/.local/bin`, all in `<repo>-home` | Installed at container create and first use, from their upstream sources, into a volume that outlives rebuilds. **Never scanned by the build's Trivy gate and never re-pinned by an image bump**: a rebuild does not refresh or remove them. Wipe the volume to start clean. |
 | Host identity directory | the host's `~/.gitconfig.d`, mounted read-only into **every** container | `git-identity.sh` copies an allowlist of five keys (`user.name`, `user.email`, `user.signingkey`, `commit.gpgsign`, `tag.gpgsign`) from the one file that claims the origin's org. It never includes or links the host file, so that file's credential, `gpg.*`, `url.*`, `core.*` and alias sections cannot reach the container's git config. |
 
@@ -60,7 +60,7 @@ at build and publish time, before any consumer pulls.
 
    | Check | Where | Fails the build when |
    |---|---|---|
-   | Smoke test ([`tests/smoke.sh`](../tests/smoke.sh)) | before push | a tool version differs from its pin (a Dockerfile `ARG`, or `images/base/tools/uv.lock` for the Python tools); the user isn't uid 1000; any setuid/setgid binary exists; a volume mount point isn't app-owned; any credential helper other than gh's runs; the projected identity holds a non-allowlisted key; a token from the origin URL appears in output; an identity is left in place after a failed selection (no origin, a non-github or lookalike origin, an ambiguous, unreadable or missing identity file); the system Python isn't the expected major.minor; the tools venv or a cache path isn't where the image documents it; a mount point (`/home/app`, `~/.cache`, `/workspace/.venv`, `/workspace/node_modules`) isn't app-owned; any cache variable points into the shared `~/.cache` except the tofu and npm ones; the image ships a `~/.gitconfig`; `git-identity.sh` fails to rewrite a stale or symlinked `~/.gitconfig` |
+   | Smoke test ([`tests/smoke.sh`](../tests/smoke.sh)) | before push | a tool version differs from its pin (a Dockerfile `ARG`, or `images/base/tools/uv.lock` for the Python tools); the user isn't uid 1000; any setuid/setgid binary exists; a volume mount point isn't app-owned; any credential helper other than gh's runs; the projected identity holds a non-allowlisted key; a token from the origin URL appears in output; an identity is left in place after a failed selection (no origin, a non-github or lookalike origin, an ambiguous, unreadable or missing identity file); the system Python isn't the expected major.minor; the tools venv or a cache path isn't where the image documents it; a mount point (`/home/app`, `~/.cache`, `/workspace/.venv`, `/workspace/node_modules`) isn't app-owned; any cache variable points into the shared `~/.cache` except tofu's; the image ships a `~/.gitconfig`; `git-identity.sh` fails to rewrite a stale or symlinked `~/.gitconfig` |
    | Trivy image scan | before push | there's a HIGH/CRITICAL vulnerability **with a fix available**, or a secret is baked into a layer |
    | hadolint and Trivy config | lint | there's a Dockerfile anti-pattern |
    | shellcheck | lint | a script has a shell bug |
@@ -102,7 +102,7 @@ at build and publish time, before any consumer pulls.
 5. **Repos stay apart; identity files do not.** Repos stay apart under their own,
    unmodified template, and only while every checkout on the host has a unique folder
    name. Each repo gets its own container and up to four per-repo volumes: `-home`,
-   `-tmp`, `-node_modules` and `-venv`. Only two caches are shared (tofu's and npm's, see Known gaps). A modified
+   `-tmp`, `-node_modules` and `-venv`. Only tofu's provider cache is shared (see Known gaps). A modified
    `.devcontainer/` (a PR branch opened in a container, say) can mount any volume on the
    host: Docker named volumes are not a boundary against a hostile config.
    The host's identity files are shared by design: every container mounts the whole
@@ -147,19 +147,16 @@ These are stated plainly so nobody trusts the setup for more than it does:
   hostile process in another container could swap the binary between the check and the
   exec. It needs code already running in any container that mounts `devc-cache` (a hostile
   dependency in another repo or org, say). The `devc-cache` volume is the one cross-container
-  channel; the npm gap below is a second exploit path through it. `plugin_cache_may_break_dependency_lock_file` must stay unset: the smoke test asserts its
+  channel left. `plugin_cache_may_break_dependency_lock_file` must stay unset: the smoke test asserts its
   environment-variable form, and no image ships a tofu CLI config file.
-- **npm's cache is shared between repos and orgs.** The owner chose this (#23) for speed.
-  `npm ci` verifies every tarball against `package-lock.json`'s sha512, so a planted
-  tarball fails there. `npx` and `npm exec` do worse than trust cached metadata: npm keeps
-  their installed packages under `~/.cache/npm/_npx` and runs an installed tree again with
-  no integrity check, so code planted there by a hostile dependency in one container runs
-  as `app` in another repo, in any org, with that repo's credential (Claude Code starts MCP
-  servers with `npx` routinely). The shared cache also holds every repo's downloaded
-  tarballs, including private packages fetched with a registry token, readable from every
-  container that mounts it. npm's logs are kept out of it (`NPM_CONFIG_LOGS_DIR`). Only the
-  caches the images direct there are expected in the volume: a tool with a hard-coded
-  `~/.cache` path that ignores `XDG_CACHE_HOME` still lands in it.
+- **The shared cache volume is only as narrow as the variables that direct into it.** Only
+  `TF_PLUGIN_CACHE_DIR` points at `~/.cache`; `XDG_CACHE_HOME` moves XDG-aware tools out, and
+  the smoke test asserts the variables. A tool with a hard-coded `~/.cache` path that ignores
+  `XDG_CACHE_HOME`, or a process started with a cleared environment, still lands in it. npm's
+  cache is deliberately not shared (#23 first shared it; `npx` runs installed packages from
+  `<cache>/_npx` with no integrity check, which would be cross-org code execution). Anything
+  cached in the volume is readable from every container that mounts it, private tofu
+  providers fetched with a registry credential included.
 - **The read-only root is enforced by the template, not by the image.** A `.devcontainer/`
   that drops `--read-only` is a modified template (boundary 5). The template's proof that
   the mount is in force (`findmnt`, an `EROFS` write, PID 1) is the template CI issue

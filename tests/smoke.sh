@@ -59,8 +59,8 @@ check "owner /home/app/.local" app "$(stat -c %U /home/app/.local)"
 check "GIT_CONFIG_GLOBAL" /home/app/.gitconfig "${GIT_CONFIG_GLOBAL:-}"
 check "no ~/.gitconfig in the image" "" "$(ls -A /home/app/.gitconfig /home/app/.gitconfig-identity 2>/dev/null || true)"
 
-# Only these caches are directed into the shared volume (~/.cache): the tofu provider
-# cache and npm's. Every other cache lives in the per-repo home volume (~/.local), so no
+# Only the tofu provider cache is directed into the shared volume (~/.cache). Every other
+# cache lives in the per-repo home volume (~/.local), so no
 # XDG-aware tool may default into ~/.cache. XDG_CACHE_HOME moves them all at once.
 check "XDG_CACHE_HOME" /home/app/.local/cache "${XDG_CACHE_HOME:-}"
 check "UV_CACHE_DIR" /home/app/.local/uv-cache "${UV_CACHE_DIR:-}"
@@ -68,7 +68,7 @@ check "UV_LINK_MODE" copy "${UV_LINK_MODE:-}"
 check "PRE_COMMIT_HOME" /home/app/.local/pre-commit "${PRE_COMMIT_HOME:-}"
 # Unset, or an unverified cache entry could be used and written into a repo's lock file.
 check "TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE" "" "${TF_PLUGIN_CACHE_MAY_BREAK_DEPENDENCY_LOCK_FILE:-}"
-for v in XDG_CACHE_HOME PRE_COMMIT_HOME PIP_CACHE_DIR UV_CACHE_DIR; do
+for v in XDG_CACHE_HOME PRE_COMMIT_HOME PIP_CACHE_DIR UV_CACHE_DIR NPM_CONFIG_CACHE; do
     val=$(printenv "$v" || true)
     case "$val" in
         /home/app/.cache|/home/app/.cache/*)
@@ -300,7 +300,7 @@ case "$flavor" in
   node)
     check "node" "v$EXPECT_NODE" "$(node --version)"
     check "npm" "$EXPECT_NPM" "$(npm --version)"
-    check "npm cache" /home/app/.cache/npm "$(npm config get cache)"
+    check "npm cache" /home/app/.local/npm-cache "$(npm config get cache)"
     check "npm global prefix" /home/app/.local "$(npm config get prefix)"
     ;;
   *) echo "FAIL unknown flavor $flavor"; fail=1 ;;

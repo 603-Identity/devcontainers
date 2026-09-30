@@ -87,21 +87,17 @@ RUN set -eu; \
     node -e "require('${npm_modules}/brace-expansion').expand('a{b,c}')"; \
     test "$(npm --version)" = "${NPM_VERSION}"
 
-# npm's download cache lives in ~/.cache/npm, not ~/.npm. The template mounts ~/.cache as
-# the volume SHARED by every repo on the host, so this cache is shared with them. That is
-# the owner's decision (issue #23): `npm ci` verifies tarballs against package-lock.json's
-# sha512 `integrity` field, but `npx`, `npm exec` and `npm install <pkg>` trust cached
-# package metadata, so another repo's container could plant an entry that feeds those
-# commands a forged result. docs/threat_model.md records that as a known gap.
+# npm's download cache lives in the per-repo home volume (~/.local/npm-cache), NOT in the
+# shared ~/.cache. Only `npm ci` verifies tarballs against package-lock.json's sha512
+# `integrity` field. `npx` and `npm exec` keep installed packages under <cache>/_npx and run
+# them again without a check, and `npm install <pkg>` trusts cached metadata, so a cache
+# shared between repos would let one repo's container plant code another runs.
 # NPM_CONFIG_PREFIX puts `npm install -g` into the home volume (its bin is on PATH), since
-# /usr/local is read-only at run time. NPM_CONFIG_LOGS_DIR keeps npm's debug logs (package
-# names, registry URLs, paths) out of the shared cache, where they default to.
+# /usr/local is read-only at run time.
 # The update notifier is off because it phones home on every npm invocation.
-ENV NPM_CONFIG_CACHE=/home/app/.cache/npm \
+ENV NPM_CONFIG_CACHE=/home/app/.local/npm-cache \
     NPM_CONFIG_UPDATE_NOTIFIER=false \
     NPM_CONFIG_FUND=false \
-    NPM_CONFIG_PREFIX=/home/app/.local \
-    NPM_CONFIG_LOGS_DIR=/home/app/.local/npm-logs
-RUN install -d -o app -g app -m 0755 /home/app/.cache/npm
+    NPM_CONFIG_PREFIX=/home/app/.local
 
 USER 1000:1000

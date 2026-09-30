@@ -105,8 +105,8 @@ below fails with `EROFS` and names the next disk hog instead of hiding it.
 |---|---|---|
 | `/workspace` | bind (host checkout) | the repo |
 | `/workspace/.venv`, `/workspace/node_modules` | per-repo volumes `<repo>-venv`, `<repo>-node_modules` | the uv project environment and npm dependencies (many small files are the slowest thing across the Windows bind mount) |
-| `/home/app` | per-repo volume `<repo>-home` | everything user-scoped: the gh credential, Claude Code sessions and memory, the VS Code server and extensions, uv's managed interpreters and cache (`UV_CACHE_DIR=~/.local/uv-cache`), `PRE_COMMIT_HOME=~/.local/pre-commit`, `TFLINT_PLUGIN_DIR=~/.local/tflint-plugins` (tofu image), `NPM_CONFIG_PREFIX=~/.local` (node image), the forwarded GPG agent socket in `~/.gnupg`. `XDG_CACHE_HOME=~/.local/cache` moves every other XDG-aware cache here too. |
-| `/home/app/.cache` | shared volume `devc-cache`, nested in the home volume | **only** two caches: `TF_PLUGIN_CACHE_DIR` (`tofu init` checks `.terraform.lock.hcl`) and npm's cache (`npm ci` checks integrity; `npx` and `npm exec` do not, see [the threat model](docs/threat_model.md#known-gaps)) |
+| `/home/app` | per-repo volume `<repo>-home` | everything user-scoped: the gh credential, Claude Code sessions and memory, the VS Code server and extensions, uv's managed interpreters and cache (`UV_CACHE_DIR=~/.local/uv-cache`), `PRE_COMMIT_HOME=~/.local/pre-commit`, `TFLINT_PLUGIN_DIR=~/.local/tflint-plugins` (tofu image), `NPM_CONFIG_CACHE=~/.local/npm-cache` and `NPM_CONFIG_PREFIX=~/.local` (node image), the forwarded GPG agent socket in `~/.gnupg`. `XDG_CACHE_HOME=~/.local/cache` moves every other XDG-aware cache here too. |
+| `/home/app/.cache` | shared volume `devc-cache`, nested in the home volume | **only** `TF_PLUGIN_CACHE_DIR`, the tofu provider cache, which `tofu init` checks against the consuming repo's `.terraform.lock.hcl`. npm's cache is per repo, in the home volume, because `npx` runs packages from it without a check |
 | `/tmp` | per-repo volume `<repo>-tmp` | scratch and task output |
 | `/run`, `/var/tmp` | tmpfs | runtime files, gone when the container stops |
 | everything else | **read-only** | the image |
@@ -128,18 +128,18 @@ scripts in `/usr/local/share`. Each volume mount point above is pre-created app-
 image (`tests/smoke.sh` asserts it), because Docker copies the image path's ownership into
 an empty volume and a missing path comes up root-owned and unwritable as uid 1000.
 
-**Migrating from the old layout.** infrastructure-core is the one adopter: its containers
-hold the old credential and session volumes (`infrastructure-core-gh-config` and
-`infrastructure-core-claude-config`). With the container stopped and before rebuilding it,
-copy them once into the new home volume (substitute the old volumes' names if they differ,
-for example the template's own `<repo>-gh` and `<repo>-claude`):
+**Migrating from the old layout.** Needed only by a container that already holds the
+template's earlier `<repo>-gh` and `<repo>-claude` volumes; no repo has adopted the images
+yet (adoption starts with milestone 2), so this is the procedure for the first ones that
+have. With the container stopped and before rebuilding it, copy the credential and sessions
+once into the new home volume (substitute the old volumes' actual names):
 
 ```sh
 docker run --rm --user 0 --network none \
   --cap-drop ALL --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER \
-  -v infrastructure-core-gh-config:/from-gh:ro \
-  -v infrastructure-core-claude-config:/from-claude:ro \
-  -v infrastructure-core-home:/to \
+  -v <repo>-gh:/from-gh:ro \
+  -v <repo>-claude:/from-claude:ro \
+  -v <repo>-home:/to \
   ghcr.io/603-identity/devcontainer-base:<tag>@sha256:<digest> \
   sh -c 'mkdir -p /to/.config/gh /to/.claude && cp -a /from-gh/. /to/.config/gh/ && cp -a /from-claude/. /to/.claude/ \
     && cp -a /etc/skel/. /to/ && chown -R 1000:1000 /to'
@@ -156,8 +156,8 @@ sessions installed dependencies into `/tmp`, which sat in the container's own fi
 where nothing ever cleaned it up, and several repos had been cloned into one container.
 The layout above makes growth visible (`docker system df -v`) and disposable, for everything
 in a volume, and the read-only root stops anything else from accumulating. The
-one-container-per-repo rule keeps each repo's credentials and data apart. Only the tofu and
-npm caches and the host's git identity files (see [Git identity](#git-identity)) are shared
+one-container-per-repo rule keeps each repo's credentials and data apart. Only the tofu
+provider cache and the host's git identity files (see [Git identity](#git-identity)) are shared
 by all containers.
 
 **Getting disk space back on Windows:** Docker Desktop keeps everything in
