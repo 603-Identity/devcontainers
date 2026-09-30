@@ -1,17 +1,17 @@
 # Next steps
 
-**Now:** P0: cross-org images — awaiting_review (PR #51 open, waiting on the fresh-session architect review, then the human's merge).
+**Now:** P0: cross-org images — awaiting_review (PR #51 reviewed, gate green; waiting on the human's merge).
 
 **Just done:**
-- PR #45 merged by the human. Cut `fix/47-48-49-followups` from `main` and opened PR #51 (head `f5838aa`), closing #47, #48 and #49 as their owner-decision comments specify.
-- Local green gate passed on the round-1 fix tree (hadolint, shellcheck on `tests/smoke.sh`, `build-and-test.sh local`); later rounds changed comments and one doc phrase only.
-- Critic pass on PR #51: docs-consistency, security-critic and architect, 3 rounds, converged, all on the critics' own default models; no second-opinion round (declined). Round 1 caught my `exclude-patterns` line on the github-actions group instead of `uv` `python-tools`, now fixed. The rest were wording: the helper comments now say the absolute path is accidental-shadowing hygiene, and `docs/threat_model.md` boundary 8 records it.
-- Known gap, not fixed: other tools (git, pre-commit, tofu) still resolve through the prepended `~/.local/bin`. The owner kept that PATH order; worth a threat-model known-gaps note.
+- Posted the fresh-session architect review on PR #51 (head `f5838aa`), as a comment only. Verdict: in scope, correct, no blocking findings. The `architect-review` gate went green on that SHA and the PR is READY.
+- The review built the base image in an isolated sandbox. Smoke passes at head. Reverting the helper to a bare `gh` turns the new absolute-path check and the credential-trace checks red. A planted `~/.local/bin/gh` receives credential traffic under the old helper and not under #51's.
+- Filed the two non-blocking findings: #53 (the README Node row still carries `Node.js 24 + npm 11`) and #54 (Known gaps should record that tools other than gh resolve through the prepended `~/.local/bin`). Neither is milestoned yet.
+- Plan anchor for milestone 1: `/way-of-working:resume` did not verify it (it waited), so this handoff re-verified it. `match`, description sha `ebe3ff3…` unchanged.
 
-**Next:** run `/way-of-working:architect-review 51` in a fresh session. Model: opus (architect). Never approve or merge.
-- #22 stays open: the `.trivyignore.yaml` tofu 1.11 and npm 11 entries wait on #7 and #16.
-- Not yet recorded: the version standard as an IAC-D in infrastructure-core (DEVC-D1).
+**Next:** once the human has merged PR #51 (closes #47–#49), agree with the human on the next milestone-1 task and hand it to the coder. Model: opus (architect). Don't start a task before the human picks it.
+- Candidates: #53 and #54 (small follow-ups; milestone them first), and #7/#16, which unblock #22's `.trivyignore.yaml` tofu 1.11 and npm 11 entries.
+- Not yet recorded: the version standard as an IAC-D decision in infrastructure-core (DEVC-D1).
 
-**HITL Gate: OPEN** — the fresh-session architect review of PR #51, then the human's merge.
+**HITL Gate: OPEN** — the human's merge of PR #51, then the human's pick of the next milestone-1 task.
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan: https://github.com/603-Identity/devcontainers/milestone/1
