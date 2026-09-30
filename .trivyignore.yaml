@@ -13,8 +13,11 @@
 # upstream release binaries. Fixing them needs a new upstream build. We cannot rebuild
 # tofu or tflint ourselves without giving up the upstream checksum verification that
 # is the point of pinning them.
-#   * tofu 1.11.14 is the newest 1.11.x. It is pinned to match every consuming repo's CI;
-#     1.12.x is a separate, planned move.
+#   * tofu 1.12.6 is the newest 1.12.x. It must match every consuming repo's CI
+#     (tofu_version in each setup-opentofu step), so the pin moves only together with them.
+#     All 14 tofu entries below still match the 1.12.6 binary (re-checked 2026-09-30). The
+#     1.13.0 binary (released 2026-09-30) clears 11 of the 14 and keeps only CVE-2026-56864,
+#     CVE-2026-56865 and CVE-2026-84445; taking it is a further minor move, not this one.
 #   * tflint 0.64.0 is the newest tflint release.
 vulnerabilities:
   - id: CVE-2026-25681

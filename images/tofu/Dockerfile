@@ -25,9 +25,15 @@ USER 0
 # arbitrary file read during git operations via a crafted URL, fixed in 1.11.10).
 # That is directly relevant wherever `tofu init` runs on PR-controlled module sources.
 # Trivy counted 53 HIGH/CRITICAL findings in the 1.11.6 binary and 14 in 1.11.14. A
-# patch bump within the same minor; 1.12.x is a separate, planned change.
-ARG TOFU_VERSION=1.11.14
-ARG TOFU_SHA256=8279a6c6d4044899ae77190fc50c40c147615a76aca13ea605d68320c424c2a6
+# patch bump within the same minor.
+#
+# 1.12.6 (from 1.11.14, 2026-09-30): the newest 1.12.x; 1.13.0 is out but is a further
+# minor, not this move. Checksum from the release's own tofu_1.12.6_SHA256SUMS. Trivy:
+# the same 14 HIGH findings as 1.11.14 (all allowlisted in .trivyignore.yaml), so this
+# bump clears none of them. Consumers must move tofu_version in the same PR that takes
+# this image's digest.
+ARG TOFU_VERSION=1.12.6
+ARG TOFU_SHA256=5dc43da4f750f33873dc25e94587128709e819e544b7be9016b255316153c3a8
 RUN curl -fsSL "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.zip" \
         -o /tmp/tofu.zip \
     && echo "${TOFU_SHA256}  /tmp/tofu.zip" | sha256sum -c - \
