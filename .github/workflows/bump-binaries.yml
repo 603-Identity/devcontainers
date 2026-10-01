@@ -1,0 +1,58 @@
+name: Bump pinned binaries
+
+# #29: Dependabot bumps the base image digest, the Actions, and the uv lock, but it
+# cannot bump the ARG-pinned release binaries (gh, yq, uv, tofu, tflint, node, npm) --
+# until now that was a manual PR every time, including reading the sha256 from
+# upstream by hand. This resolves each tool's newest release (node: the current LTS
+# line; npm: the newest release the current node pin supports), takes the checksum
+# from that release's own published file, and opens one PR per tool that is behind.
+#
+# A PR opened with the job's GITHUB_TOKEN does not trigger the required-check
+# workflows (GitHub's own anti-recursion rule), so pushing and opening the PR uses a
+# GitHub App installation token instead, scoped to just this repo with
+# contents: write + pull-requests: write. Record the app in docs/threat_model.md's
+# credential table if its scopes ever change.
+#
+# zizmor-clean: top-level permissions: {}, every action pinned by SHA, no event data
+# reaches the shell (schedule and workflow_dispatch carry none).
+on:
+  schedule:
+    - cron: "23 7 * * 1"   # Mondays 07:23 UTC, after build.yml's weekly rebuild
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  bump:
+    name: bump (${{ matrix.tool }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read   # checkout only; the push and PR use the App token below
+    strategy:
+      fail-fast: false
+      matrix:
+        tool: [gh, yq, uv, tofu, tflint, node, npm]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Generate a token for the bump-binaries app
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.BUMP_BINARIES_APP_ID }}
+          private-key: ${{ secrets.BUMP_BINARIES_APP_PRIVATE_KEY }}
+          repositories: devcontainers
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Resolve and bump
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          APP_ID: ${{ vars.BUMP_BINARIES_APP_ID }}
+          TOOL: ${{ matrix.tool }}
+        run: bash .github/scripts/bump-binaries.sh "$TOOL"

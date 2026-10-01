@@ -5,13 +5,14 @@ version: 2
 #     Dockerfiles have no fixed FROM to bump (it is a build arg, set by CI).
 #   * uv: images/base/tools/pyproject.toml -> uv.lock (hashes kept). bc-detect-secrets is
 #     excluded from the group so its bump is a PR of its own (see README.md).
-# NOT bumped by any bot: the ARG-pinned binaries (gh, yq, uv, tofu, tflint, node) and
-# the `# syntax=docker/dockerfile:...@sha256:...` line in all four Dockerfiles (the
-# docker updater reads only FROM lines; bump the four together, digest from
-# `docker buildx imagetools inspect`, see README.md). Each binary
-# bump is a manual PR that takes the new sha256 from that release's own checksum
-# file (see README.md § Updating a pinned tool). Tofu moves only in step with
-# every consuming repo's setup-opentofu pin.
+# NOT bumped by Dependabot: the ARG-pinned binaries (gh, yq, uv, tofu, tflint, node,
+# npm), and the `# syntax=docker/dockerfile:...@sha256:...` line in all four
+# Dockerfiles (the docker updater reads only FROM lines; bump the four together,
+# digest from `docker buildx imagetools inspect`, see README.md). The binaries are
+# proposed instead by .github/workflows/bump-binaries.yml (see README.md §
+# Updating a pinned tool); fall back to a manual PR, same section, only while that
+# workflow is down or for a tool it doesn't cover. Tofu moves only in step with every
+# consuming repo's setup-opentofu pin.
 updates:
   - package-ecosystem: github-actions
     directory: /
