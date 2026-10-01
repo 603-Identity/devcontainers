@@ -1,34 +1,25 @@
 # Next steps
 
-**Now:** P0: cross-org images -- implementing; #14 is merged (PR #89).
+**Now:** P0: cross-org images -- awaiting_review; task #8's renewal is open as PR #99.
 
 **Just done:**
-- Fresh-session architect-review of PR #89 at `3ac5421`. The live `pull_request_review`
-  run logged "Qualifying review found", so `REVIEWER_IDS` works. The human merged it
-  (`8e1d252`).
-- Filed #96: the numeric uid test in the gate is load-bearing (it stops a missing ID
-  matching a doubled space in `REVIEWER_IDS`), and the comment doesn't say so.
-- Filed 603-Identity/terraform-cloudflare-dns#43: that repo's gate, the source of this one,
-  counts a review from anyone.
-- Closed #23 (owner's choice). Its met items are ticked, with evidence in a comment:
-  `tests/smoke.sh`, `tests/template-proof.sh` (both run in `build.yml`), the README and
-  the threat model. The empty `docker diff` on a pilot container moved to #10, whose
-  volume bullet now describes the new layout.
+- Re-scanned the pinned tofu 1.12.6 and tflint 0.64.0 binaries with the gate's Trivy
+  image: every exception still matches, and neither line has a newer release. Renewed all
+  of them to 2026-10-30 (PR #99, head `44cda82`). #8 stays open for the next review.
+- Reviewed a tofu 1.13.0 bump: it clears 11 of the 14 tofu entries but not the tflint
+  ones, and consumers' CI pins (1.11.14, mostly) already differ from this image (1.12.6).
+  Not taken; filed #98 to align every consumer's pin first.
+- Local green gate passed. The critic gate was skipped at the owner's call, so the
+  fresh-session review is the only critic look PR #99 gets.
+- PR #90 is closed.
 
-**Next:** task #8 — re-scan the tofu image against the latest tofu and tflint, drop
-every `.trivyignore.yaml` exception that no longer matches, and renew the rest (no fixed
-upstream release, at most 30 days out) before 2026-10-28 -- model: sonnet (coder). If
-clearing them means bumping tofu past consumers' CI pins (1.13.0 clears 11 of 14), stop
-and ask first. One PR; it touches `code_paths`, so critic gate, then a fresh-session
-architect-review.
+**Next:** /way-of-working:architect-review 99 -- model: opus (architect), in a new
+session. Confirm `architect-review` is green on the head SHA and file non-blocking
+findings. Never approve or merge.
 
-**HITL Gate: OPEN** -- first anchor for milestone 1 with a task: description sha
-`ebe3ff3e…` (unchanged), task #8, no spec comment. There's no valid baseline because
-this session's resume didn't run verify. Confirm, then say "go". Inside the task, a tofu
-bump past consumers' CI pins is the owner's call.
+**HITL Gate: NONE OPEN** -- the next gate is the human merge of PR #99.
 
-- PR #90 is still open; close it unmerged, because #95 replaced it.
-- #68, #69, #58, #81, #85, #86, #87, #92, #93, #94, #96 are unmilestoned, for triage.
+- #68, #69, #58, #81, #85, #86, #87, #92, #93, #94, #96, #98 are unmilestoned, for triage.
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan:
 https://github.com/603-Identity/devcontainers/milestone/1
