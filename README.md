@@ -142,7 +142,7 @@ docker run --rm --user 0 --network none \
   -v <repo>-home:/to \
   ghcr.io/603-identity/devcontainer-base:<tag>@sha256:<digest> \
   sh -c 'mkdir -p /to/.config/gh /to/.claude && cp -a /from-gh/. /to/.config/gh/ && cp -a /from-claude/. /to/.claude/ \
-    && cp -a /etc/skel/. /to/ && chown -R 1000:1000 /to'
+    && cp -a /home/app/. /to/ && chown -R 1000:1000 /to'
 ```
 
 Check `gh auth status` in the rebuilt container, then remove the old volumes with
