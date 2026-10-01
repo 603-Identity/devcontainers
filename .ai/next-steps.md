@@ -1,24 +1,25 @@
 # Next steps
 
-**Now:** P0: cross-org images -- implementing; next task #75.
+**Now:** P0: cross-org images -- implementing; next task #12.
 
 **Just done:**
-- #4 decided and closed: DEVC-D4, no image ships the claude CLI. PR #109 merged as
-  `1788b7a`. Its fresh-session review was exempt (docs only, no `code_paths` touched).
+- #75 decided and closed: DEVC-D5, the template keeps the app user at uid 1000 on every
+  host. It's a DEVC-D because no repo has adopted the template yet. The README has a
+  one-line Linux note. PR #111 merged as `bffc5b8`. The review gate was exempt (docs only).
+- Commented on #12 with DEVC-D5's consumer obligation (Linux uid 1000), as DEVC-D5's
+  consequences require, and noted that #12's draft predates #23.
 - No code written this session, so no critic pass applied.
 
-**Next:** task #75 — record `updateRemoteUserUID: false`
-(`template/.devcontainer/devcontainer.json`) as a decision. Pick its prefix per DEVC-D1's
-test: the template is copied into every consuming repo, glunk-works included, which points
-to IAC-D in infrastructure-core's log. If it lands as IAC-D, stop and bring the cross-repo
-entry to the human before writing in infrastructure-core; otherwise add the DEVC-D entry to
-`docs/roadmap.md`. Either way add a one-line Linux note to `README.md`'s Consuming section
-(host uid must be 1000, or `/workspace` is read-only), shipped as one PR.
-Model: opus (architect). After #75 the proposed P0 order continues: #12, #43, #30, #53,
-#25, then #54/#69/#58, then #8 with #101.
+**Next:** task #12 — refresh the draft IAC-D entry for the image and token model (the
+2026-09-30 comment on #12) against `README.md` and `docs/roadmap.md` at HEAD: image major
+version, the volumes #23 renamed and folded, DEVC-D4, and DEVC-D5's Linux uid-1000 rule
+(latest comment on #12). Post the refreshed draft as a new comment on #12, then stop: the
+owner confirms the wording before anything is written in infrastructure-core.
+Model: opus (architect). After #12 the proposed P0 order continues: #43, #30, #53, #25,
+then #54/#69/#58, then #8 with #101.
 
 **HITL Gate: NONE OPEN** -- the milestone 1 plan anchor verified `match` at handoff. Next
-gate: human approval of an IAC-D entry if #75 takes that prefix.
+gate: the owner confirms the refreshed IAC-D wording on #12.
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan:
 https://github.com/603-Identity/devcontainers/milestone/1
