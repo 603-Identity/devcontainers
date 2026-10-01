@@ -28,7 +28,9 @@ Work on these images is planned on this repo's issues and milestones. See
 ## Using an image in a repo
 
 Open the repo with VS Code and its Dev Containers extension. Commit signing depends on its
-GPG agent forwarding, and no other editor is supported.
+GPG agent forwarding, and no other editor is supported. On a Linux host your uid must be
+1000, or the container can't write `/workspace` (DEVC-D5). macOS and Windows hosts are
+unaffected.
 
 1. Copy [`template/.devcontainer/`](template/.devcontainer/) into the repo unchanged.
 2. In its `Dockerfile`, set `FROM` to one image, by tag **and** digest. Take both from the

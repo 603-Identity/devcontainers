@@ -165,6 +165,36 @@ commands the fix needs.
 the extension moves it, the recipe stops finding the binary, and this decision should be
 revisited, not worked around by adding the CLI to an image without a new decision.
 
+#### DEVC-D5: The template keeps the app user at uid 1000 on every host
+
+**Resolved** 2026-10-01, on #75. The setting shipped in #71; this records it.
+
+**Context.** On a Linux host the Dev Containers CLI rewrites the `remoteUser`'s uid to the
+host user's uid by default, then chowns only `/home/app`. The dependency volumes
+(`node_modules`, `.venv`) and the shared tofu-plugin cache stay owned by uid 1000, so the
+container can't write them. Docker Desktop on macOS and Windows maps ownership itself, so
+those hosts aren't affected either way.
+
+**Decision.**
+- `template/.devcontainer/devcontainer.json` sets `"updateRemoteUserUID": false`. The app
+  user is uid 1000 on every host.
+- Cost: on a Linux host whose own uid isn't 1000, the container can read the `/workspace`
+  bind mount but not write it. The README's consuming instructions name this host rule, and
+  `docs/threat_model.md` lists it under Known gaps.
+- Rejected:
+  - *The CLI's default:* every volume except the home volume becomes unwritable, on every
+    Linux host whose uid isn't 1000. That breaks more than the bind mount does.
+  - *Chowning the volumes at container start:* needs a root step on every start, which
+    `--cap-drop=ALL` and `no-new-privileges` rule out by design.
+
+**Why DEVC-D and not IAC-D.** No repo has adopted the template yet, so no other repo has
+to change (the same test as DEVC-D2). The host rule it creates for consumers is carried by
+#12's `IAC-D` entry, like DEVC-D3's.
+
+**Consequences.** #12's `IAC-D` entry must include the Linux host rule (uid 1000, or no
+write access to `/workspace`). A comment on #12 carries this when the PR lands. The
+template proof doesn't exercise the trade-off, because its CI fixture is world-writable.
+
 ### Org-wide IAC-D decisions that bind this repo
 
 Each of these is recorded in full in infrastructure-core's log. They are cited here only.
