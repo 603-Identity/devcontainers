@@ -15,17 +15,19 @@
   the threat model. The empty `docker diff` on a pilot container moved to #10, whose
   volume bullet now describes the new layout.
 
-**Next:** pick the next P0 issue from milestone 1 -- model: opus (architect). #8 has a
-deadline: its Trivy exceptions expire 2026-10-28.
+**Next:** task #8 — re-scan the tofu image against the latest tofu and tflint, drop
+every `.trivyignore.yaml` exception that no longer matches, and renew the rest (no fixed
+upstream release, at most 30 days out) before 2026-10-28 -- model: sonnet (coder). If
+clearing them means bumping tofu past consumers' CI pins (1.13.0 clears 11 of 14), stop
+and ask first. One PR; it touches `code_paths`, so critic gate, then a fresh-session
+architect-review.
 
-**HITL Gate: OPEN** -- (1) no valid anchor baseline (resume doesn't run verify on an
-awaiting_review cursor), so this is milestone 1's anchor again: description sha
-`ebe3ff3e…`, no task issue, unchanged since the last handoff. (2) Which P0 issue is
-next is the owner's call. Confirm both, then say "go".
+**HITL Gate: OPEN** -- first anchor for milestone 1 with a task: description sha
+`ebe3ff3e…` (unchanged), task #8, no spec comment. There's no valid baseline because
+this session's resume didn't run verify. Confirm, then say "go". Inside the task, a tofu
+bump past consumers' CI pins is the owner's call.
 
 - PR #90 is still open; close it unmerged, because #95 replaced it.
-- #8's Trivy exceptions expire 2026-10-28; tofu 1.13.0 clears 11 of 14 and must move
-  with consumers' CI pins -- manual until the bump App exists.
 - #68, #69, #58, #81, #85, #86, #87, #92, #93, #94, #96 are unmilestoned, for triage.
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan:
