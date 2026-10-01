@@ -122,7 +122,7 @@ jobs:
           touches=0
           while IFS= read -r f; do
             case "$f" in
-              images/*|template/*|tests/*|.github/*|.claude/*) touches=1 ;;
+              images/*|template/*|tests/*|tools/*|.github/*|.claude/*) touches=1 ;;
               .trivyignore.yaml|.gitattributes|.ai/project.yml) touches=1 ;;
             esac
           done <<< "$files"

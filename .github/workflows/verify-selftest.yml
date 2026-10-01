@@ -1,0 +1,139 @@
+name: Verify self-test
+
+# Tests the verification tooling in tools/ on every pull request. NO `paths:` filter: this
+# job is a required check, and a path-filtered required check that never reports would block
+# every other PR forever. The final job, `selftest`, is the one the ruleset requires.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions: {}
+
+env:
+  GOWORK: "off"
+  GOTOOLCHAIN: local
+
+jobs:
+  go-test:
+    name: go test (devc-verify)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.3"
+          cache: false
+      # go.mod must declare the version setup-go installs: GOTOOLCHAIN=local refuses a mismatch.
+      - name: go.mod and every workflow agree on the Go version
+        run: |
+          set -euo pipefail
+          want="$(sed -n 's/^go //p' tools/devc-verify/go.mod)"
+          [ -n "$want" ] || { echo "::error::no go line in go.mod"; exit 1; }
+          versions="$(grep -hE '^[[:space:]]+go-version: ' .github/workflows/*.yml \
+            | sed -E 's/.*go-version: *"?([^" ]+)"?.*/\1/')"
+          [ -n "$versions" ] || { echo "::error::found no go-version lines"; exit 1; }
+          while IFS= read -r v; do
+            [ "$v" = "$want" ] || { echo "::error::a workflow installs Go $v but go.mod declares $want"; exit 1; }
+          done <<< "$versions"
+      - name: go test (vendored, offline)
+        working-directory: tools/devc-verify
+        env:
+          GOFLAGS: -mod=vendor
+          GOPROXY: "off"
+        run: go test ./... && go vet ./...
+
+  vendor-diff:
+    name: vendored tree is current
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.3"
+          cache: false
+      # `go mod verify` checks the module cache, not vendor/, and fails under GOPROXY=off,
+      # so re-derive vendor/ from go.mod and diff it. The one CI step that uses the network.
+      - name: go mod vendor, then diff
+        working-directory: tools/devc-verify
+        run: |
+          go mod vendor
+          # `git diff` alone misses files go mod vendor would ADD; any porcelain output fails.
+          out="$(git status --porcelain -- vendor go.sum)"
+          [ -z "$out" ] || { echo "::error::vendor/ or go.sum is not what go mod vendor produces"; echo "$out"; exit 1; }
+
+  gate-tests:
+    name: gate scripts and rendered template
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: run-gate-tests
+        run: bash tools/tests/run-gate-tests.sh
+      # The Linux runner honours the mode bit; Git Bash on Windows does not, so check it here.
+      - name: test shims are executable
+        run: |
+          bad="$(git ls-files -s tools/tests/bin | grep -v '^100755' || true)"
+          [ -z "$bad" ] || { echo "::error::not executable:"; echo "$bad"; exit 1; }
+
+  live:
+    name: live verify (newest published images)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.3"
+          cache: false
+      - name: Build devc-verify
+        working-directory: tools/devc-verify
+        env:
+          GOFLAGS: -mod=vendor
+          GOPROXY: "off"
+          CGO_ENABLED: "0"
+        run: go build -trimpath -o "$RUNNER_TEMP/devc-verify" .
+      - name: Verify the newest published tag of each image
+        env:
+          DEVC_VERIFY: ${{ runner.temp }}/devc-verify
+        run: bash tools/live-verify.sh
+
+  selftest:
+    name: selftest
+    needs: [go-test, vendor-diff, gate-tests, live]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions: {}
+    env:
+      RESULTS: ${{ join(needs.*.result, ' ') }}
+    steps:
+      - name: Every self-test job succeeded
+        run: |
+          set -euo pipefail
+          echo "results: $RESULTS"
+          for r in $RESULTS; do
+            [ "$r" = "success" ] || { echo "::error::a self-test job did not succeed ($r)"; exit 1; }
+          done

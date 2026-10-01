@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# jq shim for the tests: on Windows, jq.exe writes CRLF unless given -b. Elsewhere it is
+# a pass-through to the real jq.
+self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PATH="${PATH//"$self:"/}"
+real="$(command -v jq)"
+case "$(uname -s)" in
+  MINGW* | MSYS* | CYGWIN*) exec "$real" -b "$@" ;;
+  *) exec "$real" "$@" ;;
+esac
