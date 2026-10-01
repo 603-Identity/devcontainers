@@ -203,6 +203,4 @@ Each of these is recorded in full in infrastructure-core's log. They are cited h
 |----|---------|------------------------|
 | IAC-D14 | Work branches live on the org repo, not a personal fork, because fork PRs silently ran no CI. The same "absent-check trap" is why required-check names are read from each workflow's `name:` field and never typed from memory. | Branches on `603-Identity/devcontainers`; `ruleset.required_checks` |
 | IAC-D48 | Each repo numbers its own decisions in a local series; shared and org-wide decisions stay `IAC-D`. Repos that plan sprints as milestones keep a README-only `sprints/`. | DEVC-D1; `decisions` and `sprints_dir` in `.ai/project.yml`; `sprints/` |
-
-The image and token model will be recorded as an `IAC-D` entry (#12), and cited here once
-it is.
+| IAC-D49 | Every repo in 603-Identity and glunk-works gets its devcontainer from shared, digest-pinned images that only this repo publishes, from `main`. Each container carries a per-repo, tiered fine-grained token. Consumers pin and verify every digest, keep checkout folder names unique, and on Linux run as uid 1000. Adds `DEVC-D` to IAC-D48's series. | DEVC-D2, DEVC-D3, DEVC-D5; README's *Credentials* section; `build.yml`'s `MAJOR`; #12 |
