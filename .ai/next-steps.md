@@ -1,30 +1,29 @@
 # Next steps
 
-**Now:** P0: cross-org images -- implementing; next task #68.
+**Now:** P0: cross-org images -- implementing; next task #4 (a decision, not a build).
 
 **Just done:**
-- PR #99 (#8's renewal of the Trivy exceptions to 2026-10-30) merged as `bb031ce`.
-  #8 stays open for the next review before 2026-10-30.
-- Ran /way-of-working:plan-sprint over the unmilestoned backlog. Added #58, #68, #69, #75,
-  #98 and #101 to P0. Created milestone 4, "Repo hardening: review gate and CI" (due
-  2026-12-15), with its build order in its description. Filed #102 (provision the
-  bump-binaries App, after #94) and #103 (adoption runbook, P1). Every placement has a
-  dated `[plan-sprint]` triage comment.
-- Closed #18 and #19 as resolved by #16: `.trivyignore.yaml` has no npm entries left.
-- Proposed P0 working order, which is context only because the anchored description is
-  unchanged: #68, #98, #4, #75, #12, #43, #30, #53, #25, then #54/#69/#58, then #8 with
-  #101 (aim for about 2026-10-23). If #98 stalls in the consumer repos, move it to P1
-  and do #8 against the current pins.
+- #68 shipped: PR #105 merged as `d914d2a` (README migration seeds from `/home/app`).
+- #98 closed: image and every consumer moved to OpenTofu 1.13.0. Image PR #106 merged as
+  `28f388c`; consumer PRs terraform-cloudflare-dns #44, terraform-microsoft365-entra #26,
+  infrastructure-core #548 and glunk-works/bounty-infra #155. Post-merge real-infra and
+  tenant plan runs were green; bounty-infra's production apply was deliberately not run.
+  1.13's `tofu init` rewrote one lock file in infrastructure-core (committed and baselined).
+- Critic pass: handing off without one (the #106 diff touched `images/`; it merged on the
+  human's own review path, no `/way-of-working:critic-gate` ran this session).
+- #8 (Trivy exception renewal, due 2026-10-30) now has only the 17 tflint entries to renew;
+  every tofu-only exception is gone.
 
-**Next:** task #68 — in README.md's "Migrating from the old layout" command, replace
-`cp -a /etc/skel/. /to/` with `cp -a /home/app/. /to/`, then run the local green gate and
-/way-of-working:ship. Model: sonnet (coder). README.md is outside code_paths, so no
-architect-review gate applies.
+**Next:** task #4 — decide whether the images should ship the claude CLI. Draft a
+recommendation (the issue argues against adding it to `base` and `tofu`; keep its
+plugin-hook mode finding either way), bring it to the human, and on their decision record it
+as a DEVC-D in `docs/roadmap.md` and comment on #4. No image change unless the decision is
+to add it. Model: opus (architect). After #4 the proposed P0 order continues: #75, #12, #43,
+#30, #53, #25, then #54/#69/#58, then #8 with #101.
 
-**HITL Gate: OPEN** -- no session-start baseline for milestone 1's plan anchor: the planning
-session that wrote this cursor did not run /way-of-working:resume, so the anchor counts as a
-first anchor. The description sha is unchanged (`ebe3ff3e…`), and plan-anchor.sh verify
-printed `match` at handoff. A human "go" at the next resume closes it.
+**HITL Gate: OPEN** -- #4 is a decision: the human must choose whether the images ship the
+claude CLI before anything is recorded or changed. The milestone 1 plan anchor verified
+`match`, so no anchor gate is open. This session will wait for a human "go", not auto-start.
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan:
 https://github.com/603-Identity/devcontainers/milestone/1
