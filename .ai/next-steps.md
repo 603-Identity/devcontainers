@@ -1,29 +1,24 @@
 # Next steps
 
-**Now:** P0: cross-org images -- implementing; next task #4 (a decision, not a build).
+**Now:** P0: cross-org images -- implementing; next task #75.
 
 **Just done:**
-- #68 shipped: PR #105 merged as `d914d2a` (README migration seeds from `/home/app`).
-- #98 closed: image and every consumer moved to OpenTofu 1.13.0. Image PR #106 merged as
-  `28f388c`; consumer PRs terraform-cloudflare-dns #44, terraform-microsoft365-entra #26,
-  infrastructure-core #548 and glunk-works/bounty-infra #155. Post-merge real-infra and
-  tenant plan runs were green; bounty-infra's production apply was deliberately not run.
-  1.13's `tofu init` rewrote one lock file in infrastructure-core (committed and baselined).
-- Critic pass: handing off without one (the #106 diff touched `images/`; it merged on the
-  human's own review path, no `/way-of-working:critic-gate` ran this session).
-- #8 (Trivy exception renewal, due 2026-10-30) now has only the 17 tflint entries to renew;
-  every tofu-only exception is gone.
+- #4 decided and closed: DEVC-D4, no image ships the claude CLI. PR #109 merged as
+  `1788b7a`. Its fresh-session review was exempt (docs only, no `code_paths` touched).
+- No code written this session, so no critic pass applied.
 
-**Next:** task #4 — decide whether the images should ship the claude CLI. Draft a
-recommendation (the issue argues against adding it to `base` and `tofu`; keep its
-plugin-hook mode finding either way), bring it to the human, and on their decision record it
-as a DEVC-D in `docs/roadmap.md` and comment on #4. No image change unless the decision is
-to add it. Model: opus (architect). After #4 the proposed P0 order continues: #75, #12, #43,
-#30, #53, #25, then #54/#69/#58, then #8 with #101.
+**Next:** task #75 — record `updateRemoteUserUID: false`
+(`template/.devcontainer/devcontainer.json`) as a decision. Pick its prefix per DEVC-D1's
+test: the template is copied into every consuming repo, glunk-works included, which points
+to IAC-D in infrastructure-core's log. If it lands as IAC-D, stop and bring the cross-repo
+entry to the human before writing in infrastructure-core; otherwise add the DEVC-D entry to
+`docs/roadmap.md`. Either way add a one-line Linux note to `README.md`'s Consuming section
+(host uid must be 1000, or `/workspace` is read-only), shipped as one PR.
+Model: opus (architect). After #75 the proposed P0 order continues: #12, #43, #30, #53,
+#25, then #54/#69/#58, then #8 with #101.
 
-**HITL Gate: OPEN** -- #4 is a decision: the human must choose whether the images ship the
-claude CLI before anything is recorded or changed. The milestone 1 plan anchor verified
-`match`, so no anchor gate is open. This session will wait for a human "go", not auto-start.
+**HITL Gate: NONE OPEN** -- the milestone 1 plan anchor verified `match` at handoff. Next
+gate: human approval of an IAC-D entry if #75 takes that prefix.
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan:
 https://github.com/603-Identity/devcontainers/milestone/1
