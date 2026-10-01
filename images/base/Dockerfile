@@ -101,7 +101,7 @@ RUN UV_PYTHON_DOWNLOADS=never UV_PROJECT_ENVIRONMENT=/opt/devc/tools \
 
 # --- Start-up scripts, shipped in the image so repos do not each carry a copy.
 # A repo's devcontainer.json runs them from postStartCommand; see README.md.
-COPY --chmod=0755 files/git-identity.sh files/gpg-check.sh /usr/local/share/devc/
+COPY --chmod=0755 files/owner-check.sh files/git-identity.sh files/gpg-check.sh /usr/local/share/devc/
 
 # --- git config layout. ~/.gitconfig (an include of ~/.gitconfig-identity) is NOT in the
 # image: /home/app is a per-repo volume, which freezes whatever the image holds there at

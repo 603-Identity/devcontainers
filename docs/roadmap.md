@@ -115,8 +115,8 @@ chains.
   goes to 4.) This overrides #21's "no MAJOR
   bump" line.
 - VS Code is the only supported editor. Volume names keep keying on the checkout folder
-  name, so folder-name uniqueness is a documented host rule, not enforced here. The
-  residual: a collision merges two repos' trust domains (up to five per-repo volumes; four
+  name, so folder-name uniqueness is a documented host rule, not prevented here (DEVC-D6
+  detects a collision at start). The residual: a collision merges two repos' trust domains (up to five per-repo volumes; four
   after #23 folded `-gh` and `-claude` into `-home`).
 - Prose names 603-Identity and glunk-works. Host rules say "every checkout on the host",
   which covers the other orgs there.
@@ -125,8 +125,8 @@ chains.
 **Why DEVC-D and not IAC-D.** These are this repo's own obligations as publisher. What
 consumers in every org must do is carried by #12's `IAC-D` entry.
 
-**Consequences.** #12 carries the consumer obligations. A follow-up enforces folder-name
-uniqueness at container start. glunk-works has no credential ledger yet, a named gap in
+**Consequences.** #12 carries the consumer obligations. A follow-up **detects** a
+folder-name collision at container start (DEVC-D6); nothing prevents one. glunk-works has no credential ledger yet, a named gap in
 the threat model.
 
 #### DEVC-D4: No image ships the `claude` CLI; plugin repair uses the extension's own binary
@@ -194,6 +194,58 @@ to change (the same test as DEVC-D2). The host rule it creates for consumers is 
 **Consequences.** #12's `IAC-D` entry must include the Linux host rule (uid 1000, or no
 write access to `/workspace`). A comment on #12 carries this when the PR lands. The
 template proof doesn't exercise the trade-off, because its CI fixture is world-writable.
+
+#### DEVC-D6: A start-up check warns on a folder-name collision; it detects, it doesn't prevent
+
+**Resolved** 2026-10-01 by the repo owner, on #43. DEVC-D3 left folder-name uniqueness a
+host rule and promised a follow-up; this is it.
+
+**Context.** The template names every per-repo volume after the checkout folder. Two
+checkouts of different repos on one host that share a folder name share `-home` (the gh
+token), `-tmp`, `-node_modules` and `-venv`, which merges two trust domains. #23 folded `-gh`
+and `-claude` into `-home`, so one marker there detects a collision on every volume under
+the unmodified template.
+
+**Decision.**
+- `images/base/files/owner-check.sh` keeps `org/repo` (lowercase) of the first origin it
+  sees in `~/.devc-owner` on the home volume. Later starts compare it with the current
+  origin. A mismatch prints a banner naming both repos and the fix and leaves the marker
+  alone.
+- It **warns and never blocks**, and always exits 0, like `git-identity.sh` and
+  `gpg-check.sh`. When `postStartCommand` runs, the token is already mounted, so blocking
+  would protect nothing and would break the legitimate rename and transfer cases.
+- It is an image script, called first in the template's `postStartCommand` (every start,
+  because a collision often first appears when a second checkout starts against existing
+  volumes). A fix to the script reaches every consumer through its digest bump. The new
+  `postStartCommand` line is in the template, which a repo copies once, so a repo that
+  adopted the template earlier must re-copy it (none has: #10). The image change is
+  additive, so the MAJOR is unchanged. A new template on an older image just skips the
+  missing script, since the chain ends in `gpg-check.sh`, which exits 0.
+- It reads the origin with **the same anchored grammar as `git-identity.sh`**, and prints
+  only the parsed `org/repo`, never the URL (it can carry a token). A rejected or missing
+  origin yields no owner and writes nothing. A marker that is unreadable, not a regular
+  file or off-grammar counts as a mismatch, is never echoed (code in the volume wrote it),
+  and is replaced so the banner fires once. `tests/smoke.sh` runs one URL table through
+  both scripts, so the shared regex cannot drift apart unnoticed. (One fail-safe difference:
+  owner-check drops a trailing `.git`, so a repo segment of exactly `.git` yields no owner.)
+- Tests: `tests/smoke.sh` covers match, mismatch, the edge cases and grammar agreement.
+  `tests/template-proof.sh` covers the match case and a real two-checkout collision on one
+  `-home` volume.
+- Rejected:
+  - *A host-side `initializeCommand`.* It runs before anything mounts, so it is the only
+    place that could prevent a collision. But it runs in the host's shell, so it needs
+    separate PowerShell, cmd and POSIX versions, and it cannot read a volume without
+    starting a container.
+  - *Folding the check into `git-identity.sh`.* That script owns identity and has its own
+    reviewed failure model; the two concerns should fail independently.
+
+**Why DEVC-D and not IAC-D.** No repo has adopted the template yet (#10), so no other repo
+has to change (the same test as DEVC-D2). IAC-D49's consumer obligation and the README's host
+rule are unchanged: this check backs them up and doesn't replace them.
+
+**Consequences.** It catches accidental collisions under the unmodified template, after the
+fact. A hostile `.devcontainer/` can mount any volume and skip the check (threat model
+boundary 5). The threat model's Known gap now reads "detected at start, not prevented".
 
 ### Org-wide IAC-D decisions that bind this repo
 

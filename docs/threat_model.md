@@ -62,8 +62,8 @@ at build and publish time, before any consumer pulls.
 
    | Check | Where | Fails the build when |
    |---|---|---|
-   | Smoke test ([`tests/smoke.sh`](../tests/smoke.sh)) | before push | a tool version differs from its pin (a Dockerfile `ARG`, or `images/base/tools/uv.lock` for the Python tools); the user isn't uid 1000; any setuid/setgid binary exists; a volume mount point isn't app-owned; any credential helper other than gh's runs; the projected identity holds a non-allowlisted key; a token from the origin URL appears in output; an identity is left in place after a failed selection (no origin, a non-github or lookalike origin, an ambiguous, unreadable or missing identity file); the system Python isn't the expected major.minor; the tools venv or a cache path isn't where the image documents it; a mount point (`/home/app`, `~/.cache/tofu-plugins`, `/workspace/.venv`, `/workspace/node_modules`) or `~/.cache` isn't app-owned; any cache variable points into the shared `~/.cache/tofu-plugins` except tofu's; the image ships a `~/.gitconfig`; `git-identity.sh` fails to rewrite a stale, symlinked or directory `~/.gitconfig`, or to remove a planted `~/.config/git/config` |
-   | Template proof ([`tests/template-proof.sh`](../tests/template-proof.sh)) | pull request | a container brought up from `template/.devcontainer/` with the pinned devcontainer CLI is not uid 1000, has a non-empty capability bounding set or `NoNewPrivs` 0, has no init as PID 1, has a writable root filesystem (a write to `/usr/local` succeeds instead of failing with `EROFS`), lacks any of the `<repo>-home`, `-tmp`, `-node_modules`, `-venv`, `devc-tofu-plugins` or read-only identity mounts, cannot write the home, `/tmp`, `.venv` or shared cache paths, has no `~/.gitconfig` or fixture identity after start, runs a credential helper other than gh's, has a `tofu` other than the image's pin, or skips `pre-commit install` |
+   | Smoke test ([`tests/smoke.sh`](../tests/smoke.sh)) | before push | a tool version differs from its pin (a Dockerfile `ARG`, or `images/base/tools/uv.lock` for the Python tools); the user isn't uid 1000; any setuid/setgid binary exists; a volume mount point isn't app-owned; any credential helper other than gh's runs; the projected identity holds a non-allowlisted key; a token from the origin URL appears in output; an identity is left in place after a failed selection (no origin, a non-github or lookalike origin, an ambiguous, unreadable or missing identity file); the system Python isn't the expected major.minor; the tools venv or a cache path isn't where the image documents it; a mount point (`/home/app`, `~/.cache/tofu-plugins`, `/workspace/.venv`, `/workspace/node_modules`) or `~/.cache` isn't app-owned; any cache variable points into the shared `~/.cache/tofu-plugins` except tofu's; the image ships a `~/.gitconfig`; `git-identity.sh` fails to rewrite a stale, symlinked or directory `~/.gitconfig`, or to remove a planted `~/.config/git/config`; `owner-check.sh` fails to write the lowercase owner marker, to warn on a different owner or leave that marker unchanged, to replace a symlinked, directory or junk marker without echoing its content or following a link; a token from the origin URL appears in its output; a `url.*.insteadOf` planted in the home volume's global git config changes the origin it reads; or its origin grammar disagrees with `git-identity.sh`'s on a table of URLs |
+   | Template proof ([`tests/template-proof.sh`](../tests/template-proof.sh)) | pull request | a container brought up from `template/.devcontainer/` with the pinned devcontainer CLI is not uid 1000, has a non-empty capability bounding set or `NoNewPrivs` 0, has no init as PID 1, has a writable root filesystem (a write to `/usr/local` succeeds instead of failing with `EROFS`), lacks any of the `<repo>-home`, `-tmp`, `-node_modules`, `-venv`, `devc-tofu-plugins` or read-only identity mounts, cannot write the home, `/tmp`, `.venv` or shared cache paths, has no `~/.gitconfig` or fixture identity after start, has no owner marker after start, prints the collision banner for a first checkout, prints no banner (or changes the marker) when a second checkout with the same folder name and another origin shares its `-home` volume, runs a credential helper other than gh's, has a `tofu` other than the image's pin, or skips `pre-commit install` |
    | Trivy image scan | before push | there's a HIGH/CRITICAL vulnerability **with a fix available**, or a secret is baked into a layer |
    | hadolint and Trivy config | lint | there's a Dockerfile anti-pattern |
    | shellcheck | lint | a script has a shell bug |
@@ -109,9 +109,10 @@ at build and publish time, before any consumer pulls.
 5. **Repos stay apart; identity files do not.** Repos stay apart under their own,
    unmodified template, and only while every checkout on the host has a unique folder
    name. Each repo gets its own container and up to four per-repo volumes: `-home`,
-   `-tmp`, `-node_modules` and `-venv`. Only tofu's provider cache is shared (see Known gaps). A modified
+   `-tmp`, `-node_modules` and `-venv`. Only tofu's provider cache is shared (see Known gaps).
+   A start-up check warns when two checkouts collide on a folder name (see Known gaps). A modified
    `.devcontainer/` (a PR branch opened in a container, say) can mount any volume on the
-   host: Docker named volumes are not a boundary against a hostile config.
+   host, and skip that check: Docker named volumes are not a boundary against a hostile config.
    The host's identity files are shared by design: every container mounts the whole
    `~/.gitconfig.d`, and identity is host-wide (see Known gaps).
 
@@ -190,8 +191,17 @@ These are stated plainly so nobody trusts the setup for more than it does:
   (`findmnt`, an `EROFS` write, init as PID 1, and the CLI's own setup succeeding under
   `--read-only`). It runs against a fixture, so a repo's own edited copy of the template
   is still unchecked; the live pilot check is open too.
-- **Folder-name uniqueness is unenforced.** A collision between two checkouts' folder names
-  merges two repos' trust domains (up to four per-repo volumes).
+- **Folder-name uniqueness is detected at start, not prevented.** A collision between two
+  checkouts' folder names merges two repos' trust domains (up to four per-repo volumes).
+  `owner-check.sh` (DEVC-D6) runs first in the template's `postStartCommand`, keeps the
+  `org/repo` of the first origin it saw in `~/.devc-owner` on the `-home` volume, and prints
+  a banner when a later start's origin names another repo. It warns and never blocks. By
+  then the second container already has the first repo's `-home` volume mounted, token
+  included, so the fix stays the host rule: rename the folder and remove the shared
+  volumes. It catches accidental collisions under the unmodified template only. A hostile
+  `.devcontainer/` mounts any volume and skips any start-up step (boundary 5), and a repo
+  renamed or transferred needs `rm ~/.devc-owner`. The marker is untrusted input: it is
+  printed only when it matches the `org/repo` grammar.
 - **glunk-works has no credential ledger yet**, so its tokens have no recorded home.
 - **The broad OAuth token** that containers used before this model can still be live
   until every repo has moved to the template (#6).
