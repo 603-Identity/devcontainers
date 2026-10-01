@@ -1,39 +1,34 @@
 # Next steps
 
-**Now:** P0: cross-org images -- awaiting_review; #14 is PR #89, revised after its first
-fresh-session review, head `3ac5421`.
+**Now:** P0: cross-org images -- implementing; #14 is merged (PR #89).
 
 **Just done:**
-- Fresh-session architect-review of PR #89 at `361b277` (the `author_association`
-  check): posted, then the live `pull_request_review` run skipped the owner's own review
-  as `CONTRIBUTOR`, because 603-Identity membership is private and stays private. That run
-  executed the PR's own gate copy, not main's (#91).
-- The same session then revised the PR, so it can no longer review it. In `3cff983` the gate
-  counts a review only from a numeric user ID in `REVIEWER_IDS`, today `281693088`
-  (JaredGroves-603). In `3ac5421` it ignores `> ` quoted lines, and the header comments and
-  threat model are corrected. #91 is folded in.
-- Critic pass on the revision (security-critic, docs-consistency): 2 rounds, converged.
-  The second-opinion round was offered and declined. Local gate: hadolint, Trivy and zizmor
-  ran clean; shellcheck isn't installed here, and the image build and template proof
-  weren't run (no files they cover changed).
-- Filed: #91 (gate header comment, closed by #89), #92 (bind a review to the head SHA),
-  #93 (a PR runs its own gate copy), #94 (an allowlisted comment can be edited into a
-  qualifying one by a write-access token).
-- This cursor supersedes the one in PR #90; close #90 unmerged.
+- Fresh-session architect-review of PR #89 at `3ac5421`. The live `pull_request_review`
+  run logged "Qualifying review found", so `REVIEWER_IDS` works. The human merged it
+  (`8e1d252`).
+- Filed #96: the numeric uid test in the gate is load-bearing (it stops a missing ID
+  matching a doubled space in `REVIEWER_IDS`), and the comment doesn't say so.
+- Filed 603-Identity/terraform-cloudflare-dns#43: that repo's gate, the source of this one,
+  counts a review from anyone.
+- Closed #23 (owner's choice). Its met items are ticked, with evidence in a comment:
+  `tests/smoke.sh`, `tests/template-proof.sh` (both run in `build.yml`), the README and
+  the threat model. The empty `docker diff` on a pilot container moved to #10, whose
+  volume bullet now describes the new layout.
 
-**Next:** `/way-of-working:architect-review 89` -- fresh session, model: opus (architect).
-The review's own `pull_request_review` run is the live test of `REVIEWER_IDS`: its log must
-say "Qualifying review found".
+**Next:** task #8 — re-scan the tofu image against the latest tofu and tflint, drop
+every `.trivyignore.yaml` exception that no longer matches, and renew the rest (no fixed
+upstream release, at most 30 days out) before 2026-10-28 -- model: sonnet (coder). If
+clearing them means bumping tofu past consumers' CI pins (1.13.0 clears 11 of 14), stop
+and ask first. One PR; it touches `code_paths`, so critic gate, then a fresh-session
+architect-review.
 
-**HITL Gate: OPEN** -- no valid anchor baseline (resume doesn't run verify on an
-awaiting_review cursor), so this is milestone 1's anchor again: description sha
-`ebe3ff3e…`, no task issue. A verify against the prior anchor printed match at handoff.
-Confirm and say "go". After that: the review of PR #89, then the human's merge.
+**HITL Gate: OPEN** -- first anchor for milestone 1 with a task: description sha
+`ebe3ff3e…` (unchanged), task #8, no spec comment. There's no valid baseline because
+this session's resume didn't run verify. Confirm, then say "go". Inside the task, a tofu
+bump past consumers' CI pins is the owner's call.
 
-- #8's Trivy exceptions expire 2026-10-28; tofu 1.13.0 clears 11 of 14 and must move
-  with consumers' CI pins -- manual until the bump App exists.
-- #23 stays open for its live pilot container. #68, #69, #58, #81, #85, #86, #87 are
-  unmilestoned, for triage; so are #92, #93, #94.
+- PR #90 is still open; close it unmerged, because #95 replaced it.
+- #68, #69, #58, #81, #85, #86, #87, #92, #93, #94, #96 are unmilestoned, for triage.
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan:
 https://github.com/603-Identity/devcontainers/milestone/1
