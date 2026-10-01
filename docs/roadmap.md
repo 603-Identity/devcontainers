@@ -23,7 +23,7 @@ The next piece of work is set by the open milestone on this repo, since
 `/way-of-working:plan-sprint` to triage the open issues into one.
 
 Two dates are fixed:
-- #8: the `tofu` image's Trivy exceptions expire on 2026-10-28.
+- #8: the `tofu` image's Trivy exceptions expire on 2026-10-30 (renewed 2026-10-01 under #8, which stays open for the next review).
 - GitHub's `ubuntu-latest` moves to 26.04 between 2026-10-19 and 2026-11-19. Until then CI
   runners (24.04) and the images (26.04) differ.
 
