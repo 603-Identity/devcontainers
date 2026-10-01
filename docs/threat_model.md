@@ -31,6 +31,7 @@ at build and publish time, before any consumer pulls.
 | Pull-request content | `pull_request` runs of `build.yml` and `lint.yml` | The PR job holds `contents: read` only, never a write token, and pushes nothing. |
 | Issue, PR and review text | `architect-review-gate.yml`'s `issue_comment` and `pull_request_review` triggers | Read as data by a substring match. Event values reach the shell through `env`, never inline expressions. The repo is **public**, so anyone can post a comment. |
 | Linter and scanner images | `lint.yml` and `build-and-test.sh` | Pinned by digest, the same rule the images follow. |
+| Upstream release metadata and checksum files (GitHub releases, nodejs.org, the npm registry) | `bump-binaries.sh`, run by `bump-binaries.yml`, holding the write token below while it parses this | The sha256 (or npm's registry `integrity`) is read from that release's own published file, never computed from a first download, then checked against a strict shape (a plain `X.Y.Z` version; 64 lowercase hex, or `sha512-...` for npm) before it is ever written to a file, a branch name or a commit message -- closing the path a crafted tag or checksum line would otherwise have into the Dockerfile rewrite. A resolved version older than the current pin is rejected rather than opened as a downgrade PR. The resulting PR still goes through every ordinary gate, including `architect-review`, before merge (see Known gaps for what that gate does and does not check). |
 | Other repos' and orgs' code, through the shared cache volume | `devc-tofu-plugins` at `~/.cache/tofu-plugins` | Only the tofu provider cache lives there: the volume is mounted at that one directory, not over `~/.cache`, so a tool that hard-codes `~/.cache` writes into the per-repo home volume. `tofu` verifies each cached provider against the consuming repo's lock when a command starts, but runs it from the shared, writable path (see Known gaps). npm's cache is per repo, because `npx` runs packages from it without a check; pre-commit, pip, uv and every other XDG-aware cache are per repo too, in the home volume (`XDG_CACHE_HOME=~/.local/cache`). A modified `.devcontainer/` is outside this control (boundary 5). |
 | Home-volume contents | `~/.vscode-server` and extensions, uv interpreters and cache, pre-commit and tflint plugins, `npm install -g` packages, dotfiles and `~/.local/bin`, all in `<repo>-home` | Installed at container create and first use, from their upstream sources, into a volume that outlives rebuilds. **Never scanned by the build's Trivy gate and never re-pinned by an image bump**: a rebuild does not refresh or remove them. Wipe the volume to start clean. |
 | Host identity directory | the host's `~/.gitconfig.d`, mounted read-only into **every** container | `git-identity.sh` copies an allowlist of five keys (`user.name`, `user.email`, `user.signingkey`, `commit.gpgsign`, `tag.gpgsign`) from the one file that claims the origin's org. It never includes or links the host file, so that file's credential, `gpg.*`, `url.*`, `core.*` and alias sections cannot reach the container's git config. |
@@ -50,6 +51,7 @@ at build and publish time, before any consumer pulls.
 |---|---|---|
 | `GITHUB_TOKEN` with `packages: write`, `id-token: write`, `attestations: write`, `artifact-metadata: write`, `security-events: write` | `build.yml`'s publish job only | Push to this org's GHCR packages, and sign attestations for this repo. Scoped per job; every workflow sets `permissions: {}` at the top. |
 | `GITHUB_TOKEN` with `statuses: write` and reads | `architect-review-gate.yml` | Post commit statuses on this repo. |
+| GitHub App installation token, `contents: write` + `pull-requests: write`, scoped to this repo only | `bump-binaries.yml` | **Can do more than the job uses it for**: push or delete any non-`main` branch, create tags and releases, and comment on or merge a PR -- `contents: write` is also what `PUT /pulls/{n}/merge` requires (a PR's own author cannot approve it, but this ruleset needs no approval at all; see Known gaps). The job only pushes a `bump/<tool>-<version>` branch and opens its PR; the rest is this credential's reach if ever leaked or (see Known gaps) if the write step's own untrusted input were ever to reach it. Needed at all because a PR opened with the ambient `GITHUB_TOKEN` never triggers the required-check workflows (GitHub's own anti-recursion rule) -- and on this repo a job-scoped `GITHUB_TOKEN` could not even open the PR in the first place ("Allow GitHub Actions to create and approve pull requests" is off; `can_approve_pull_request_reviews: false`), so a dedicated identity is the only way to get this PR opened at all, let alone checked. Revoked at job end (the token action's default). The app's private key is meant to be a repo secret held outside any container -- **not yet provisioned**: `bump-binaries.yml` cannot run for real until a human creates the App and sets `BUMP_BINARIES_APP_ID`/`BUMP_BINARIES_APP_PRIVATE_KEY`. |
 | Per-repo fine-grained PAT | a consuming repo's container, in the `<repo>-home` volume | That repo only. The hub's token also covers the repos it coordinates. It expires after 90 days at most and is recorded in the owning org's credential ledger (603-Identity: infrastructure-core's; glunk-works: none yet, see Known gaps). Admin work (rulesets, repo settings) never uses a container token. |
 | Owner's org login | the host, outside any container | Admin. It is the only identity that merges PRs or changes rulesets and package visibility, which must stay public for consumers in other orgs. |
 
@@ -190,6 +192,26 @@ These are stated plainly so nobody trusts the setup for more than it does:
 - **glunk-works has no credential ledger yet**, so its tokens have no recorded home.
 - **The broad OAuth token** that containers used before this model can still be live
   until every repo has moved to the template (#6).
+- **The `main` ruleset's `pull_request` rule requires 0 approvals**, and
+  `architect-review-gate.yml` checks only that a comment or review containing the header
+  and attestation strings exists on the PR, never who posted it -- this is a public repo,
+  so anyone can post one. That means the bump-binaries App token (above), which can
+  itself comment on and merge a PR it opened, is not actually stopped from merging its
+  own PR unreviewed if it is ever misused or its write step's own input-validation is
+  ever bypassed. The owner's login (above) staying "the only identity that merges PRs"
+  is a practice, not something this ruleset enforces. Two different fixes, either one
+  left to a human to decide rather than folded into #29: raise
+  `required_approving_review_count` to at least 1 (costs the solo maintainer a second
+  reviewer, or an owner-bypass rule, to merge anything at all); or, cheaper, make
+  `architect-review-gate.yml` check that the qualifying comment's author is an
+  allowlisted login (or `author_association == OWNER`), which blocks this token from
+  satisfying its own gate without touching who can merge.
+- **`bump-binaries.yml` cannot run for real yet**: the App it needs has not been created,
+  and `BUMP_BINARIES_APP_ID`/`BUMP_BINARIES_APP_PRIVATE_KEY` are not set on this repo.
+  When it is, put the private key in a GitHub Environment restricted to deploy from
+  `main` (the workflow job would then need an `environment:` key, which it has not
+  been given) -- a plain repo secret is readable by any workflow run on any branch a
+  write-access user pushes.
 - **Every container can read every account's identity file**, for example the other
   org's email and signing-key ID, because the whole `~/.gitconfig.d` is mounted
   read-only. A secret written inline in one of those files (a token in a URL, an

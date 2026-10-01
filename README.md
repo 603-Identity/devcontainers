@@ -237,16 +237,37 @@ and the container still starts.
 
 ## Updating a pinned tool
 
-1. Read the upstream release notes and the diff since the current tag.
-2. Take the new sha256 from **that release's published checksum file**. Never
-   `sha256sum` a download and paste the result.
-3. Change the `ARG`s in the Dockerfile. `tests/smoke.sh` reads the expected version from
-   those same lines, so there is nothing else to edit. (The Python tools are not `ARG`s:
-   they live in `images/base/tools/pyproject.toml` and `uv.lock`, and smoke reads their
-   versions from the lock.)
-4. For OpenTofu or Node, also open the matching CI-pin PRs in every consuming repo.
-5. If the Trivy scan now passes without an entry in `.trivyignore.yaml`, delete that
+`bump-binaries.yml` runs weekly, and on manual dispatch, for gh, yq, uv, tofu, tflint,
+node and npm. **It cannot run for real yet**: it needs a GitHub App that hasn't been
+created (docs/threat_model.md's Known gaps). Until that App exists and its secrets are
+set, every run fails at the token step, and the fallback below is how to bump a tool.
+The workflow resolves each tool's newest release (node: the current LTS line; npm:
+the newest release the current node pin supports), takes the sha256 from that release's
+own published checksum file (npm: the registry's `integrity` field) -- never from
+hashing the download -- and opens one PR per tool that is behind, with the release page
+linked in the body (not a diff -- see step 1 below). `tests/smoke.sh` reads the expected
+version from the same `ARG` lines the workflow rewrites, so there is nothing else to
+edit there. (The Python tools are not `ARG`s: they live in
+`images/base/tools/pyproject.toml` and `uv.lock`, and Dependabot bumps those on its own
+schedule.)
+
+A human still has to:
+
+1. Read the linked release notes and the diff since the current tag (not linked -- open
+   it yourself from the release page or the tags comparison on GitHub).
+2. Check the Dockerfile's own prose for anything tied to the specific version being
+   replaced -- the node image's npm-bundled-CVE override block and its "Node X bundles
+   npm Y" comments, the tofu image's per-bump CVE/Trivy-count notes -- and update or
+   remove what the new version makes stale. The workflow only ever touches the `ARG`
+   lines themselves.
+3. For OpenTofu or Node, open the matching CI-pin PRs in every consuming repo.
+4. If the Trivy scan now passes without an entry in `.trivyignore.yaml`, delete that
    entry in the same PR.
+5. Merge -- the workflow never does.
+
+To bump a tool the workflow doesn't cover, or while it's down, do the same by hand: read
+the release notes, take the sha256 from the release's own checksum file (never
+`sha256sum` a download and paste the result), and change the Dockerfile's `ARG`s.
 
 The `# syntax=docker/dockerfile:...@sha256:...` line on line 1 of all four Dockerfiles is
 pinned by digest but no bot bumps it (Dependabot's docker updater reads only `FROM`
