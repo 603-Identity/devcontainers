@@ -32,8 +32,13 @@ USER 0
 # the same 14 HIGH findings as 1.11.14 (all allowlisted in .trivyignore.yaml), so this
 # bump clears none of them. Consumers must move tofu_version in the same PR that takes
 # this image's digest.
-ARG TOFU_VERSION=1.12.6
-ARG TOFU_SHA256=5dc43da4f750f33873dc25e94587128709e819e544b7be9016b255316153c3a8
+# 1.13.0 (from 1.12.6, 2026-10-01): the newest release (2026-09-30). Checksum from the
+# release's own tofu_1.13.0_SHA256SUMS. Trivy: 3 of the 14 HIGH findings remain
+# (CVE-2026-56864, CVE-2026-56865, CVE-2026-84445), so this clears 11 exceptions.
+# Compatibility notes: base64gzip output is equivalent but not byte-identical, and WinRM
+# provisioners are removed; no consuming repo uses either (checked 2026-10-01).
+ARG TOFU_VERSION=1.13.0
+ARG TOFU_SHA256=ad494034a03aaa66d93fc1c2c164d01bedf21b44cfb8b616182cb69424a67672
 RUN curl -fsSL "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.zip" \
         -o /tmp/tofu.zip \
     && echo "${TOFU_SHA256}  /tmp/tofu.zip" | sha256sum -c - \
