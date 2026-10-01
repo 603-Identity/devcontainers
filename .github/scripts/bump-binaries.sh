@@ -97,7 +97,10 @@ resolve_node() {
   # a hardcoded major, regardless of whether earlier same-line releases are retagged.
   major="$(printf '%s' "$index" | jq -r \
     '[.[] | select(.lts != false) | (.version | ltrimstr("v") | split(".")[0] | tonumber)] | max')"
-  [ -n "$major" ] && [ "$major" != "null" ] || { echo "::error::node: no LTS line found in dist/index.json" >&2; exit 1; }
+  if [ -z "$major" ] || [ "$major" = "null" ]; then
+    echo "::error::node: no LTS line found in dist/index.json" >&2
+    exit 1
+  fi
   NEW_VERSION="$(printf '%s' "$index" | jq -r --argjson maj "$major" \
     '[.[] | select(.lts != false) | .version | ltrimstr("v")
         | select(split(".")[0] | tonumber == $maj)]
@@ -186,10 +189,10 @@ case "$tool" in
   *) echo "::error::unknown tool '$tool'" >&2; exit 1 ;;
 esac
 
-[ -n "$NEW_VERSION" ] && [ -n "$NEW_CHECKSUM" ] || {
+if [ -z "$NEW_VERSION" ] || [ -z "$NEW_CHECKSUM" ]; then
   echo "::error::$tool: could not resolve a new version or checksum" >&2
   exit 1
-}
+fi
 
 # NEW_VERSION and NEW_CHECKSUM are upstream-controlled (a release tag, a checksum
 # file's content, or the npm registry's integrity field) and end up in a sed/awk
