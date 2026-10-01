@@ -1,29 +1,25 @@
 # Next steps
 
-**Now:** P0: cross-org images -- implementing. #43's spec is confirmed; implementation next.
+**Now:** P0: cross-org images -- awaiting_review. #43 is implemented and open as PR #117.
 
 **Just done:**
-- Landed the owner-confirmed image and token model as **IAC-D49** in infrastructure-core
-  (603-Identity/infrastructure-core#558), and cited it in `docs/roadmap.md` (#114,
-  `e028abd`). That closed #12.
-- Refreshed #43's spec against `main` at `e028abd` and posted it on #43. The owner confirmed
-  it: warn on a mismatch (never block), marker at `~/.devc-owner`. The spec comment is the
-  approved spec and is pinned in the plan anchor.
-- No code was written, so no critic pass applied.
+- Implemented #43 as PR #117 (`418d5b2`): `owner-check.sh`, its template call, smoke and
+  template-proof cases, the threat model and README updates, and DEVC-D6.
+- Local green gate passed on the finished tree. The critic pass (security-critic,
+  architect, docs-consistency) ran 2 rounds on default models and converged; its findings
+  were fixed. It is not the review gate.
+- Filed the follow-ups: #118 (`git-identity.sh` reads the origin through the home volume's
+  git config) and infrastructure-core#559 (IAC-D49 text after #117 merges).
 
-**Next:** task #43 — implement the folder-name collision check per the owner-confirmed spec
-comment https://github.com/603-Identity/devcontainers/issues/43#issuecomment-5935655420:
-- `images/base/files/owner-check.sh`, called first in the template's `postStartCommand`.
-- `tests/smoke.sh` and `tests/template-proof.sh` cases, as the spec lists them.
-- The threat model, README rule 3, and **DEVC-D6** in `docs/roadmap.md` (amend DEVC-D3's
-  "enforces" to "detects").
+**Next:** `/way-of-working:architect-review 117` -- the fresh-session architect review of
+PR #117; post it, verify the `architect-review` check on the head SHA, file non-blocking
+findings. Never approve, never merge. Model: opus (architect), in a **new window**: this
+crosses the review gate. After #117 merges the proposed P0 order continues: #30, #53, #25,
+then #54/#69/#58, then #8 with #101; #118 is unmilestoned for triage.
 
-Run the green gate and `/way-of-working:critic-gate`, then `/way-of-working:ship`. Never merge.
-Model: sonnet (coder). After #43 the proposed P0 order continues: #30, #53, #25, then
-#54/#69/#58, then #8 with #101.
-
-**HITL Gate: NONE OPEN** -- the owner confirmed #43's spec; the milestone 1 anchor verified
-`match`. Next gate: the fresh-session architect-review on the #43 PR.
+**HITL Gate: NONE OPEN** -- the human reviews and merges #117 after the review goes green.
+Next gate: that merge. The milestone 1 anchor re-verified `match`; this cursor holds no task
+issue, so the next `/way-of-working:resume` waits for a human "go", as intended.
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan:
 https://github.com/603-Identity/devcontainers/milestone/1
