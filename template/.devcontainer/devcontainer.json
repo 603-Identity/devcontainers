@@ -79,9 +79,11 @@
     "source=${localWorkspaceFolderBasename}-venv,target=/workspace/.venv,type=volume"
   ],
 
-  // On every START, not just create: write ~/.gitconfig and rebuild the git identity from
-  // the host's identity files, and check that VS Code's forwarded GPG agent is answering in THIS session.
-  "postStartCommand": "sh /usr/local/share/devc/git-identity.sh; sh /usr/local/share/devc/gpg-check.sh",
+  // On every START, not just create: warn when another repo's checkout shares this volume
+  // (a folder-name collision; it detects, it cannot prevent), write ~/.gitconfig and rebuild
+  // the git identity from the host's identity files, and check that VS Code's forwarded GPG
+  // agent is answering in THIS session.
+  "postStartCommand": "sh /usr/local/share/devc/owner-check.sh; sh /usr/local/share/devc/git-identity.sh; sh /usr/local/share/devc/gpg-check.sh",
   "postCreateCommand": "if [ -f .pre-commit-config.yaml ]; then pre-commit install; fi",
 
   "customizations": {

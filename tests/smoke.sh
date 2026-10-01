@@ -1,7 +1,8 @@
 #!/bin/sh
 # Asserts what a built image promises: pinned tool versions, the non-root user, the
 # app-owned mount points the template's named volumes rely on, the cache and home
-# layout (what is shared, what is per repo), and the git identity projection (git-identity.sh):
+# layout (what is shared, what is per repo), the owner marker (owner-check.sh, near the end), and
+# the git identity projection (git-identity.sh):
 #   * no host config reaches the credential path: the only credential helper that
 #     runs is gh's, checked by behaviour (GIT_TRACE on `git credential fill`);
 #   * an org URL selects exactly one identity file, and only five allowlisted keys
@@ -307,6 +308,156 @@ if grep -qF -e secret -e x-token "$alllogs"; then
 else
     echo "ok   no origin token in git-identity output"
 fi
+
+# --- owner check (owner-check.sh): the folder-name collision marker. Same origin grammar as
+# git-identity.sh, which the agreement table below pins. Output goes to its own log, so a
+# token from the origin URL leaking on ANY path shows up in $ologs.
+OSCRIPT=/usr/local/share/devc/owner-check.sh
+ofile=$(mktemp -u)              # the marker; an absent path until a run writes it
+ologs=$(mktemp)
+run_oc() { # run_oc <label>: runs the script; $olog holds stdout+stderr
+    olog=$(mktemp)
+    rc=0
+    env DEVC_OWNER_FILE="$ofile" DEVC_OWNER_WORKSPACE="$repo" sh "$OSCRIPT" >"$olog" 2>&1 </dev/null || rc=$?
+    check "owner-check exit ($1)" 0 "$rc"
+    cat "$olog" >>"$ologs"
+}
+oc_says() { # oc_says <label> <text>: the run's output holds <text>
+    if grep -qF -- "$2" "$olog"; then echo "ok   owner-check says '$2' ($1)"
+    else echo "FAIL owner-check ($1): expected '$2' in: $(cat "$olog")"; fail=1; fi
+}
+oc_silent_on() { # oc_silent_on <label> <text>: the run's output does not hold <text>
+    if grep -qF -- "$2" "$olog"; then echo "FAIL owner-check ($1): '$2' appeared in: $(cat "$olog")"; fail=1
+    else echo "ok   owner-check does not print '$2' ($1)"; fi
+}
+BANNER='THIS VOLUME BELONGS TO ANOTHER REPOSITORY'
+
+# match: the first start writes the lowercased owner, the next prints ok
+rm -rf "$ofile"
+setorigin https://x-token:secret@github.com/Fixture-Org/R
+run_oc "first start"
+check "owner marker written, lowercase" fixture-org/r "$(cat "$ofile" 2>/dev/null || true)"
+oc_says "first start" "fixture-org/r (new marker)"
+run_oc "same repo again"
+oc_says "same repo again" "owner-check: ok (fixture-org/r)"
+oc_silent_on "same repo again" "$BANNER"
+# a clone URL that differs only by .git or the scheme names the same repo
+setorigin git@github.com:fixture-org/r.git
+run_oc "same repo, ssh .git URL"
+oc_says "same repo, ssh .git URL" "owner-check: ok (fixture-org/r)"
+
+# mismatch: a banner naming both repos, exit 0, the marker left alone
+setorigin https://x-token:secret@github.com/fixture-org/other
+run_oc "mismatch"
+oc_says "mismatch" "$BANNER"
+oc_says "mismatch" "first used by: fixture-org/r"
+oc_says "mismatch" "starting now is:      fixture-org/other"
+check "owner marker unchanged on a mismatch" fixture-org/r "$(cat "$ofile")"
+
+# no owner: nothing is written, one line says so, and a previous marker is left alone
+setorigin ""; run_oc "no origin"
+oc_says "no origin" "owner-check: skipped"
+check "owner marker unchanged with no origin" fixture-org/r "$(cat "$ofile")"
+rm -f "$ofile"
+for u in https://evil.example/p@github.com/fixture-org/r https://github.com.evil.example/fixture-org/r; do
+    setorigin "$u"; run_oc "rejected origin $u"
+    oc_says "rejected origin $u" "owner-check: skipped"
+    check "no owner marker for rejected origin $u" 0 "$([ -e "$ofile" ] && echo 1 || echo 0)"
+done
+# a multi-line origin value is storable and never accepted
+git -C "$repo" config --unset-all remote.origin.url || true
+git -C "$repo" config remote.origin.url "$(printf 'https://github.com/fixture-org/r\nhttps://github.com/x/y')"
+run_oc "multi-line origin"
+oc_says "multi-line origin" "owner-check: skipped"
+check "no owner marker for a multi-line origin" 0 "$([ -e "$ofile" ] && echo 1 || echo 0)"
+
+# a marker that is not one clean org/repo line: treated as a mismatch, NEVER echoed, and
+# replaced, so the banner fires once and not at every start
+setorigin https://github.com/fixture-org/r
+esc=$(printf '\033')
+for kind in escape multiline nul dir symlink oversize; do
+    rm -rf "$ofile"
+    case "$kind" in
+        escape)    printf 'fixture-org/%s]0;pwned\007\n' "$esc" >"$ofile" ;;
+        multiline) printf 'fixture-org/r\nanother/line\n' >"$ofile" ;;
+        nul)       printf 'fixture-org/r\000junk\n' >"$ofile" ;;
+        dir)       mkdir -p "$ofile/sub" ;;
+        symlink)   printf '# untouched\n' >"$fx/owner-target"; ln -s "$fx/owner-target" "$ofile" ;;
+        oversize)  head -c 3000 /dev/zero | tr '\0' 'a' >"$ofile" ;;
+    esac
+    run_oc "junk marker ($kind)"
+    oc_says "junk marker ($kind)" "$BANNER"
+    oc_silent_on "junk marker ($kind)" "$esc"
+    oc_silent_on "junk marker ($kind)" pwned
+    oc_silent_on "junk marker ($kind)" another/line
+    check "junk marker ($kind) replaced by the owner" "fixture-org/r|0" \
+        "$(cat "$ofile" 2>/dev/null || true)|$([ -L "$ofile" ] && echo 1 || echo 0)"
+    run_oc "after junk marker ($kind)"
+    oc_says "after junk marker ($kind)" "owner-check: ok (fixture-org/r)"
+done
+check "symlinked owner marker: target not written through" '# untouched' "$(cat "$fx/owner-target")"
+# a symlink is never READ through either: its target holds a valid, DIFFERENT owner, which
+# must not be taken as the marker (a mismatch banner, not a silent ok or a new marker)
+rm -rf "$ofile"; printf 'other-org/other\n' >"$fx/owner-target2"; ln -s "$fx/owner-target2" "$ofile"
+run_oc "symlink to a valid owner"
+oc_says "symlink to a valid owner" "$BANNER"
+oc_silent_on "symlink to a valid owner" "other-org/other"
+check "symlink to a valid owner replaced by the owner" "fixture-org/r|0" \
+    "$(cat "$ofile" 2>/dev/null || true)|$([ -L "$ofile" ] && echo 1 || echo 0)"
+check "symlink to a valid owner: target untouched" other-org/other "$(cat "$fx/owner-target2")"
+
+# a url.*.insteadOf planted in the home volume's global config (git reads it from
+# GIT_CONFIG_GLOBAL, and this script runs before git-identity.sh rewrites it) must not change
+# the origin seen here
+rm -f "$ofile"
+setorigin https://github.com/fixture-org/r
+printf '[url "https://github.com/spoof-org/spoof"]\n\tinsteadOf = https://github.com/fixture-org/r\n' >/home/app/.gitconfig
+run_oc "planted insteadOf"
+oc_says "planted insteadOf" "fixture-org/r (new marker)"
+rm -f /home/app/.gitconfig "$ofile"
+
+# the origin's token and user never reach output
+if grep -qF -e secret -e x-token "$ologs"; then
+    echo "FAIL origin token leaked into owner-check output"; fail=1
+else
+    echo "ok   no origin token in owner-check output"
+fi
+
+# the grammar lives in two scripts: one table of URLs through both, and they must agree on
+# the org and on accept versus reject. A drift in either copy fails here. (One deliberate,
+# fail-safe difference is not in the table: owner-check.sh drops a trailing .git from the
+# repo segment, so an origin whose repo is exactly ".git" gets no owner there.)
+gx=$(mktemp -d)
+printf '[devcontainer]\n    org = fixture-org\n    org = other-org\n' >"$gx/all.gitconfig"
+while IFS='|' read -r url want; do
+    [ -n "$url" ] || continue
+    setorigin "$url"
+    rm -rf "$ofile"; run_oc "agreement $url"
+    got_oc=$(sed -n 's/^owner-check: \(.*\) (new marker)$/\1/p' "$olog")
+    glog=$(mktemp)
+    env GIT_IDENTITY_DIR="$gx" GIT_IDENTITY_WORKSPACE="$repo" sh "$SCRIPT" >"$glog" 2>&1 </dev/null || true
+    got_gi=$(sed -n 's/^git-identity: \([^ ]*\) -> .*/\1/p' "$glog")
+    check "grammar: owner-check owner for $url" "$want" "$got_oc"
+    check "grammar: git-identity org for $url" "${want%%/*}" "$got_gi"
+done <<'TABLE'
+https://github.com/fixture-org/r|fixture-org/r
+https://github.com/Fixture-Org/Repo|fixture-org/repo
+https://x-token:secret@github.com/fixture-org/r.git|fixture-org/r
+https://user@github.com/other-org/a.b_c-d/|other-org/a.b_c-d
+git@github.com:fixture-org/r.git|fixture-org/r
+ssh://git@github.com/fixture-org/r|fixture-org/r
+https://evil.example/p@github.com/fixture-org/r|
+https://github.com.evil.example/fixture-org/r|
+https://github.com/fixture-org/r/extra|
+https://github.com/fixture-org/..|
+https://github.com/fixture-org/.|
+https://github.com/-fixture/r|
+http://github.com/fixture-org/r|
+git@github.com:fixture-org|
+git@evil.example:fixture-org/r|
+TABLE
+rm -rf "$ofile"
+setorigin "$POS_URL"
 
 case "$flavor" in
   base) ;;

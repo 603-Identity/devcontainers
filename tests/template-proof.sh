@@ -3,7 +3,7 @@
 # @devcontainers/cli against the locally built devcontainer-tofu:local image, then asserts
 # what the template promises from inside the running container. tests/smoke.sh proves what
 # is IN an image; nothing else exercises the template's runArgs, its named-volume mounts,
-# or the identity and gpg scripts running from postStartCommand.
+# or the owner, identity and gpg scripts running from postStartCommand.
 #
 # Asserted (each from inside the container, through `devcontainer exec`):
 #   * uid 1000, an empty capability bounding set (--cap-drop=ALL), NoNewPrivs 1, and PID 1
@@ -17,6 +17,10 @@
 #   * git-identity.sh wrote ~/.gitconfig on a fresh home volume and projected the fixture
 #     identity, and the one credential helper that runs (checked by behaviour, as in
 #     tests/smoke.sh) is gh's;
+#   * owner-check.sh wrote the owner marker (~/.devc-owner) on a fresh home volume, and a
+#     SECOND checkout with the same folder name but another origin, brought up for real so it
+#     shares <folder>-home, gets the collision banner while the marker still names the first
+#     repo (the mismatch the check exists for, not a simulation);
 #   * tofu is the version the image pins, and pre-commit install ran in the workspace.
 #
 # Needs Docker, git, node and npm, and the image built first:
@@ -106,7 +110,7 @@ EOF
 
 # --- up
 echo "::group::devcontainer up"
-dc up --workspace-folder "$(hostpath "$fixture")" --log-level info
+dc up --workspace-folder "$(hostpath "$fixture")" --log-level info 2>&1 | tee "$work/up-a.log"
 echo "::endgroup::"
 
 # --- privileges and init
@@ -165,6 +169,42 @@ printf 'protocol=https\nhost=github.com\npath=x/y\n\n' \
 echo "$(grep -c 'run_command:' "$trace" || true) $(grep -c "run_command: '/usr/local/bin/gh auth git-credential get'\$" "$trace" || true)"
 EOF
 check "credential helpers run, and the one that runs is gh's" "1 1" "$(dx sh /workspace/.proof-cred.sh)"
+
+# --- owner check: the marker, written by postStartCommand on a fresh home volume
+BANNER='THIS VOLUME BELONGS TO ANOTHER REPOSITORY'
+check "owner marker on a fresh home volume" "proof-org/$name" "$(dxs 'cat /home/app/.devc-owner')"
+# the positive line first: it proves `up`'s log carries postStartCommand output, so the absence
+# check below can fail
+check_match "up's log shows the owner marker written" "owner-check: proof-org/$name \(new marker\)" "$(cat "$work/up-a.log")"
+if grep -qF -- "$BANNER" "$work/up-a.log"; then echo "FAIL a first checkout printed the collision banner"; fail=1
+else echo "ok   no collision banner for the first checkout"; fi
+
+# --- a REAL folder-name collision: a second checkout of ANOTHER repo in a different directory
+# but with the same folder name, so the template derives the same <name>-home volume. The
+# banner must appear and the marker must still name the first repo.
+fixture_b="$work/b/$name"
+mkdir -p "$fixture_b/.devcontainer"
+cp -R "$fixture/.devcontainer/." "$fixture_b/.devcontainer/"   # already carries the rewritten FROM
+git -C "$fixture_b" init -q
+chmod -R a+rwX "$fixture_b"
+git -C "$fixture_b" remote add origin "https://github.com/proof-org/other-$name"
+echo "::group::devcontainer up (colliding checkout)"
+dc up --workspace-folder "$(hostpath "$fixture_b")" --log-level info 2>&1 | tee "$work/up-b.log"
+echo "::endgroup::"
+dxb() { dc exec --workspace-folder "$(hostpath "$fixture_b")" "$@"; }
+cid_b="$(docker ps -q --filter "volume=$name-home" | { grep -vx "$cid" || true; } | head -n 1)"
+[ -n "$cid_b" ] || { echo "FAIL no running container for the second checkout"; exit 1; }
+mounts_b="$(docker inspect --format '{{range .Mounts}}{{.Name}} {{.Destination}}{{println}}{{end}}' "$cid_b")"
+if printf '%s\n' "$mounts_b" | grep -Fxq -- "$name-home /home/app"; then echo "ok   the second checkout shares $name-home"
+else echo "FAIL the second checkout does not share $name-home: $mounts_b"; fail=1; fi
+# the banner must come from the second container's OWN postStartCommand, as shown in up's log
+# (the positive line for the first checkout above proves the log carries that output)
+if grep -qF -- "$BANNER" "$work/up-b.log"; then
+  echo "ok   the collision banner appeared in the second checkout's up log"
+else
+  echo "FAIL the collision banner is missing from the second checkout's up log"; fail=1
+fi
+check "owner marker still names the first repo" "proof-org/$name" "$(dxb sh -c 'cat /home/app/.devc-owner')"
 
 # --- the toolchain and the postCreateCommand
 expect_tofu="$(sed -n 's/^ARG TOFU_VERSION=//p' "$root/images/tofu/Dockerfile")"

@@ -76,7 +76,12 @@ bundled npm 11 until each repo takes it (#27).
    trees). **A collision merges two repos
    into one trust domain.** Rename the second folder. Docker volume names are
    case-sensitive and Windows folders are not, so `Foo` and `foo` get separate volumes.
-   That fails safe, but it orphans a credential volume.
+   That fails safe, but it orphans a credential volume. A start-up check warns, after the
+   fact, when a container starts against a home volume first used by another repo: it
+   prints a banner naming both repos and the fix (rename the folder, then
+   `docker volume rm <folder>-home <folder>-tmp <folder>-node_modules <folder>-venv`; for a
+   repo that was only renamed or transferred, `rm ~/.devc-owner`). It detects and never
+   blocks, so the rule stands.
 4. Tokens stay per repo, tiered as in [Credentials](#credentials), inside the repo's own
    org. A token never covers another org's repos.
 5. Identity takes one `~/.gitconfig.d` file per account, listing every org it serves; see
