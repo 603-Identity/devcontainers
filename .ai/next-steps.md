@@ -1,25 +1,23 @@
 # Next steps
 
-**Now:** P0: cross-org images -- awaiting_review. #43 is implemented and open as PR #117.
+**Now:** P0: cross-org images -- implementing; next task #30 (spec first).
 
 **Just done:**
-- Implemented #43 as PR #117 (`418d5b2`): `owner-check.sh`, its template call, smoke and
-  template-proof cases, the threat model and README updates, and DEVC-D6.
-- Local green gate passed on the finished tree. The critic pass (security-critic,
-  architect, docs-consistency) ran 2 rounds on default models and converged; its findings
-  were fixed. It is not the review gate.
-- Filed the follow-ups: #118 (`git-identity.sh` reads the origin through the home volume's
-  git config) and infrastructure-core#559 (IAC-D49 text after #117 merges).
+- Posted the fresh-session architect review on PR #117 (#43, `owner-check.sh`). It had no
+  findings. The `architect-review` gate went green on the head SHA, and the owner merged
+  #117 (`a33a99d`). This session wrote no code, so no critic pass applied.
 
-**Next:** `/way-of-working:architect-review 117` -- the fresh-session architect review of
-PR #117; post it, verify the `architect-review` check on the head SHA, file non-blocking
-findings. Never approve, never merge. Model: opus (architect), in a **new window**: this
-crosses the review gate. After #117 merges the proposed P0 order continues: #30, #53, #25,
-then #54/#69/#58, then #8 with #101; #118 is unmilestoned for triage.
+**Next:** task #30 — draft the design spec for the reusable image-attestation verify
+workflow, its template caller and the image-bump auto-merge policy. Post it as a comment on
+#30 with the open questions for the owner, and don't implement until the owner confirms it.
+Model: opus (architect). After #30 the proposed P0 order continues: #53, #25, then
+#54/#69/#58, then #8 with #101. #118 is unmilestoned and waits for triage.
 
-**HITL Gate: NONE OPEN** -- the human reviews and merges #117 after the review goes green.
-Next gate: that merge. The milestone 1 anchor re-verified `match`; this cursor holds no task
-issue, so the next `/way-of-working:resume` waits for a human "go", as intended.
+**HITL Gate: OPEN** -- there's no session-start baseline for milestone 1's plan anchor. This
+session's `/way-of-working:resume` didn't run a verify, because the prior cursor named no
+task issue. The handoff re-verify printed `match` and the description sha
+(`ebe3ff3e…`) is unchanged, so a human "go" clears this gate. Next gate: the owner confirms
+#30's spec.
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan:
 https://github.com/603-Identity/devcontainers/milestone/1
