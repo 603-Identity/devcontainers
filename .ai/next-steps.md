@@ -1,25 +1,30 @@
 # Next steps
 
-**Now:** P0: cross-org images -- awaiting_review; task #8's renewal is open as PR #99.
+**Now:** P0: cross-org images -- implementing; next task #68.
 
 **Just done:**
-- Re-scanned the pinned tofu 1.12.6 and tflint 0.64.0 binaries with the gate's Trivy
-  image: every exception still matches, and neither line has a newer release. Renewed all
-  of them to 2026-10-30 (PR #99, head `44cda82`). #8 stays open for the next review.
-- Reviewed a tofu 1.13.0 bump: it clears 11 of the 14 tofu entries but not the tflint
-  ones, and consumers' CI pins (1.11.14, mostly) already differ from this image (1.12.6).
-  Not taken; filed #98 to align every consumer's pin first.
-- Local green gate passed. The critic gate was skipped at the owner's call, so the
-  fresh-session review is the only critic look PR #99 gets.
-- PR #90 is closed.
+- PR #99 (#8's renewal of the Trivy exceptions to 2026-10-30) merged as `bb031ce`.
+  #8 stays open for the next review before 2026-10-30.
+- Ran /way-of-working:plan-sprint over the unmilestoned backlog. Added #58, #68, #69, #75,
+  #98 and #101 to P0. Created milestone 4, "Repo hardening: review gate and CI" (due
+  2026-12-15), with its build order in its description. Filed #102 (provision the
+  bump-binaries App, after #94) and #103 (adoption runbook, P1). Every placement has a
+  dated `[plan-sprint]` triage comment.
+- Closed #18 and #19 as resolved by #16: `.trivyignore.yaml` has no npm entries left.
+- Proposed P0 working order, which is context only because the anchored description is
+  unchanged: #68, #98, #4, #75, #12, #43, #30, #53, #25, then #54/#69/#58, then #8 with
+  #101 (aim for about 2026-10-23). If #98 stalls in the consumer repos, move it to P1
+  and do #8 against the current pins.
 
-**Next:** /way-of-working:architect-review 99 -- model: opus (architect), in a new
-session. Confirm `architect-review` is green on the head SHA and file non-blocking
-findings. Never approve or merge.
+**Next:** task #68 — in README.md's "Migrating from the old layout" command, replace
+`cp -a /etc/skel/. /to/` with `cp -a /home/app/. /to/`, then run the local green gate and
+/way-of-working:ship. Model: sonnet (coder). README.md is outside code_paths, so no
+architect-review gate applies.
 
-**HITL Gate: NONE OPEN** -- the next gate is the human merge of PR #99.
-
-- #68, #69, #58, #81, #85, #86, #87, #92, #93, #94, #96, #98 are unmilestoned, for triage.
+**HITL Gate: OPEN** -- no session-start baseline for milestone 1's plan anchor: the planning
+session that wrote this cursor did not run /way-of-working:resume, so the anchor counts as a
+first anchor. The description sha is unchanged (`ebe3ff3e…`), and plan-anchor.sh verify
+printed `match` at handoff. A human "go" at the next resume closes it.
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan:
 https://github.com/603-Identity/devcontainers/milestone/1
