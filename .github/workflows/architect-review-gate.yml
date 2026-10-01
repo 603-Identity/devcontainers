@@ -8,7 +8,9 @@ name: Architect Review Gate
 # looks like a review problem. Rename either only together with .ai/project.yml.
 #
 # This is an EXISTENCE gate, not a verdict gate. It checks that a fresh-session review was
-# posted, not what the review concluded; the human still reads it before merging.
+# posted, not what the review concluded; the human still reads it before merging. A comment
+# or review counts only when its author_association is OWNER, MEMBER or COLLABORATOR, since
+# this repo is public and anyone can paste the two strings.
 #
 # Adapted from terraform-cloudflare-dns's architect-review-gate.yml, which carries the fixes
 # found live across the org's repos. Two of them shape this file:
@@ -141,14 +143,29 @@ jobs:
 
           # Captured into variables, not process substitution, so a failing `gh api` aborts
           # under `set -e` instead of vanishing inside a subshell.
-          comments_json="$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate --jq '.[] | {body, at: .created_at} | tojson')"
-          reviews_json="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews" --paginate --jq '.[] | {body, at: .submitted_at} | tojson')"
+          comments_json="$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate --jq '.[] | {body, at: .created_at, assoc: .author_association} | tojson')"
+          reviews_json="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews" --paginate --jq '.[] | {body, at: .submitted_at, assoc: .author_association} | tojson')"
 
           found_at=""
           while IFS= read -r item; do
             [ -n "$item" ] || continue
             body="$(printf '%s' "$item" | jq -r '.body // ""')"
             at="$(printf '%s' "$item" | jq -r '.at // ""')"
+            assoc="$(printf '%s' "$item" | jq -r '.assoc // ""')"
+            # Who posted it counts: this repo is public, so anyone can paste the two
+            # strings. Only OWNER, MEMBER and COLLABORATOR qualify; anything else
+            # (CONTRIBUTOR, NONE, an unknown value, a missing field) fails closed.
+            case "$assoc" in
+              OWNER|MEMBER|COLLABORATOR) ;;
+              *)
+                # Name the cause in the log: a maintainer whose org membership is private
+                # may read as CONTRIBUTOR to this token, and would otherwise look like a
+                # missing review.
+                if [[ "$body" == *"$HEADER"* && "$body" == *"$ATTESTATION"* ]]; then
+                  echo "Skipped a matching comment/review: author_association=${assoc:-<none>}."
+                fi
+                continue ;;
+            esac
             if [[ "$body" == *"$HEADER"* && "$body" == *"$ATTESTATION"* ]] \
                && [[ "$at" > "$head_date" || "$at" == "$head_date" ]]; then
               found_at="$at"
@@ -170,7 +187,7 @@ jobs:
             # `gh api` prints no trailing newline, and the runner reads a workflow command
             # only at the start of a line, so this `echo` is what makes the ::error:: render.
             echo
-            echo "::error::No fresh-session review posted against head commit ${HEAD_SHA} (${head_date}) yet. A PR comment or review containing both \"${HEADER}\" and \"${ATTESTATION}\", posted at or after that commit, is required."
+            echo "::error::No fresh-session review posted against head commit ${HEAD_SHA} (${head_date}) yet. A PR comment or review from an OWNER, MEMBER or COLLABORATOR containing both \"${HEADER}\" and \"${ATTESTATION}\", posted at or after that commit, is required."
             # Exit 0 on purpose: the `architect-review` status above is the enforcement.
             exit 0
           fi
