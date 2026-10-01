@@ -9,8 +9,10 @@ name: Architect Review Gate
 #
 # This is an EXISTENCE gate, not a verdict gate. It checks that a fresh-session review was
 # posted, not what the review concluded; the human still reads it before merging. A comment
-# or review counts only when its author_association is OWNER, MEMBER or COLLABORATOR, since
-# this repo is public and anyone can paste the two strings.
+# or review counts only when its author's numeric user ID is in REVIEWER_IDS, since this repo
+# is public and anyone can paste the two strings. Not author_association: the owner's org
+# membership is private, and this job's token reads it as CONTRIBUTOR (seen live on #89).
+# IDs, not logins, because a released login can be claimed by someone else.
 #
 # Adapted from terraform-cloudflare-dns's architect-review-gate.yml, which carries the fixes
 # found live across the org's repos. Two of them shape this file:
@@ -26,9 +28,9 @@ name: Architect Review Gate
 # `${{ }}` in a run block, and permissions are set on the job, so this repo's zizmor lint
 # passes. The `case` block mirrors this repo's code_paths.
 #
-# issue_comment and pull_request_review runs use the workflow file on the DEFAULT branch.
-# On the PR that first adds this file, a posted review therefore re-evaluates only when the
-# PR's own `pull_request` run is re-run.
+# issue_comment runs use the workflow file on the DEFAULT branch; pull_request and
+# pull_request_review runs use the PR's own copy (#91). So a comment re-evaluates a PR with
+# main's gate, and a formal review with the PR's.
 
 on:
   pull_request:
@@ -64,6 +66,9 @@ jobs:
       HEADER: "**Opus/Architect HITL review (automated)**"
       ATTESTATION: "*Fresh-session review: this session did not author the diff.*"
       CONTEXT: architect-review
+      # Space-separated numeric GitHub user IDs whose review counts. Changing it is a change
+      # under .github/, so it is itself gated. 281693088 = JaredGroves-603.
+      REVIEWER_IDS: "281693088"
     steps:
       - name: Resolve PR number and head commit
         id: pr
@@ -143,29 +148,26 @@ jobs:
 
           # Captured into variables, not process substitution, so a failing `gh api` aborts
           # under `set -e` instead of vanishing inside a subshell.
-          comments_json="$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate --jq '.[] | {body, at: .created_at, assoc: .author_association} | tojson')"
-          reviews_json="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews" --paginate --jq '.[] | {body, at: .submitted_at, assoc: .author_association} | tojson')"
+          comments_json="$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate --jq '.[] | {body, at: .created_at, uid: .user.id, login: .user.login} | tojson')"
+          reviews_json="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews" --paginate --jq '.[] | {body, at: .submitted_at, uid: .user.id, login: .user.login} | tojson')"
 
           found_at=""
           while IFS= read -r item; do
             [ -n "$item" ] || continue
             body="$(printf '%s' "$item" | jq -r '.body // ""')"
             at="$(printf '%s' "$item" | jq -r '.at // ""')"
-            assoc="$(printf '%s' "$item" | jq -r '.assoc // ""')"
+            uid="$(printf '%s' "$item" | jq -r '.uid // ""')"
+            login="$(printf '%s' "$item" | jq -r '.login // ""')"
             # Who posted it counts: this repo is public, so anyone can paste the two
-            # strings. Only OWNER, MEMBER and COLLABORATOR qualify; anything else
-            # (CONTRIBUTOR, NONE, an unknown value, a missing field) fails closed.
-            case "$assoc" in
-              OWNER|MEMBER|COLLABORATOR) ;;
-              *)
-                # Name the cause in the log: a maintainer whose org membership is private
-                # may read as CONTRIBUTOR to this token, and would otherwise look like a
-                # missing review.
-                if [[ "$body" == *"$HEADER"* && "$body" == *"$ATTESTATION"* ]]; then
-                  echo "Skipped a matching comment/review: author_association=${assoc:-<none>}."
-                fi
-                continue ;;
-            esac
+            # strings. Only an ID in REVIEWER_IDS qualifies; a missing or non-numeric ID
+            # fails closed. Padding both sides with spaces makes this a whole-word match.
+            if ! [[ "$uid" =~ ^[0-9]+$ && " ${REVIEWER_IDS} " == *" ${uid} "* ]]; then
+              # Name the cause in the log, so a skipped review doesn't look like a missing one.
+              if [[ "$body" == *"$HEADER"* && "$body" == *"$ATTESTATION"* ]]; then
+                echo "Skipped a matching comment/review by ${login:-<none>} (id ${uid:-<none>}): not in REVIEWER_IDS."
+              fi
+              continue
+            fi
             if [[ "$body" == *"$HEADER"* && "$body" == *"$ATTESTATION"* ]] \
                && [[ "$at" > "$head_date" || "$at" == "$head_date" ]]; then
               found_at="$at"
@@ -187,7 +189,7 @@ jobs:
             # `gh api` prints no trailing newline, and the runner reads a workflow command
             # only at the start of a line, so this `echo` is what makes the ::error:: render.
             echo
-            echo "::error::No fresh-session review posted against head commit ${HEAD_SHA} (${head_date}) yet. A PR comment or review from an OWNER, MEMBER or COLLABORATOR containing both \"${HEADER}\" and \"${ATTESTATION}\", posted at or after that commit, is required."
+            echo "::error::No fresh-session review posted against head commit ${HEAD_SHA} (${head_date}) yet. A PR comment or review by a user in REVIEWER_IDS containing both \"${HEADER}\" and \"${ATTESTATION}\", posted at or after that commit, is required."
             # Exit 0 on purpose: the `architect-review` status above is the enforcement.
             exit 0
           fi
