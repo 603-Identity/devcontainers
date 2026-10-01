@@ -1,31 +1,30 @@
 # Next steps
 
-**Now:** P0: cross-org images -- implementing; task #12 continues.
+**Now:** P0: cross-org images -- implementing. #12 is done; #43 is next.
 
 **Just done:**
-- Refreshed the draft IAC-D entry for the image and token model against README.md and
-  docs/roadmap.md at `5072b61`, and posted it on #12
-  ([comment](https://github.com/603-Identity/devcontainers/issues/12#issuecomment-5935391574)).
-  The changes: image major version 4, the credential in `<repo>-home`, the shared volume is
-  `devc-tofu-plugins`, the DEVC-D5 uid-1000 obligation, and the token tiers. DEVC-D4 is
-  cited only.
-- The owner confirmed the wording. That's recorded on #12, and the draft comment is now
-  the plan anchor's spec comment.
-- No code written this session, so no critic pass applied.
+- Landed the owner-confirmed image and token model as **IAC-D49** in infrastructure-core
+  (603-Identity/infrastructure-core#558, `6b9ed8d`). It also adds `DEVC-D` to IAC-D48's series
+  list. The full entry is a subsection under the Decisions Log table, because its obligation
+  list doesn't fit in a table cell.
+- Cited IAC-D49 in `docs/roadmap.md`'s IAC-D table (#114, `e028abd`). That closes #12.
+- No code was written, so no critic pass applied.
 
-**Next:** task #12 — land the owner-confirmed IAC-D entry (spec:
-https://github.com/603-Identity/devcontainers/issues/12#issuecomment-5935391574) in
-603-Identity/infrastructure-core. That's one PR there: add the entry to
-`docs/iac_migration_roadmap.md` under the next free IAC-D number, verbatim from the spec's
-Context/Decision/Consequences, and add `DEVC-D` (603-Identity/devcontainers) to IAC-D48's
-series list. Then, here, one docs PR cites that number in `docs/roadmap.md`'s table of IAC-D
-decisions that bind this repo. Never merge either.
-Model: opus (architect). After #12 the proposed P0 order continues: #43, #30, #53, #25,
-then #54/#69/#58, then #8 with #101.
+**Next:** task #43 — refresh #43's spec against main at `e028abd` and post it as a comment on
+#43 for the owner to confirm. Write no code. The body predates #23:
+- The marker now belongs in the `<repo>-home` volume. There is no `-gh` volume.
+- The per-repo volumes are `-home`, `-tmp`, `-node_modules` and `-venv`.
+- The decision it cites as DEVC-D6 was never minted.
 
-**HITL Gate: NONE OPEN** -- the owner confirmed the IAC-D wording on #12 (2026-10-01).
-The milestone 1 anchor verified `match` at handoff. Next gate: the owner merges the
-infrastructure-core PR.
+Check the plan against README.md's folder-name rule, `docs/threat_model.md`'s "Folder-name
+uniqueness is unenforced" gap, IAC-D49 (consumer obligation 4) and DEVC-D3. Settle where
+the check runs (the image's start-up script or the template), and how the test covers both
+the match and mismatch cases. Never merge.
+Model: opus (architect). After #43 the proposed P0 order continues: #30, #53, #25, then
+#54/#69/#58, then #8 with #101.
+
+**HITL Gate: NONE OPEN** -- the milestone 1 anchor verified `match` at handoff. Next gate:
+the owner confirms the refreshed #43 spec before any code is written.
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan:
 https://github.com/603-Identity/devcontainers/milestone/1
