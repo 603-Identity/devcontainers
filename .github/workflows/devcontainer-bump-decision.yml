@@ -1,0 +1,97 @@
+name: Devcontainer bump decision
+
+# Reusable workflow (spec: issue #30). The expensive half of the auto-merge exemption: full
+# verification of ONE candidate SHA, giving one boolean, `exempt`. The consumer's own
+# architect-review gate (template/.github/workflows/architect-review-gate.yml) decides
+# which SHAs are candidates and what to do with the answer; this workflow only answers
+# "is this a verified same-MAJOR Dockerfile bump of an attested image?".
+#
+# `exempt` is the literal true or false, written once, from devc-verify's exit code
+# (0 true, 3 false). Any other outcome, including every API or network error, FAILS the job,
+# and the gate then takes its error row: review, never arm. Nothing derived from PR content
+# is written to $GITHUB_OUTPUT or $GITHUB_ENV except that boolean.
+#
+# Same trust model as verify-devcontainer-image.yml: code from this repo at the caller's
+# pin, built before consumer content exists, consumer files by API only.
+on:
+  workflow_call:
+    inputs:
+      head_sha:
+        description: The candidate PR's head commit (40 hex characters).
+        type: string
+        required: true
+      candidate_pr:
+        description: The candidate PR number.
+        type: string
+        required: true
+    outputs:
+      exempt:
+        description: The literal true or false.
+        value: ${{ jobs.decide.outputs.exempt }}
+
+permissions: {}
+
+jobs:
+  decide:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      exempt: ${{ steps.decide.outputs.exempt }}
+    env:
+      EVENT_NAME: ${{ github.event_name }}
+      REPO: ${{ github.repository }}
+      HEAD_SHA: ${{ inputs.head_sha }}
+      CANDIDATE_PR: ${{ inputs.candidate_pr }}
+    steps:
+      - name: Guard the event, the inputs and the pin
+        env:
+          WORKFLOW_REF: ${{ job.workflow_ref }}
+        run: |
+          set -euo pipefail
+          # The three events the consumer gate runs on. An allowlisted reviewer's comment
+          # re-runs this, which is how a reviewer disarms a PR.
+          case "$EVENT_NAME" in
+            pull_request|issue_comment|pull_request_review) ;;
+            *) echo "::error::decide does not run on '$EVENT_NAME'."; exit 1 ;;
+          esac
+          if ! [[ "$WORKFLOW_REF" =~ @[0-9a-f]{40}$ ]]; then
+            echo "::error::pin this workflow to a full commit SHA (@<sha> # vX.Y), not a ref."
+            exit 1
+          fi
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::head_sha is not a 40-hex SHA."; exit 1; }
+          [[ "$CANDIDATE_PR" =~ ^[0-9]+$ ]] || { echo "::error::candidate_pr is not a number."; exit 1; }
+
+      - name: Check out the verifier at the caller's pin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: 603-Identity/devcontainers
+          ref: ${{ job.workflow_sha }}
+          path: devc
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.3"
+          cache: false
+
+      - name: Build devc-verify
+        working-directory: devc/tools/devc-verify
+        env:
+          GOWORK: "off"
+          GOFLAGS: -mod=vendor
+          GOPROXY: "off"
+          GOTOOLCHAIN: local
+          CGO_ENABLED: "0"
+        run: go build -trimpath -o "$RUNNER_TEMP/devc-verify" .
+
+      - name: Decide
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEVC_VERIFY: ${{ runner.temp }}/devc-verify
+          WORK_DIR: ${{ runner.temp }}/decide
+        run: bash devc/tools/decide-bump.sh

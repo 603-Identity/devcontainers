@@ -1,0 +1,77 @@
+[
+  {
+    "attestation": {
+      "bundle": {
+        "mediaType": "application/vnd.dev.sigstore.bundle.v0.3+json",
+        "verificationMaterial": {"certificate": {"rawBytes": "REDACTED-HAND-BUILT-FIXTURE"}},
+        "dsseEnvelope": {"payloadType": "application/vnd.in-toto+json", "payload": "REDACTED-HAND-BUILT-FIXTURE", "signatures": [{"sig": "REDACTED-HAND-BUILT-FIXTURE"}]}
+      },
+      "bundleURL": "https://api.github.com/attestations/REDACTED"
+    },
+    "verificationResult": {
+      "mediaType": "application/vnd.dev.sigstore.verificationresult+json;version=0.1",
+      "statement": {
+        "_type": "https://in-toto.io/Statement/v1",
+        "subject": [
+          {
+            "name": "ghcr.io/603-identity/devcontainer-node",
+            "digest": {"sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}
+          }
+        ],
+        "predicateType": "https://slsa.dev/provenance/v1",
+        "predicate": {
+          "buildDefinition": {
+            "buildType": "https://actions.github.io/buildtypes/workflow/v1",
+            "externalParameters": {
+              "workflow": {
+                "ref": "refs/heads/main",
+                "repository": "https://github.com/603-Identity/devcontainers",
+                "path": ".github/workflows/build.yml"
+              }
+            },
+            "internalParameters": {
+              "github": {
+                "event_name": "push",
+                "repository_id": "1392815879",
+                "repository_owner_id": "281691191",
+                "runner_environment": "github-hosted"
+              }
+            },
+            "resolvedDependencies": [
+              {
+                "uri": "git+https://github.com/603-Identity/devcontainers@refs/heads/main",
+                "digest": {"gitCommit": "8c91502cf280bd70a0c50912ce251c46a8881d9f"}
+              }
+            ]
+          },
+          "runDetails": {
+            "builder": {"id": "https://github.com/603-Identity/devcontainers/.github/workflows/build.yml@refs/heads/main"},
+            "metadata": {"invocationId": "https://github.com/603-Identity/devcontainers/actions/runs/36800000144/attempts/1"}
+          }
+        }
+      },
+      "signature": {
+        "certificate": {
+          "certificateIssuer": "CN=sigstore-intermediate,O=sigstore.dev",
+          "subjectAlternativeName": "https://github.com/603-Identity/devcontainers/.github/workflows/build.yml@refs/heads/main",
+          "issuer": "https://token.actions.githubusercontent.com",
+          "githubWorkflowTrigger": "push",
+          "githubWorkflowSHA": "8c91502cf280bd70a0c50912ce251c46a8881d9f",
+          "githubWorkflowName": "Build images",
+          "githubWorkflowRepository": "603-Identity/devcontainers",
+          "githubWorkflowRef": "refs/heads/main",
+          "buildSignerURI": "https://github.com/603-Identity/devcontainers/.github/workflows/build.yml@refs/heads/main",
+          "runnerEnvironment": "github-hosted",
+          "sourceRepositoryURI": "https://github.com/603-Identity/devcontainers",
+          "sourceRepositoryOwnerURI": "https://github.com/603-Identity",
+          "sourceRepositoryRef": "refs/heads/main",
+          "buildConfigURI": "https://github.com/603-Identity/devcontainers/.github/workflows/build.yml@refs/heads/main",
+          "buildTrigger": "push",
+          "runInvocationURI": "https://github.com/603-Identity/devcontainers/actions/runs/36800000144/attempts/1",
+          "sourceRepositoryVisibilityAtSigning": "public"
+        }
+      },
+      "verifiedTimestamps": [{"type": "Tlog", "uri": "https://rekor.sigstore.dev", "timestamp": "2026-10-01T10:00:00.000Z"}]
+    }
+  }
+]

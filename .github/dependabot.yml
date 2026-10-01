@@ -27,6 +27,14 @@ updates:
     schedule:
       interval: weekly
 
+  # tools/devc-verify's vendored Go modules (buildkit's Dockerfile parser, hujson). A bump
+  # changes vendor/ and go.sum together; the buildkit pin is tied to the allowed
+  # `# syntax=` values by a unit test, so a bump that breaks the mapping fails CI.
+  - package-ecosystem: gomod
+    directory: /tools/devc-verify
+    schedule:
+      interval: weekly
+
   - package-ecosystem: uv
     directory: /images/base/tools
     schedule:

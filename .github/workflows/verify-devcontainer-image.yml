@@ -1,0 +1,86 @@
+name: Verify devcontainer image
+
+# Reusable workflow (spec: issue #30). A consuming repo's PR workflow calls this as the job
+# `verify`, so the required check is literally `verify / verify`. It verifies, on every
+# consumer pull request, that .devcontainer/ builds FROM one of the attested images this
+# repo publishes: pinned by tag AND digest, provenance and SBOM attestations valid, signed by
+# build.yml on main, attempt 1 only.
+#
+# Trust: the verifier is Go code in this repo, checked out at the CALLER'S pin
+# (job.workflow_sha) and built BEFORE any consumer content is on disk, with the toolchain
+# and module cache locked down. Consumer files are then fetched through the contents API at
+# the exact head SHA; there is never a git checkout of consumer content. No inputs. No write
+# permission anywhere.
+on:
+  workflow_call:
+
+permissions: {}
+
+jobs:
+  verify:
+    # No `name:` override and no job-level `if:`: the check must be `verify / verify` and
+    # must always report.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      EVENT_NAME: ${{ github.event_name }}
+      CONSUMER_REPO: ${{ github.repository }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Guard the event and the pin
+        env:
+          WORKFLOW_REF: ${{ job.workflow_ref }}
+        run: |
+          set -euo pipefail
+          # pull_request only: merge queues and every other event are out of scope.
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "::error::verify runs on pull_request only (got '$EVENT_NAME')."
+            exit 1
+          fi
+          # A caller pinned to a branch or tag would run mutable code.
+          if ! [[ "$WORKFLOW_REF" =~ @[0-9a-f]{40}$ ]]; then
+            echo "::error::pin this workflow to a full commit SHA (@<sha> # vX.Y), not a ref."
+            exit 1
+          fi
+          if ! [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::could not resolve the PR head commit."
+            exit 1
+          fi
+
+      - name: Check out the verifier at the caller's pin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: 603-Identity/devcontainers
+          ref: ${{ job.workflow_sha }}
+          path: devc
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.3"
+          cache: false
+
+      # Before any consumer content exists on disk (F3): no go.work, vendored modules only,
+      # no network, no toolchain download.
+      - name: Build devc-verify
+        working-directory: devc/tools/devc-verify
+        env:
+          GOWORK: "off"
+          GOFLAGS: -mod=vendor
+          GOPROXY: "off"
+          GOTOOLCHAIN: local
+          CGO_ENABLED: "0"
+        run: go build -trimpath -o "$RUNNER_TEMP/devc-verify" .
+
+      - name: Fetch the consumer's devcontainer files at the PR head
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash devc/tools/fetch-consumer.sh "$CONSUMER_REPO" "$HEAD_SHA" "$RUNNER_TEMP/consumer"
+
+      - name: Verify the image
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: '"$RUNNER_TEMP/devc-verify" verify --consumer-dir "$RUNNER_TEMP/consumer"'

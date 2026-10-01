@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# Fake `gh` for the gate tests. Serves fixture JSON keyed by API path and records every call.
+#   FAKE_FIX    fixture directory; `repos/<owner>/<repo>/a/b` is served from `a__b.json`
+#               (`repos/<owner>/<repo>` itself from `_repo.json`). The Nth call of a path
+#               prefers `a__b.N.json`. A missing file is a 404. `a__b.status` holds an HTTP
+#               code, or `neterr` for a network failure.
+#   FAKE_LOG    every call is appended as one line: `gh <args>`
+#   FAKE_STATE  per-run call counters
+#   FAKE_MERGE_RC / FAKE_DISARM_RC   exit codes for `gh pr merge --auto` / `--disable-auto`
+set -euo pipefail
+: "${FAKE_FIX:?}" "${FAKE_LOG:?}" "${FAKE_STATE:?}"
+printf 'gh %s\n' "$*" >> "$FAKE_LOG"
+
+case "${1:-}" in
+  pr)
+    case " $* " in
+      *" view "*)
+        # `gh pr view --json autoMergeRequest --jq '.autoMergeRequest // empty'`: an armed PR
+        # prints its request, an unarmed one prints nothing. FAKE_ARMED=0 means unarmed;
+        # FAKE_VIEW_RC makes the lookup itself fail.
+        [ "${FAKE_VIEW_RC:-0}" = 0 ] || exit "$FAKE_VIEW_RC"
+        [ "${FAKE_ARMED:-1}" = 0 ] || echo '{"enabledBy":{"login":"github-actions"}}'
+        exit 0
+        ;;
+      *" --disable-auto "*) exit "${FAKE_DISARM_RC:-0}" ;;
+      *) exit "${FAKE_MERGE_RC:-0}" ;;
+    esac
+    ;;
+  api) shift ;;
+  *) echo "fake gh: unsupported: $*" >&2; exit 2 ;;
+esac
+
+method=GET path="" jqf="" include=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --method) method="$2"; shift 2 ;;
+    -f | -F | --field | --raw-field | -H) shift 2 ;;
+    --jq) jqf="$2"; shift 2 ;;
+    -i | --include) include=1; shift ;;
+    --paginate | --silent) shift ;;
+    -*) echo "fake gh: unsupported flag $1" >&2; exit 2 ;;
+    *) path="$1"; shift ;;
+  esac
+done
+
+if [ "$method" = POST ]; then
+  echo '{}'
+  exit "${FAKE_POST_RC:-0}"
+fi
+
+path="${path%%\?*}"
+IFS=/ read -r first owner repo rest <<< "$path"
+[ "$first" = repos ] || { echo "fake gh: unexpected path $path" >&2; exit 2; }
+: "$owner" "$repo"
+if [ -z "${rest:-}" ]; then name=_repo; else name="${rest//\//__}"; fi
+
+n=0
+[ -f "$FAKE_STATE/$name" ] && n="$(cat "$FAKE_STATE/$name")"
+n=$((n + 1))
+echo "$n" > "$FAKE_STATE/$name"
+
+body="" code=404
+for cand in "$name.$n" "$name"; do
+  if [ -f "$FAKE_FIX/$cand.json" ] || [ -f "$FAKE_FIX/$cand.status" ]; then
+    code=200
+    [ -f "$FAKE_FIX/$cand.status" ] && code="$(tr -d '\r\n ' < "$FAKE_FIX/$cand.status")"
+    body='{}'
+    [ -f "$FAKE_FIX/$cand.json" ] && body="$(cat "$FAKE_FIX/$cand.json")"
+    break
+  fi
+done
+[ "$code" = 404 ] && body='{"message":"Not Found"}'
+
+if [ "$code" = neterr ]; then
+  echo "fake gh: dial tcp: connection refused" >&2
+  exit 1
+fi
+if [ "$include" = 1 ]; then
+  printf 'HTTP/2.0 %s Fake\r\ncontent-type: application/json\r\n\r\n%s\n' "$code" "$body"
+elif [ "$code" -lt 400 ]; then
+  if [ -n "$jqf" ]; then printf '%s\n' "$body" | jq -r "$jqf"; else printf '%s\n' "$body"; fi
+else
+  printf '%s\n' "$body"
+  echo "gh: error (HTTP $code)" >&2
+  exit 1
+fi
+[ "$code" -lt 400 ] || exit 1

@@ -1,0 +1,25 @@
+[
+  {
+    "attestation": {
+      "bundle": {"mediaType": "application/vnd.dev.sigstore.bundle.v0.3+json", "dsseEnvelope": {"payloadType": "application/vnd.in-toto+json", "payload": "REDACTED-HAND-BUILT-FIXTURE", "signatures": [{"sig": "REDACTED-HAND-BUILT-FIXTURE"}]}},
+      "bundleURL": "https://api.github.com/attestations/REDACTED"
+    },
+    "verificationResult": {
+      "mediaType": "application/vnd.dev.sigstore.verificationresult+json;version=0.1",
+      "statement": {
+        "_type": "https://in-toto.io/Statement/v1",
+        "subject": [{"name": "ghcr.io/603-identity/devcontainer-node", "digest": {"sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}}],
+        "predicateType": "https://cyclonedx.org/bom",
+        "predicate": {"bomFormat": "CycloneDX", "specVersion": "1.6", "components": []}
+      },
+      "signature": {
+        "certificate": {
+          "issuer": "https://token.actions.githubusercontent.com",
+          "githubWorkflowTrigger": "push",
+          "buildTrigger": "push",
+          "runInvocationURI": "https://github.com/603-Identity/devcontainers/actions/runs/36800000144/attempts/1"
+        }
+      }
+    }
+  }
+]

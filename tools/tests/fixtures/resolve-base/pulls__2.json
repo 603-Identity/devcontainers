@@ -1,0 +1,22 @@
+{
+  "number": 2,
+  "state": "open",
+  "user": {
+    "id": 49699333,
+    "login": "dependabot[bot]"
+  },
+  "head": {
+    "sha": "3865d58e1f2a4b7c9d0e1f2a3b4c5d6e7f8091a2",
+    "ref": "dependabot/docker/dot-devcontainer/ghcr.io-603-identity-devcontainer-node-4.144",
+    "repo": {
+      "full_name": "glunk-works/app"
+    }
+  },
+  "base": {
+    "sha": "b4e5c0d19a7f2e3d4c5b6a79881706f5e4d3c2b1",
+    "ref": "main",
+    "repo": {
+      "full_name": "glunk-works/app"
+    }
+  }
+}
