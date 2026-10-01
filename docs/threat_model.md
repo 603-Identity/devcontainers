@@ -29,7 +29,7 @@ at build and publish time, before any consumer pulls.
 | Python tools | `uv sync --locked` in the base image | Installed only from `images/base/tools/uv.lock`, which carries hashes; `--locked` fails on any drift from `pyproject.toml`. |
 | npm, and the `brace-expansion` and `undici` copies replaced inside it | the node image | Each checked against the registry's sha512 `integrity` value, pinned as an `ARG`; the replaced versions are asserted after the swap. |
 | Pull-request content | `pull_request` runs of `build.yml` and `lint.yml` | The PR job holds `contents: read` only, never a write token, and pushes nothing. |
-| Issue, PR and review text | `architect-review-gate.yml`'s `issue_comment` and `pull_request_review` triggers | Read as data by a substring match. Event values reach the shell through `env`, never inline expressions. The repo is **public**, so anyone can post a comment, but only one whose author's numeric user ID is in the gate's `REVIEWER_IDS` allowlist counts toward the gate; any other author, or a missing ID, is ignored. |
+| Issue, PR and review text | `architect-review-gate.yml`, on every trigger (`pull_request`, `issue_comment`, `pull_request_review`) | Read as data by a substring match. Event values reach the shell through `env`, never inline expressions. The repo is **public**, so anyone can post a comment, but only one whose author's numeric user ID is in the gate's `REVIEWER_IDS` allowlist counts toward the gate; any other author, or a missing ID, is ignored. |
 | Linter and scanner images | `lint.yml` and `build-and-test.sh` | Pinned by digest, the same rule the images follow. |
 | Upstream release metadata and checksum files (GitHub releases, nodejs.org, the npm registry) | `bump-binaries.sh`, run by `bump-binaries.yml`, holding the write token below while it parses this | The sha256 (or npm's registry `integrity`) is read from that release's own published file, never computed from a first download, then checked against a strict shape (a plain `X.Y.Z` version; 64 lowercase hex, or `sha512-...` for npm) before it is ever written to a file, a branch name or a commit message -- closing the path a crafted tag or checksum line would otherwise have into the Dockerfile rewrite. A resolved version older than the current pin is rejected rather than opened as a downgrade PR. The resulting PR still goes through every ordinary gate, including `architect-review`, before merge (see Known gaps for what that gate does and does not check). |
 | Other repos' and orgs' code, through the shared cache volume | `devc-tofu-plugins` at `~/.cache/tofu-plugins` | Only the tofu provider cache lives there: the volume is mounted at that one directory, not over `~/.cache`, so a tool that hard-codes `~/.cache` writes into the per-repo home volume. `tofu` verifies each cached provider against the consuming repo's lock when a command starts, but runs it from the shared, writable path (see Known gaps). npm's cache is per repo, because `npx` runs packages from it without a check; pre-commit, pip, uv and every other XDG-aware cache are per repo too, in the home volume (`XDG_CACHE_HOME=~/.local/cache`). A modified `.devcontainer/` is outside this control (boundary 5). |
@@ -118,7 +118,7 @@ at build and publish time, before any consumer pulls.
 6. **Changes to `main` are reviewed.** The `main-required-checks` ruleset requires a pull
    request, the lint, build and smoke-test checks, and `architect-review` on any change to
    `code_paths`. `architect-review` counts only a comment or review from a user ID in
-   the gate's `REVIEWER_IDS` allowlist (today, only the owner's login), so a stranger on
+   the gate's `REVIEWER_IDS` allowlist (today, only the owner's user ID), so a stranger on
    this public repo cannot turn it green by pasting the header and attestation strings. It is still an existence gate: it never reads
    what the review concluded, and the human's merge is the approval.
 
@@ -197,12 +197,16 @@ These are stated plainly so nobody trusts the setup for more than it does:
   until every repo has moved to the template (#6).
 - **The `main` ruleset's `pull_request` rule requires 0 approvals**, and
   `architect-review-gate.yml` counts a comment or review only from a user ID in its
-  `REVIEWER_IDS` allowlist (#14): today the owner's login alone. It is an ID list, not
+  `REVIEWER_IDS` allowlist (#14): today the owner's user ID alone. It is an ID list, not
   `author_association`, because the owner's 603-Identity membership is private and the
   workflow's token reads it as `CONTRIBUTOR` (seen live on #89); IDs rather than logins,
   because a released login can be re-registered. The bump-binaries App token (above)
-  is not on the list, so it cannot satisfy its own gate, though it can still merge a PR
-  once someone else has. A second reviewer means a gated PR adding their ID. The owner's
+  is not on the list, so a review it posts doesn't count. It can still merge a PR once the
+  gate is green, and with write access it may be able to edit an existing owner comment into
+  a qualifying one: the gate trusts the comment's author, not who last edited it (#94).
+  Quoted lines (`> ...`) are ignored, so quote-replying someone else's pasted strings
+  doesn't qualify. A second reviewer means a PR adding their ID, which that PR's own edited
+  gate checks (see below), so the human's merge is the control on it. The owner's
   login staying "the only identity that merges PRs" is still a practice, not something
   this ruleset enforces.
 - **The gate dates a review against the head commit's committer date**, which whoever

@@ -16,8 +16,9 @@ name: Architect Review Gate
 #
 # Adapted from terraform-cloudflare-dns's architect-review-gate.yml, which carries the fixes
 # found live across the org's repos. Two of them shape this file:
-#   * For issue_comment and pull_request_review events, GitHub attaches the job's implicit
-#     check-run to the DEFAULT BRANCH's tip, not the PR's head. So the job resolves the PR's
+#   * For issue_comment events, GitHub attaches the job's implicit check-run to the DEFAULT
+#     BRANCH's tip, not the PR's head (pull_request_review runs attach to the head, seen
+#     live on #89). So the job resolves the PR's
 #     head SHA itself and posts the `architect-review` commit STATUS against it. The job is
 #     named `architect-review-runner` so its own check-run never collides with that status.
 #   * The job exits 0 when no review is found. Enforcement lives entirely in the status,
@@ -66,8 +67,9 @@ jobs:
       HEADER: "**Opus/Architect HITL review (automated)**"
       ATTESTATION: "*Fresh-session review: this session did not author the diff.*"
       CONTEXT: architect-review
-      # Space-separated numeric GitHub user IDs whose review counts. Changing it is a change
-      # under .github/, so it is itself gated. 281693088 = JaredGroves-603.
+      # Space-separated numeric GitHub user IDs whose review counts. 281693088 = JaredGroves-603.
+      # A PR changing this list is checked by its own edited copy on pull_request and
+      # pull_request_review runs (#93), so the human's merge is the real control on it.
       REVIEWER_IDS: "281693088"
     steps:
       - name: Resolve PR number and head commit
@@ -154,7 +156,9 @@ jobs:
           found_at=""
           while IFS= read -r item; do
             [ -n "$item" ] || continue
-            body="$(printf '%s' "$item" | jq -r '.body // ""')"
+            # Quoted lines (`> ...`) are dropped first, so quote-replying someone else's
+            # pasted strings does not make the reply qualify.
+            body="$(printf '%s' "$item" | jq -r '.body // "" | split("\n") | map(select(test("^\\s*>") | not)) | join("\n")')"
             at="$(printf '%s' "$item" | jq -r '.at // ""')"
             uid="$(printf '%s' "$item" | jq -r '.uid // ""')"
             login="$(printf '%s' "$item" | jq -r '.login // ""')"
