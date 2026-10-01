@@ -235,6 +235,28 @@ and the container still starts.
 - Edits to the host files apply on the **next container start**.
 - Signing goes through VS Code's forwarded GPG agent. SSH signing is out of scope.
 
+## Repairing Claude Code plugin state
+
+No image ships the `claude` CLI (DEVC-D4). When a container keeps loading an old plugin
+version, the documented fix (refresh the marketplace, then reinstall the plugin) still
+works: the Claude Code extension the template installs carries its own native `claude`
+binary, the same release as the extension, with no node or npm needed. Close the Claude
+panel first, so the extension isn't writing plugin state at the same time, then run it from
+a terminal in the container:
+
+```sh
+claude=$(ls -d ~/.vscode-server/extensions/anthropic.claude-code-*-linux-x64/resources/native-binary/claude | sort -V | tail -1)
+"$claude" plugin marketplace update <marketplace>
+"$claude" plugin uninstall <plugin>@<marketplace>
+"$claude" plugin install <plugin>@<marketplace>
+```
+
+Reload the window afterwards. Don't hand-edit the files under `~/.claude/plugins/`: their
+format is internal and changes between releases. The `resources/native-binary/` path is
+internal to the extension too (checked against 2.1.286). If `ls` finds nothing, the
+extension has moved it; look for the binary under the extension directory before reaching
+for the state files.
+
 ## Updating a pinned tool
 
 `bump-binaries.yml` runs weekly, and on manual dispatch, for gh, yq, uv, tofu, tflint,

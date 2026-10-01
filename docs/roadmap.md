@@ -129,6 +129,42 @@ consumers in every org must do is carried by #12's `IAC-D` entry.
 uniqueness at container start. glunk-works has no credential ledger yet, a named gap in
 the threat model.
 
+#### DEVC-D4: No image ships the `claude` CLI; plugin repair uses the extension's own binary
+
+**Resolved** 2026-10-01 by the repo owner, on #4.
+
+**Context.** A container kept loading an old way-of-working plugin version through two pin
+bumps. The documented fix (refresh the marketplace, reinstall the plugin) needs the CLI, and
+the container had none, so plugin state was repaired by hand-editing the CLI's internal
+files. The VS Code extension turns out to carry a native `claude` binary
+(`resources/native-binary/claude`, about 240 MB, no node or npm). The linux-x64 build of
+2.1.286 was checked: it runs in the base image and has the `plugin` and `plugin marketplace`
+commands the fix needs.
+
+**Decision.**
+- No image ships the CLI: not `base`, not `tofu`, not `node`.
+- Plugin repair uses the extension's bundled binary, documented in the README under
+  "Repairing Claude Code plugin state". It is the same release as the extension, so there is
+  only one CLI version writing `~/.claude/plugins/`.
+- Rejected:
+  - *CLI in the `node` image only:* doesn't help `base` or `tofu` containers, and an
+    image-pinned CLI drifts from the self-updating extension, bringing back the
+    two-versions-of-plugin-state failure that caused the incident.
+  - *CLI in `base`:* the same skew in every image, plus about 240 MB and a new pinned tool,
+    with its CVE surface, in every repo of both orgs.
+  - *No CLI and no documented repair:* leaves the next person hand-editing internal files.
+  - *Scripting the manual repair:* hard-codes undocumented internals that break silently on
+    an update.
+- The plugin's `SessionStart` hook (`hooks/ai-cursor-banner.sh`) is stored as mode `100644`
+  and run directly, so any install that doesn't set the executable bit leaves it failing
+  silently. That's the plugin's defect, filed upstream as glunk-works/claude-workbench#214.
+
+**Why DEVC-D and not IAC-D.** The images don't change, so no consuming repo has to.
+
+**Consequences.** The README recipe depends on a path that's internal to the extension. If
+the extension moves it, the recipe stops finding the binary, and this decision should be
+revisited, not worked around by adding the CLI to an image without a new decision.
+
 ### Org-wide IAC-D decisions that bind this repo
 
 Each of these is recorded in full in infrastructure-core's log. They are cited here only.
