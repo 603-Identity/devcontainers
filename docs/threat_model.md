@@ -24,7 +24,7 @@ at build and publish time, before any consumer pulls.
 |---|---|---|
 | Ubuntu base image | `FROM` in `images/base/Dockerfile` | Pinned by digest. Dependabot proposes new digests as reviewed PRs. |
 | apt packages | `apt-get install` in the base image | **Not version-pinned** (see [Known gaps](#known-gaps)). Bounded by the base digest and the weekly rebuild. |
-| Release binaries (gh, yq, uv, tofu, tflint, node) | `curl` in each Dockerfile | Pinned by version and sha256. Each sha256 comes from that release's own published checksum file, never from a first download. |
+| Release binaries (gh, yq, uv, tofu, tflint, node) | `curl` in each Dockerfile | Pinned by version and sha256. Each sha256 comes from that release's own published checksum file, never from a first download. That file's own signature is not checked (see Known gaps). |
 | uv-provisioned interpreters | `uv` at run time, when a repo's `.python-version` asks for an older Python | Not part of the image: uv downloads the interpreter from upstream on demand, into the per-repo home volume (`~/.local/share/uv`, kept across rebuilds, never the shared cache volume). uv checks it against a sha256 built into the pinned uv binary; the build's Trivy gate never scans it. Only a repo that cannot use the system 3.14 does this. |
 | Python tools | `uv sync --locked` in the base image | Installed only from `images/base/tools/uv.lock`, which carries hashes; `--locked` fails on any drift from `pyproject.toml`. |
 | npm, and the `brace-expansion` and `undici` copies replaced inside it | the node image | Each checked against the registry's sha512 `integrity` value, pinned as an `ARG`; the replaced versions are asserted after the swap. |
@@ -33,7 +33,7 @@ at build and publish time, before any consumer pulls.
 | Linter and scanner images | `lint.yml` and `build-and-test.sh` | Pinned by digest, the same rule the images follow. |
 | Upstream release metadata and checksum files (GitHub releases, nodejs.org, the npm registry) | `bump-binaries.sh`, run by `bump-binaries.yml`, holding the write token below while it parses this | The sha256 (or npm's registry `integrity`) is read from that release's own published file, never computed from a first download, then checked against a strict shape (a plain `X.Y.Z` version; 64 lowercase hex, or `sha512-...` for npm) before it is ever written to a file, a branch name or a commit message -- closing the path a crafted tag or checksum line would otherwise have into the Dockerfile rewrite. A resolved version older than the current pin is rejected rather than opened as a downgrade PR. The resulting PR still goes through every ordinary gate, including `architect-review`, before merge (see Known gaps for what that gate does and does not check). |
 | Other repos' and orgs' code, through the shared cache volume | `devc-tofu-plugins` at `~/.cache/tofu-plugins` | Only the tofu provider cache lives there: the volume is mounted at that one directory, not over `~/.cache`, so a tool that hard-codes `~/.cache` writes into the per-repo home volume. `tofu` verifies each cached provider against the consuming repo's lock when a command starts, but runs it from the shared, writable path (see Known gaps). npm's cache is per repo, because `npx` runs packages from it without a check; pre-commit, pip, uv and every other XDG-aware cache are per repo too, in the home volume (`XDG_CACHE_HOME=~/.local/cache`). A modified `.devcontainer/` is outside this control (boundary 5). |
-| Home-volume contents | `~/.vscode-server` and extensions, uv interpreters and cache, pre-commit and tflint plugins, `npm install -g` packages, dotfiles and `~/.local/bin`, all in `<repo>-home` | Installed at container create and first use, from their upstream sources, into a volume that outlives rebuilds. **Never scanned by the build's Trivy gate and never re-pinned by an image bump**: a rebuild does not refresh or remove them. Wipe the volume to start clean. |
+| Home-volume contents | `~/.vscode-server` and extensions, uv interpreters and cache, pre-commit and tflint plugins, `npm install -g` packages, dotfiles and `~/.local/bin`, all in `<repo>-home` | Installed at container create and first use, on the developer's machine, from their upstream sources, into a volume that outlives rebuilds. **Covered by no attestation, SBOM, Trivy scan or `.trivyignore.yaml` expiry, and never re-pinned by an image bump**: a rebuild does not refresh or remove them. What checks each one is the installer's own: uv checks an interpreter against a sha256 built into the pinned uv binary (the image sets no `UV_PYTHON_INSTALL_MIRROR`); a PyPI package a repo installs itself (checkov, say) is hash-checked only when the repo installs it from its own `--require-hashes` file; `npm install -g` checks the registry's `integrity` value for what it resolves, which nothing here pins. Wipe the volume to start clean. |
 | Host identity directory | the host's `~/.gitconfig.d`, mounted read-only into **every** container | `git-identity.sh` copies an allowlist of five keys (`user.name`, `user.email`, `user.signingkey`, `commit.gpgsign`, `tag.gpgsign`) from the one file that claims the origin's org. It never includes or links the host file, so that file's credential, `gpg.*`, `url.*`, `core.*` and alias sections cannot reach the container's git config. |
 
 ## Sinks
@@ -95,16 +95,18 @@ at build and publish time, before any consumer pulls.
    setuid/setgid bit is stripped from the image, and the smoke test asserts that none
    remain. **The root filesystem is read-only** (`--read-only` in the template's
    `runArgs`): code running as `app` cannot replace `/usr/local/bin/gh`, `git`, the
-   tools venv or `/etc/gitconfig`, and a write to the image fails with `EROFS`. It
+   tools venv or `/etc/gitconfig`, and a write to the image fails with `EROFS` (the
+   template proof asserts that failure on `/usr/local`; see boundary 1). It
    can still write the mounts (the home volume, `/tmp`, the dependency volumes, the shared
    cache) and the tmpfs directories (`/var/tmp`, `/dev/shm`; `/run` is tmpfs too but root-owned), so this closes the image, not
    the volumes. In particular the home volume's `~/.local/bin` leads `PATH`, so a planted
-   `gh` there shadows the image's (boundary 8: hygiene, not a boundary), and it now
-   persists across rebuilds. `GIT_CONFIG_GLOBAL` pins git's global file to `~/.gitconfig`,
+   `gh` there, or a planted `git` or `tofu`, shadows the image's, and it now persists
+   across rebuilds (see Known gaps). `GIT_CONFIG_GLOBAL` pins git's global file to `~/.gitconfig`,
    which `git-identity.sh` rewrites at every start, so a planted `~/.config/git/config` is
    ignored by git. pre-commit strips `GIT_*` variables from the git it runs, so that file
    would still apply there: `git-identity.sh` therefore also deletes it at every start,
-   which bounds its persistence across restarts but not its use within one session. A
+   unless `~/.config` or `~/.config/git` is a symlink (see Known gaps). That bounds its
+   persistence across restarts, not its use within one session. A
    script that wants git isolated from the home volume's config sets
    `GIT_CONFIG_GLOBAL=/dev/null` (`/etc/gitconfig` still applies), not `HOME=<dir>`. A
    hostile `.devcontainer/` can simply drop the flag (boundary 5). The template's
@@ -236,13 +238,46 @@ What each piece trusts, and what it leaves open:
   `gh` and `setup-go`'s download are part of the TCB. No `on: push` run follows an auto-merge made with
   `GITHUB_TOKEN` (E12).
 
+## Exceptions
+
+Every repo in both orgs gets a container from these images unless one of these applies:
+
+- **glunk-works/loop-orchestrator keeps its own container.** Its sandbox needs a Docker
+  daemon (`--privileged`, docker-in-docker), which cannot coexist with `--cap-drop=ALL` and
+  `no-new-privileges` (boundary 4). Docker-outside-of-docker was evaluated and **rejected**:
+  a host Docker socket in the container would let anything running in it mount every other
+  repo's `<repo>-home` volume, token included (a direct breach of boundary 5), and the
+  sandbox resolves worktree paths inside the container that a host daemon cannot see. The
+  rule for that container: it mounts no other repo's volumes.
+- **No devcontainer** for org profile repos (`.github`), archived repos, or demo
+  repositories.
+
 ## Known gaps
 
 These are stated plainly so nobody trusts the setup for more than it does:
 
-- **Node.js**: the tarball's sha256 is checked against `SHASUMS256.txt`, but that file's
-  GPG signature isn't verified yet. Doing so means pinning the Node release team's
-  keyring here.
+- **Checksum files are trusted without their signatures.** Each release binary's sha256
+  comes from that release's own checksum file, which comes from the same release page as
+  the binary, so whoever can replace one can replace the other. Node.js signs
+  `SHASUMS256.txt` with GPG; verifying it means pinning the Node release team's keyring
+  here. OpenTofu signs `tofu_<version>_SHA256SUMS` with cosign (keyless, `.sig` and `.pem`)
+  and with GPG (`.gpgsig`); tflint signs its `checksums.txt` with cosign too. None of these
+  signatures is checked, neither when a pin is bumped nor in the build (#58).
+- **`~/.local/bin` leads `PATH` by design**, and `app` can write it in the persistent home
+  volume, where `uv tool install` and `npm install -g` put their entry points. Any bare
+  tool name (`git`, `pre-commit`, `tofu`, `node`, ...) can be shadowed there, by accident
+  or on purpose, and the shadow survives rebuilds. Only git's credential helper is pinned
+  by absolute path (`/usr/local/bin/gh`, boundary 8). Hygiene, not a boundary against code
+  running as `app` (#54).
+- **A symlinked `~/.config` keeps a planted XDG git config.** `git-identity.sh` skips its
+  delete of `~/.config/git/config` when `~/.config` or `~/.config/git` is a symlink, so a
+  dotfiles tool's linked checkout is not touched. A process in the container can create
+  that symlink itself, and the file then survives every restart and applies wherever
+  `GIT_CONFIG_GLOBAL` is stripped, as it is under pre-commit. Low severity: `~/.local/bin`
+  (above) is already a stronger persistence path (#69).
+- **Home-volume contents are never scanned.** Interpreters, `npm install -g` packages,
+  editor extensions and hook environments are installed at container create, outside the
+  build, and persist across image bumps (see the input row above).
 - **apt packages** aren't version-pinned. The base digest and the weekly rebuild bound
   them instead.
 - **`--cap-drop=ALL` is proven in force, not against every repo's workflow.** The template
@@ -345,8 +380,11 @@ These are stated plainly so nobody trusts the setup for more than it does:
   org's email and signing-key ID, because the whole `~/.gitconfig.d` is mounted
   read-only. A secret written inline in one of those files (a token in a URL, an
   `http.extraHeader`) would be readable too, so the README forbids it.
-- **Identity selection is not authorization.** The forwarded GPG agent is the signing
-  boundary, and a container could name another key that the agent holds.
+- **Identity selection is not authorization.** Identity and the GPG agent are host-wide
+  across both orgs: the editor forwards one agent to every container, so a glunk-works
+  container whose `user.signingkey` were changed could sign with the 603-Identity key.
+  Accepted: the agent is the signing boundary, and `git-identity.sh` only sets the key each
+  org's identity file names.
 - **`/workspace/.git` sits on the host bind mount** (pre-existing), so a container
   process can plant hooks, `core.hooksPath` or `core.fsmonitor` that the **host's** git
   then runs.
