@@ -11,8 +11,8 @@ version: 2
 # digest from `docker buildx imagetools inspect`, see README.md). The binaries are
 # proposed instead by .github/workflows/bump-binaries.yml (see README.md §
 # Updating a pinned tool); fall back to a manual PR, same section, only while that
-# workflow is down or for a tool it doesn't cover. Tofu moves only in step with every
-# consuming repo's setup-opentofu pin.
+# workflow is down or for a tool it doesn't cover. A consuming repo moves its
+# setup-opentofu `tofu_version` in the same PR that takes the image digest with a new tofu.
 updates:
   - package-ecosystem: github-actions
     directory: /
