@@ -132,9 +132,11 @@ each armed PR (that re-runs the gate's `post` job, which disarms it), or run
 
 A container that validates with a different tool version than CI reports a result CI
 doesn't share. The OpenTofu and Node versions here are the ones every consuming repo's
-workflows pin, in every org. **Bump the image and every repo's workflow pin together**, never one
-without the other. The one known exception is npm: the image ships npm 12 ahead of CI's
-bundled npm 11 until each repo takes it (#27).
+workflows pin, in every org. **For OpenTofu, the consumer moves the pin**: a consuming repo
+changes `tofu_version` in its setup-opentofu step in the same PR that takes the new image
+digest, so the two never differ for long. **For Node, bump the image and every repo's
+workflow pin together**, never one without the other. The one known exception is npm: the
+image ships npm 12 ahead of CI's bundled npm 11 until each repo takes it (#27).
 
 ### Consuming from another org
 
@@ -411,7 +413,9 @@ A human still has to:
    grep against the pin, or leave the record naming the version it covers) -- and update or remove what the new version
    makes stale. The workflow only ever touches the `ARG`
    lines themselves.
-3. For OpenTofu or Node, open the matching CI-pin PRs in every consuming repo.
+3. For Node, open the matching CI-pin PRs in every consuming repo. For OpenTofu there is
+   nothing to open here: each consumer moves `tofu_version` in the PR that takes the new
+   image digest (see "Toolchain versions must match CI").
 4. If the Trivy scan now passes without an entry in `.trivyignore.yaml`, delete that
    entry in the same PR.
 5. Merge -- the workflow never does.

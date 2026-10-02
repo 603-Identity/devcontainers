@@ -273,8 +273,9 @@ npm, the registry's \`integrity\` field) -- never from hashing the download.
 Release notes: $RELEASE_URL
 
 This still needs a human review before merge: read the release notes above (and the
-diff since $current_version yourself -- this PR links the release, not a compare), and
--- for OpenTofu or Node -- open the matching CI-pin PRs in every consuming repo. The
+diff since $current_version yourself -- this PR links the release, not a compare). For
+Node, also open the matching CI-pin PRs in every consuming repo; for OpenTofu each
+consumer moves its tofu_version in the PR that takes the new image digest. The
 ordinary gates (hadolint, Trivy, the smoke test, the template test, and
 architect-review because \`images/\` is a code_path) run on this PR like any other.
 EOF
