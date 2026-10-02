@@ -60,8 +60,7 @@ banner() { # banner <line>...: one loud box; every argument is a line that is sa
 # --- origin -> owner (org/repo). Same grammar as git-identity.sh, with the repo captured.
 # GIT_CONFIG_GLOBAL=/dev/null: this runs BEFORE git-identity.sh rewrites ~/.gitconfig, and that
 # file lives on the shared home volume, so a planted `url.*.insteadOf` could otherwise change
-# the URL seen here. This reads the true origin; git-identity.sh reads it through its own
-# stub and the previous start's ~/.gitconfig-identity, which this does not control.
+# the URL seen here. This reads the true origin; git-identity.sh pins its read the same way.
 url=$(GIT_CONFIG_GLOBAL=/dev/null git -C "$WORKSPACE" remote get-url origin 2>/dev/null) || url=
 nl='
 '
