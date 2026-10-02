@@ -43,7 +43,8 @@ at build and publish time, before any consumer pulls.
 | `ghcr.io/603-identity/devcontainer-*` | `build.yml`'s publish job, on push to `main`, the weekly schedule, or manual dispatch on `main` | The image is built, smoke-tested and scanned before any push. The job never runs on a pull request. |
 | Attestations (build provenance, CycloneDX SBOM) | `actions/attest`, per pushed digest | Signed with Sigstore through the job's OIDC token, and stored on GitHub and in the registry. |
 | Code scanning (SARIF) | the publish job | Carries the full findings, including unfixed and allowlisted ones, so nothing the gate lets through is hidden. |
-| Commit statuses (`architect-review`) | `architect-review-gate.yml` | `statuses: write` only. It fails closed when it cannot look. |
+| Commit statuses (`architect-review`) | `architect-review-gate.yml`, here and in every consumer's copy | `statuses: write` only here. It fails closed when it cannot look. A consumer's `post` job also holds `contents` and `pull-requests: write` to arm or disarm auto-merge, which is off (see below). |
+| Auto-merge armed on a consumer PR | a consumer gate's `post` job, only for a verified candidate while the tag `devc-automerge-on` exists in this repo | Not created, so never. The tag sits under a tag ruleset (admin-only). See [Consumer verification](#consumer-verification-and-the-bump-gate-30). |
 
 ## Credential holders
 
@@ -51,6 +52,7 @@ at build and publish time, before any consumer pulls.
 |---|---|---|
 | `GITHUB_TOKEN` with `packages: write`, `id-token: write`, `attestations: write`, `artifact-metadata: write`, `security-events: write` | `build.yml`'s publish job only | Push to this org's GHCR packages, and sign attestations for this repo. Scoped per job; every workflow sets `permissions: {}` at the top. |
 | `GITHUB_TOKEN` with `statuses: write` and reads | `architect-review-gate.yml` | Post commit statuses on this repo. |
+| A consuming repo's `GITHUB_TOKEN`: `contents: read` for `verify`; `statuses`, `contents` and `pull-requests: write` for the gate's `post` job only | the consumer's `devcontainer-image.yml` and gate, running this repo's reusable workflows | `verify` and `decide` hold no write token and read this repo's public attestations cross-org. `post` can post statuses and arm or disarm auto-merge on that consumer's own PRs, and holds the token in a job with no `uses:`, `container:` or `services:`, so no third-party action or image shares its GitHub-hosted runner (checked by `tools/check-consumer-workflows.sh` when it is run, not continuously). |
 | GitHub App installation token, `contents: write` + `pull-requests: write`, scoped to this repo only | `bump-binaries.yml` | **Can do more than the job uses it for**: push or delete any non-`main` branch, create tags and releases, and comment on or merge a PR -- `contents: write` is also what `PUT /pulls/{n}/merge` requires (a PR's own author cannot approve it, but this ruleset needs no approval at all; see Known gaps). The job only pushes a `bump/<tool>-<version>` branch and opens its PR; the rest is this credential's reach if ever leaked or (see Known gaps) if the write step's own untrusted input were ever to reach it. Needed at all because a PR opened with the ambient `GITHUB_TOKEN` never triggers the required-check workflows (GitHub's own anti-recursion rule) -- and on this repo a job-scoped `GITHUB_TOKEN` could not even open the PR in the first place ("Allow GitHub Actions to create and approve pull requests" is off; `can_approve_pull_request_reviews: false`), so a dedicated identity is the only way to get this PR opened at all, let alone checked. Revoked at job end (the token action's default). The app's private key is meant to be a repo secret held outside any container -- **not yet provisioned**: `bump-binaries.yml` cannot run for real until a human creates the App and sets `BUMP_BINARIES_APP_ID`/`BUMP_BINARIES_APP_PRIVATE_KEY`. |
 | Per-repo fine-grained PAT | a consuming repo's container, in the `<repo>-home` volume | That repo only. The hub's token also covers the repos it coordinates. It expires after 90 days at most and is recorded in the owning org's credential ledger (603-Identity: infrastructure-core's; glunk-works: none yet, see Known gaps). Admin work (rulesets, repo settings) never uses a container token. |
 | Owner's org login | the host, outside any container | Admin. It is the only identity that merges PRs or changes rulesets and package visibility, which must stay public for consumers in other orgs. |
@@ -77,13 +79,16 @@ at build and publish time, before any consumer pulls.
 
 3. **Consumers can check what they run.** Every published digest carries signed build
    provenance (which commit and workflow run produced it) and an SBOM, and `build.yml` publishes only from `main`. Consuming repos pin an image by tag **and** digest and take new digests only
-   through Dependabot PRs. The verify command pins the signer workflow and
-   `refs/heads/main`, and it runs on every new digest, not only first use. **That consumer-side
+   through Dependabot PRs. The verify command pins the exact signer workflow
+   (`--cert-identity ...build.yml@refs/heads/main`), the OIDC issuer and `--source-ref
+   refs/heads/main`, and it runs on every new digest, not only first use. **That consumer-side
    check is what enforces "built from reviewed `main`"**; the `if:` in `build.yml` is defense
    in depth, since anyone who can write a branch could dispatch an edited copy of the workflow.
-   `--signer-workflow` is a prefix match, so it is not an exact pin; `--source-ref` carries
-   the ref. The check is a manual step when a Dependabot bump is reviewed, until #30
-   automates it in consumer CI (see Known gaps). Nothing changes under a repo without a reviewed diff.
+   (`--signer-workflow` is a prefix match and not an exact pin, which is why the documented
+   command no longer uses it.) The `verify / verify` check (#30) runs it on every consumer pull
+   request, plus the provenance bindings (see
+   [Consumer verification](#consumer-verification-and-the-bump-gate-30)). Nothing changes
+   under a repo without a reviewed diff, bar the one gated exception listed there.
 
 4. **The container cannot raise its own privileges, or change its own image.** It runs as
    non-root uid 1000 with `--cap-drop=ALL` and `--security-opt=no-new-privileges`. Every
@@ -139,6 +144,98 @@ at build and publish time, before any consumer pulls.
    can still edit `~/.gitconfig`, and `/workspace/.git/config` is host-checkout config that
    the projection doesn't touch.
 
+## Consumer verification and the bump gate (#30)
+
+A consuming repo's CI calls two reusable workflows from this repo, pinned by commit SHA:
+`verify-devcontainer-image.yml` (the required check `verify / verify`, on every pull request)
+and `devcontainer-bump-decision.yml` (`decide`, which fully verifies one candidate commit). Both
+build the Go verifier in `tools/devc-verify` at the caller's pin before any pull-request content
+is on disk, then read the consumer's files through the contents API at one exact SHA; there is
+never a checkout of consumer content. Their write token is nil. The one place a status is
+decided, and the one write token, is the consumer gate's `post` job
+([`template/.github/workflows/architect-review-gate.yml`](../template/.github/workflows/architect-review-gate.yml)).
+What each piece trusts, and what it leaves open:
+
+- **Invariant 3, restated.** Nothing changes under a repo without a reviewed diff, *except* a
+  verified, same-MAJOR, Dependabot-only `FROM` bump to `.devcontainer/Dockerfile`, **while the
+  tag `devc-automerge-on` exists in this repo**. It does not exist, so today there is no
+  exception.
+- **The consumer bounds candidacy; `decide` is in the TCB for the verdict.** The consumer's own
+  `resolve` job decides, from API facts that parse no PR content, which SHAs *can* be exempt:
+  a single-file, Dependabot-authored, signature-verified Dockerfile bump. Within that set,
+  `decide` is the only attestation check, so a lying `decide` release would widen the verdict
+  (to unattested tags, say). Its pin therefore changes only through review: a pin bump edits
+  `.github/`, `.github/` is always in review scope whatever the consumer's `case` block says,
+  and a pin bump is never a candidate. `actions/checkout` and `actions/setup-go` inside the
+  reusable workflows are in the TCB too, because they share the runner with the verifier;
+  their bumps arrive as this repo's own reviewed Dependabot PRs.
+- **Writers are trusted by construction.** A writer's own PR workflow can mint the
+  `architect-review` status even when its ruleset pins the integration (F9b): this predates
+  #30 and holds for every repo whose only review control is that status. "Writers" includes
+  Dependabot's `github-actions` PRs, whose payload comes from upstream action maintainers.
+  That is why `resolve` and `post` contain no `uses:`, `container:` or `services:`, and why no
+  other consumer job may hold `statuses`, `contents`, `pull-requests`, `checks` or `actions:
+  write` on a trigger Dependabot's own branch can run: a PR event, `create`, or a `push` whose filter is not `tags:` alone or a list of literal branch names; no `branches-ignore:` counts, since Dependabot's branch name is configurable (`pull-request-branch-name.separator`) (Dependabot's branch push runs its bumped workflow files;
+  that a Dependabot push run can raise its token is assumed from the `pull_request` case, not
+  observed). `tools/check-consumer-workflows.sh` checks both **when it is run**, at adoption
+  and from the pilots; nothing re-runs it in the consuming repo's CI, so a later edit that
+  breaks a rule is caught by review alone. The gate defends against Dependabot-shaped
+  forgeries, outsiders and wrong images, and against forks only to the extent that auto-merge
+  never acts on a fork PR. Whether to move the gate to a reusable or *required* workflow is a
+  precondition for turning auto-merge on, tracked as the F9b issue.
+- **Forks and same-named checks.** A fork PR from a returning contributor needs no approval to
+  run. It can add a job named `architect-review`, or a `verify`/`verify` pair, whose check runs
+  come from integration 15368 and so satisfy the pin: the fork PR can look fully green.
+  Auto-merge never acts on it (only the candidate PR is armed), so the exposure is a human
+  merging it. A fork can also block a bump by landing a *failing* same-named check at the
+  Dependabot SHA (liveness only).
+- **No soak.** A bad attested image can reach every opted-in consumer within minutes of
+  Dependabot's run. The limits are the fail-closed kill switch, same-MAJOR only, the exact
+  signer, issuer and repository-id pins, and attempt-1-only provenance.
+- **Auto-merge is off and stays off until its preconditions are met.** The fail-closed kill
+  switch makes "not created yet" the off state. When it is on, this repo's `main`, then the
+  publish, then a consumer merge becomes an unattended chain whose only human control is this
+  repo's own `architect-review`, an existence gate with known gaps (#92, #93, #94). The owner
+  creates `devc-automerge-on` only after docs-only pushes stop publishing (every push to
+  `main` publishes a new tag set today), the review-gate trust model is decided, and a pilot
+  has taken real bumps through the review path.
+- **The kill-switch window.** Removing the tag stops later *arming*; `decide` still runs. It
+  does **not** disarm open PRs: an armed PR merges whenever its remaining checks go green,
+  possibly hours later. To close the window, post an allowlisted comment on each armed PR
+  (that re-runs `post`, which disarms), or run `gh pr merge --disable-auto` on each.
+- **The tag ruleset** (`release-tags`) restricts creating, updating, deleting and moving
+  `refs/tags/v*` and `refs/tags/devc-automerge-*`, with the Repository admin role as its only
+  bypass. On 603-Identity, org owners and any admin team also bypass it. It was read back
+  through the API after creation. **The negative test is outstanding:** deleting a tag with the
+  bump-binaries App token has not been tried, because the App does not exist yet (see Known
+  gaps). Releases are plain `vX.Y` tags with no release automation; the owner checks
+  `git merge-base --is-ancestor <sha> origin/main` before pushing one, and every consumer pins
+  the release's commit SHA, never the tag.
+- **Liveness only.** Forks can block a bump with a failing same-named check; a fork's
+  `pull_request` run can join the per-SHA concurrency group and cancel a pending `post` (the
+  workflow name in the key narrows this); a `decide` error sends a bump to review; an image
+  built by a re-run of `build.yml` (attempt 2) fails `verify / verify` as well as being
+  non-exempt, because both run the attempt-1-only provenance check, so a consumer PR that
+  pins one cannot merge (a hand-run `gh attestation verify` still passes it); repeated
+  fork PRs can drain a repo's `GITHUB_TOKEN` API budget. A caller that fails to start reports
+  no check at all, which fails closed (F8).
+- **Parser residual.** Pure-Go parsers (BuildKit's Dockerfile parser, hujson) read pull-request
+  bytes in a job with a read-only token, and at worst can flip the boolean. Our own packages
+  import neither cgo nor `unsafe` (a test asserts it) and the build sets `CGO_ENABLED=0`;
+  vendored and standard-library packages do use `unsafe`, so "no `unsafe` anywhere" is not
+  claimed.
+- **Private consumers.** A Dependabot-triggered `pull_request` run raising its token and
+  arming auto-merge was observed on a public repo only. A private pilot has to confirm it
+  before auto-merge is turned on; with the switch off, no pilot can show it.
+- **Triggers the lint does not watch.** `workflow_run` and `merge_group` run files from the default
+  branch or after approval. `deployment` and `deployment_status` run the file at the deployed commit,
+  so a repo whose integrations create a deployment for every branch would let Dependabot's branch
+  reach a write token that way; that is not checked.
+- **Unchanged.** The image's MINOR is checked against the run number of the signed run, which is
+  the one input read unauthenticated from the API; its MAJOR is not bound at all. The runner's
+  `gh` and `setup-go`'s download are part of the TCB. No `on: push` run follows an auto-merge made with
+  `GITHUB_TOKEN` (E12).
+
 ## Known gaps
 
 These are stated plainly so nobody trusts the setup for more than it does:
@@ -167,8 +264,14 @@ These are stated plainly so nobody trusts the setup for more than it does:
   In CI that is the build job, which holds no write permission and no secret, but it does reach the runner's Docker socket and the checkout. The same
   script is in `gates.green`, so it also runs on a developer's machine as that user, with
   access to the Docker daemon. The CLI itself has no dependencies and no install scripts.
-- **Verifying a new digest is manual** until #30: a Dependabot image bump merged without
-  running the verify command takes whatever digest it proposes, including a branch-built one.
+- **Verifying a new digest is automatic only in a repo that has adopted #30's workflows.** A
+  repo that has not copied `devcontainer-image.yml` and does not require `verify / verify`
+  still takes whatever digest a Dependabot image bump proposes, including a branch-built
+  one, unless a human runs the verify command. No repo has adopted them yet (pilots, #10).
+- **The tag ruleset's App-token negative test has not been run.** Deleting a `v*` or
+  `devc-automerge-*` tag with the `bump-binaries` App's token is the test; the App does not
+  exist yet, so it is deferred until it is created. Org owners and any admin team bypass the
+  ruleset by design.
 - **The shared tofu provider cache is checked at command start, not at exec.** tofu links a
   cached provider into the repo's data directory and runs it from the shared volume, so a
   hostile process in another container could swap the binary between the check and the

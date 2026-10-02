@@ -9,12 +9,29 @@
 #     schedule: { interval: weekly }
 #
 # Choose ONE image: devcontainer-base, devcontainer-tofu or devcontainer-node. Take the
-# tag@digest from the latest "Build images" run summary in 603-Identity/devcontainers,
-# and verify it before first use AND for every new digest (each Dependabot bump), not
-# only the first:
+# tag@digest from the latest "Build images" run summary in 603-Identity/devcontainers.
+#
+# Every pull request is checked by `verify / verify` (.github/workflows/devcontainer-image.yml):
+# the FROM line must be one of the three images above, by tag and digest, with signed
+# provenance and an SBOM from that repo's build.yml on main, and the file must keep this
+# shape or the check fails:
+#   - the `# syntax=` line above, unchanged, and no other directive;
+#   - ASCII only, no CR (LF line endings), no NUL, no BOM, and at most 1 MiB;
+#   - one stage only: no second FROM, no ARG before FROM, no `$` in the image reference;
+#   - a plain FROM: no `AS <name>` and no `--platform`;
+#   - no `COPY --from`, `RUN --mount from=` or ONBUILD.
+# devcontainer.json is held to rules too: no top-level `image`, `features`, `dockerComposeFile`,
+# `dockerfile` or `context` key (in any letter case), `build` holding only `dockerfile:
+# "Dockerfile"` and, optionally, `context: "."`, and no other devcontainer.json anywhere in
+# the repo (a symlink or a case-variant path such as dockerfile also fails).
+# Do not bypass it: it is what makes a new digest safe to take. It also accepts only an image
+# from a first-attempt `build.yml` run (a re-run's digest fails), which the command below does
+# not check, so a digest that passes it can still fail the PR. For a first look by hand, for
+# the digest on the FROM line:
 #   gh attestation verify oci://ghcr.io/603-identity/devcontainer-tofu@sha256:<digest> \
 #     --repo 603-Identity/devcontainers \
-#     --signer-workflow 603-Identity/devcontainers/.github/workflows/build.yml \
+#     --cert-identity https://github.com/603-Identity/devcontainers/.github/workflows/build.yml@refs/heads/main \
+#     --cert-oidc-issuer https://token.actions.githubusercontent.com \
 #     --source-ref refs/heads/main --deny-self-hosted-runners
 FROM ghcr.io/603-identity/devcontainer-tofu:TAG@sha256:DIGEST
 

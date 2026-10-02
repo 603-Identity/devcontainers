@@ -99,10 +99,11 @@ jobs:
       contents: read
       pull-requests: read
     # >>> CONSUMER: decide pin
-    # PLACEHOLDER: no v1.0 SHA exists yet, so the pin is 40 zeros (zizmor rejects a non-SHA
-    # ref) and the comment says vX.Y. It cannot resolve, so a caller that keeps it fails to
-    # start, which fails closed. PR 2 replaces it with `@<40-hex sha of the release> # v1.0`.
-    uses: 603-Identity/devcontainers/.github/workflows/devcontainer-bump-decision.yml@0000000000000000000000000000000000000000 # vX.Y
+    # A full commit SHA plus a version comment, `@<sha> # vX.Y`: a bare tag fails the reusable
+    # workflow's SHA check. Keep it equal to the pin in devcontainer-image.yml. Dependabot's
+    # github-actions ecosystem bumps both. A bump edits only .github/, so it is never exempt
+    # and always needs a review.
+    uses: 603-Identity/devcontainers/.github/workflows/devcontainer-bump-decision.yml@6ac20cedcd87ec09c84160a280f8a2c288cd85be # v1.0
     # <<< CONSUMER: decide pin
     with:
       head_sha: ${{ needs.resolve.outputs.head_sha }}

@@ -83,6 +83,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # The gate tests need jq and mikefarah yq (v4), which ubuntu-latest preinstalls; print them
+      # so a runner-image change that breaks that shows up here and not as a bare test failure.
+      - name: tool versions
+        run: jq --version && yq --version
       - name: run-gate-tests
         run: bash tools/tests/run-gate-tests.sh
       # The Linux runner honours the mode bit; Git Bash on Windows does not, so check it here.

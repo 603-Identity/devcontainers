@@ -1,0 +1,30 @@
+name: Devcontainer image
+
+# Copy this file, unchanged, to <repo>/.github/workflows/devcontainer-image.yml. It calls the
+# reusable workflow in 603-Identity/devcontainers that verifies, on every pull request, that
+# .devcontainer/ builds FROM one of the attested images that repo publishes: pinned by tag and
+# digest, with valid provenance and SBOM attestations, signed by its build.yml on main.
+# See README.md in that repo (Using an image in a repo) and docs/threat_model.md.
+#
+# Rules that make the check mean something:
+#   * The trigger is `pull_request` with NO `paths:` or `branches:` filter. This is a required
+#     check, and a filtered required check that never reports blocks every other PR forever.
+#   * The job id is `verify` with no `name:` and no `if:`. The called workflow's job is also
+#     `verify`, so the check is literally `verify / verify`: require exactly that name in the
+#     repo's ruleset, pinned to integration_id 15368 (GitHub Actions).
+#   * The pin is a full commit SHA plus a version comment, `@<sha> # vX.Y`. A bare tag fails
+#     the called workflow's own SHA check, because job.workflow_ref would end in the tag.
+#     Dependabot's github-actions ecosystem bumps it as a reviewed PR. Keep it equal to the
+#     `decide` pin in architect-review-gate.yml.
+#   * No write permission, and no other job in this file. `tools/check-consumer-workflows.sh`
+#     in that repo lints it.
+on:
+  pull_request:
+
+permissions: {}
+
+jobs:
+  verify:
+    permissions:
+      contents: read
+    uses: 603-Identity/devcontainers/.github/workflows/verify-devcontainer-image.yml@6ac20cedcd87ec09c84160a280f8a2c288cd85be # v1.0
