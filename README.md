@@ -23,7 +23,14 @@ Local sizes measured on 2026-09-28: base 445 MB, tofu 664 MB, node 752 MB. Share
 are stored only once, so all three together take about 0.95 GB.
 
 Work on these images is planned on this repo's issues and milestones. See
-[`docs/roadmap.md`](docs/roadmap.md) for status, next action and decisions.
+[`docs/roadmap.md`](docs/roadmap.md) for status, next action and decisions. This repo has
+no devcontainer of its own and is worked on from the host: its local gate (`gates.green`
+in [`.ai/project.yml`](.ai/project.yml)) runs `docker run` and `shellcheck`, and a
+container built from the template has neither a Docker daemon nor shellcheck.
+
+Repos that get no container from these images (glunk-works/loop-orchestrator, org profile,
+archived and demo repos) are listed under
+[Exceptions](docs/threat_model.md#exceptions) in the threat model.
 
 ## Using an image in a repo
 
