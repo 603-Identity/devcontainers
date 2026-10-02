@@ -11,6 +11,11 @@
 # restricted` returns OK through it, so the host will sign but will not
 # export the private key. No mount, no relay and no host env var are involved.
 #
+# A DIFFERENT failure, which this script cannot see (it runs once, at start): mid-session
+# `gpg: signing failed: Timeout` means the HOST passphrase cache expired and a pinentry
+# prompt is waiting on the host. README.md "Host signing policy" is the fix; nothing in the
+# image can warm or extend that cache.
+#
 # This replaced a socat relay (see git history: .devcontainer/gpg-forward.sh,
 # adapted from glunk-works/loop-orchestrator PR #81). Do not re-add that
 # without measuring first: it bind-mounted GPG_HOST_DIR and relayed the
@@ -44,6 +49,9 @@ echo '  # Signing is provided by VS Code agent forwarding, so       #' >&2
 echo '  # this is expected in a session with no VS Code attached    #' >&2
 echo '  # ("devcontainer up", a bare "docker exec", CI). Commit     #' >&2
 echo '  # from a VS Code terminal, or sign on the host.             #' >&2
+echo '  #                                                           #' >&2
+echo '  # Later "gpg: signing failed: Timeout" = the HOST cache     #' >&2
+echo '  # expired; see README.md "Host signing policy".             #' >&2
 echo '  ############################################################' >&2
 echo '' >&2
 exit 0
