@@ -38,6 +38,20 @@ USER 0
 # (CVE-2026-56864, CVE-2026-56865, CVE-2026-84445), so this clears 11 exceptions.
 # Compatibility notes: base64gzip output is equivalent but not byte-identical, and WinRM
 # provisioners are removed; no consuming repo uses either (checked 2026-10-01).
+#
+# The checksum file itself was verified for 1.13.0 only (2026-10-02, #58), by hand,
+# with cosign v3.1.3 against the release's keyless signature (the .sig and .pem beside
+# tofu_1.13.0_SHA256SUMS), checked against the Rekor transparency log:
+#   signer identity: https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/heads/v1.13
+#   OIDC issuer:     https://token.actions.githubusercontent.com
+#   source commit:   2b6193043d500dcfef1f3b4f4819b938b667099f (the v1.13.0 tag)
+# The image does not check this, and bump-binaries.sh does not either: it rewrites the
+# two ARGs below and leaves this comment alone. A pin at any other version is
+# unverified until someone repeats the check and updates this record (see
+# docs/threat_model.md, Known gaps). To repeat it:
+#   cosign verify-blob --certificate tofu_<v>_SHA256SUMS.pem --signature tofu_<v>_SHA256SUMS.sig \
+#     --certificate-identity "https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/heads/v<major>.<minor>" \
+#     --certificate-oidc-issuer https://token.actions.githubusercontent.com tofu_<v>_SHA256SUMS
 ARG TOFU_VERSION=1.13.0
 ARG TOFU_SHA256=ad494034a03aaa66d93fc1c2c164d01bedf21b44cfb8b616182cb69424a67672
 RUN curl -fsSL "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.zip" \
