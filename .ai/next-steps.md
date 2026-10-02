@@ -1,30 +1,30 @@
 # Next steps
 
-**Now:** P0: cross-org images -- done. Milestone 1 has no open issues; ready to archive.
+**Now:** P1: pilot adoption (milestone 2) -- planning.
 
 **Just done:**
-- Fresh-session architect review of [#174](https://github.com/603-Identity/devcontainers/pull/174)
-  (#147: the tofu pin rule in `README.md`, `.github/dependabot.yml` and the
-  `bump-binaries.sh` PR body now say a consumer moves `tofu_version` in the PR that takes the
-  image digest). No findings: the tree has no stale copy left, and the bump-PR text renders.
-  The owner merged it (`6f63aec`).
-- Merged cursor-sync #175 through `/resume`'s offer.
+- P0: cross-org images archived and milestone 1 closed. The roadmap records P0 as done
+  (#177, `0c3271d`).
+- `/way-of-working:plan-sprint` placed #170, #171 and #172 (the merge-guard follow-ups) in
+  milestone 4 (Repo hardening), in that order.
+- Opened #178: ignore `.ai/archive/`, where archive-sprint snapshots each sprint's ledger.
+- Retro routed upstream: a "confirmed again" on glunk-works/claude-workbench#209, plus new
+  issues #219 (`.ai/archive/` ignore check) and #220 (plan-sprint's uncommitted ledger
+  blocks archive-sprint).
 
-**Next:** `/way-of-working:archive-sprint` to retire P0 and close milestone 1.
+**Milestone close:** closed -- milestone 1 (P0: cross-org images), 0 open issues, plan anchor verified.
+
+**Next:** plan P1: pilot adoption (milestone 2). Confirm the build order, #5 (host signing
+policy) then #10 (the pilot), pick the first task, and hand off with that task anchored.
 Model: **opus** (architect).
 
-**HITL Gate: OPEN** -- first anchor for milestone 1, description sha `ebe3ff3e`. This
-session's `/resume` did not run `plan-anchor.sh verify`, so handoff had no valid baseline. The
-sha matches the one you confirmed with "go" this session. Say go to confirm.
-
-**Done here means:** milestone 1's issues are closed. No repo has adopted the template yet;
-the pilots are tracked in #10.
+**HITL Gate: OPEN** -- first anchor for milestone 2, description sha `e54dcdde`. Confirm the
+description is the approved P1 plan.
 
 **Open for the owner (non-blocking):**
-- **Place #170, #171 and #172** in a milestone (Repo hardening, m4, fits) via
-  `/way-of-working:plan-sprint`. #170 and #171 are the merge-guard hook's own security gaps.
-- **#148 is date-bound:** renew or retire the Trivy exceptions before 2026-11-01. Each renewal
-  extends at most 30 days.
+- Merge #178, so `.ai/archive/` stops showing as untracked.
+- **#148 is date-bound:** renew or retire the Trivy exceptions before 2026-11-01 (milestone 5).
+  Each renewal extends at most 30 days.
 - Amend spec §4 to the lint's wider scope.
 - Run the tag ruleset's App-token delete negative test once the bump-binaries App exists (#102).
 - Still to delete in the UI: `Seuss27/devc-spike2-host` and `glunk-works/devc-spike2-consumer`.
@@ -34,4 +34,4 @@ the pilots are tracked in #10.
   `MSYS_NO_PATHCONV=1` before passing a `/mnt/c/...` path.
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan:
-https://github.com/603-Identity/devcontainers/milestone/1
+https://github.com/603-Identity/devcontainers/milestone/2
