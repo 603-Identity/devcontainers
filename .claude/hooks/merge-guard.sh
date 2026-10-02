@@ -171,7 +171,7 @@ cfg="${CLAUDE_PROJECT_DIR:-.}/.ai/project.yml"
 want_repo="$(sed -n 's/^repo:[[:space:]]*\([^[:space:]#]*\).*/\1/p' "$cfg" 2>/dev/null | head -n 1)"
 want_base="$(sed -n 's/^pr_base:[[:space:]]*\([^[:space:]#]*\).*/\1/p' "$cfg" 2>/dev/null | head -n 1)"
 want_repo="${want_repo%$'\r'}" want_base="${want_base%$'\r'}"
-[ -n "$want_repo" ] && [ -n "$want_base" ] || block "could not read repo and pr_base from $cfg"
+if [ -z "$want_repo" ] || [ -z "$want_base" ]; then block "could not read repo and pr_base from $cfg"; fi
 [ "$repo" = "$want_repo" ] || block "--repo $repo is not this repo ($want_repo)"
 
 pr="$(gh api "repos/$repo/pulls/$n" \
