@@ -1,39 +1,40 @@
 # Next steps
 
-**Now:** P0: cross-org images -- implementing. #30 PR 1 merged as
-[#133](https://github.com/603-Identity/devcontainers/pull/133) (`6ac20ce`); PR 2 is next,
-behind the owner's post-merge steps.
+**Now:** P0: cross-org images -- implementing, milestone 1. #30's code is complete: PR 1
+([#133](https://github.com/603-Identity/devcontainers/pull/133)) and PR 2
+([#136](https://github.com/603-Identity/devcontainers/pull/136), `92ff9ef`) have both merged.
+An owner decision comes before the next task.
 
 **Just done:**
-- Fresh-session architect review of #133 posted (opus): no blocking findings. Spec §1-§6
-  conformance read, the Go and gate suites run offline in an isolated sandbox, and planted
-  mutations confirmed red for each key guard. The vendor re-diff was witnessed from CI.
-  `architect-review` went green on `5dd64d1`. No new issues: the notes are already #127,
-  #128 and #129.
-- The owner merged #133 (`6ac20ce`).
-- First anchor for milestone 1 in this handoff, description sha `ebe3ff3e…`. The resume did
-  not verify the prior anchor, so the gate below also covers it.
+- Fresh-session `architect-review` of #136 on opus, posted against head `b70a731`, gate green
+  (commit status). No blocking findings. Verified locally in an isolated sandbox: the `v1.0`
+  pin is `6ac20ce`, the called workflows' permissions fit both callers, the lint passes on
+  the template, a planted mutation turned exactly its test red, and the docs match the v1.0
+  verifier code. Nothing was filed; the review's notes are owner items already listed below.
+- The owner merged #136 as `92ff9ef`.
+- The milestone-1 plan anchor re-verified `match`. No task is anchored (`task_issue: null`),
+  so the next `/way-of-working:resume` waits.
 
-**Next:** task #30 — build #30 PR 2 exactly as
-[spec v5.2 §7 step 2](https://github.com/603-Identity/devcontainers/issues/30#issuecomment-5938653643)
-lists it, on **sonnet** (coder): the template caller pinned `@<sha of v1.0> # v1.0`, the
-template gate's `decide` pin set to the same, `tools/check-consumer-workflows.sh`, README
-steps 1-3, the Dockerfile header, and the threat model (§8). Then the local green gate and
-`/way-of-working:critic-gate`. Do not create the `devc-automerge-on` tag.
+**Next:** owner decision (the HITL Gate below), then the chosen milestone-1 task on **opus**
+(architect) for its spec, or straight to a coder if it is small. Do not create the
+`devc-automerge-on` tag.
 
-**HITL Gate: OPEN** (owner, before PR 2 can start):
-1. Add `selftest` to the live `main-required-checks` ruleset.
-2. Create the tag ruleset (spec §6). Read it back through the API and run the App-token
-   delete as the negative test.
-3. Tag `v1.0` on `6ac20ce`, after `git merge-base --is-ancestor 6ac20ce origin/main`, and
-   record its SHA for PR 2.
+**HITL Gate: OPEN.** For the owner to decide:
+1. Close #30 now, with spec §7 step 3 (pilots) carried by #10 in milestone 2 and step 4
+   (turning auto-merge on) behind its preconditions (#122, #124, a pilot), or keep #30 open
+   until step 4 is decided.
+2. Pick the next task: the rest of milestone 1, or move to milestone 2 (#10 pilots). #8 has
+   a date: the `tofu` image's Trivy exceptions expire 2026-10-30.
+3. Close [#137](https://github.com/603-Identity/devcontainers/pull/137), the earlier cursor
+   sync (PR 2 built, review next). This PR replaces it.
 
-Turning auto-merge on is a separate owner decision behind spec §7 step 4 (#122, #124, a
-pilot).
-
-**Open for the owner:** the not-a-candidate row never disarms (#126, #132); the spec §5
-table needs the MAJOR-bump correction (#127); buildkit v0.33.0 vs frontend 1.27.1 (#128).
-Still to delete in the UI: `Seuss27/devc-spike2-host` and `glunk-works/devc-spike2-consumer`.
+**Open for the owner (non-blocking):** amend spec §4 to the lint's wider scope (`push`/`create`,
+an explicit `permissions:` block, hosted runners); run the tag ruleset's App-token delete
+negative test once the bump-binaries App exists; the not-a-candidate row never disarms (#126,
+#132); the spec §5 table's MAJOR-bump correction (#127); buildkit v0.33.0 vs frontend 1.27.1
+(#128). Still to delete in the UI: `Seuss27/devc-spike2-host` and
+`glunk-works/devc-spike2-consumer`. The gate suites are flaky on this Windows host (a test can
+exit 127 with no output); CI on Linux is the check of record.
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan:
 https://github.com/603-Identity/devcontainers/milestone/1
