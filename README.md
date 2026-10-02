@@ -28,8 +28,8 @@ no devcontainer of its own and is worked on from the host: its local gate (`gate
 in [`.ai/project.yml`](.ai/project.yml)) runs `docker run` and `shellcheck`, and a
 container built from the template has neither a Docker daemon nor shellcheck.
 
-Repos that get no container from these images (glunk-works/loop-orchestrator, org profile,
-archived and demo repos) are listed under
+Repos that get no container from these images (glunk-works/loop-orchestrator, this repo,
+org profile, archived and demo repos) are listed under
 [Exceptions](docs/threat_model.md#exceptions) in the threat model.
 
 ## Using an image in a repo
@@ -345,6 +345,44 @@ format is internal and changes between releases. The `resources/native-binary/` 
 internal to the extension too (checked against 2.1.286). If `ls` finds nothing, the
 extension has moved it; look for the binary under the extension directory before reaching
 for the state files.
+
+## Working on this repo from Windows (WSL)
+
+This repo has no devcontainer of its own (docs/threat_model.md, Exceptions): building and
+smoke-testing the images needs a Docker daemon, and giving a container one would break the
+boundaries the images exist to enforce. The local Linux environment is the Ubuntu WSL2
+distro instead, working on the same `/mnt/c/...` checkout.
+
+Set it up once (and again after changing a pin) from inside the distro:
+
+```
+bash tools/wsl-setup.sh
+```
+
+It installs the mikefarah yq release binary at the version `images/base/Dockerfile` pins,
+the Node release `images/node/Dockerfile` pins (for `tests/template-proof.sh`'s devcontainer
+CLI), the Go release that `.github/workflows` pins, and jq and shellcheck from apt. It reads
+each pin from the repo rather than repeating it, but only Go follows what CI runs: CI uses
+the runner's own jq, yq, node and shellcheck, and apt's versions are whatever the distro
+ships. apt's `yq` is the Python wrapper and fails the gate suites. The script runs as root:
+start it as root (`wsl -u root`) or let it re-run itself under `sudo`. It checks the shape of
+each pin before use, but the pins come from your checkout, so run it on one you trust.
+
+| Runs in WSL | Stays on Windows |
+| --- | --- |
+| `bash tools/tests/run-gate-tests.sh` (the gate suites; Git Bash on Windows is flaky: a test can exit 127 with no output) | `git` (commits, branches, signing) and `gh` |
+| `shellcheck`, `go test` / `go vet` for `tools/devc-verify` | the editor and Claude Code |
+| `bash .github/scripts/build-and-test.sh local` (builds the images and runs `tests/smoke.sh` in each), `tests/template-proof.sh` | |
+
+Image builds and the smoke tests need `docker` inside the distro: turn on Docker Desktop's
+WSL integration for it (Settings, Resources, WSL integration).
+
+- **Don't run git from both sides on the same checkout.** WSL on `/mnt/c` reports file mode
+  changes; if it ever has to run git, `git config core.fileMode false` there.
+  `tests/template-proof.sh` does run `git init` in WSL, but on a throwaway fixture, not the
+  checkout. The setup script doesn't install git; the Ubuntu distro ships it.
+- **WSL has its own home directory**, so the per-account gitconfig and the `gh` logins do
+  not carry over. The gate suites don't need them: they are offline and use a fake `gh`.
 
 ## Updating a pinned tool
 

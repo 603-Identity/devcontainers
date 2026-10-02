@@ -249,6 +249,18 @@ Every repo in both orgs gets a container from these images unless one of these a
   repo's `<repo>-home` volume, token included (a direct breach of boundary 5), and the
   sandbox resolves worktree paths inside the container that a host daemon cannot see. The
   rule for that container: it mounts no other repo's volumes.
+- **603-Identity/devcontainers has no devcontainer.** Building and smoke-testing its images
+  needs a Docker daemon, which in a container means docker-in-docker (`--privileged`, a
+  breach of boundary 4) or the host socket (a breach of boundary 5): the same reasoning as
+  the loop-orchestrator exception above. A devcontainer would cover only lint and the gate
+  suites, and the repo would still need a host Linux shell for builds. That shell is the
+  Ubuntu WSL2 distro (`tools/wsl-setup.sh`, README "Working on this repo from Windows"):
+  host-side like PowerShell, so it adds no boundary to hold. It is not a sandbox either: with
+  Docker Desktop's WSL integration on, the distro reaches the host Docker daemon exactly as
+  PowerShell does, so code run there (a PR branch's test scripts, the npm-installed
+  devcontainer CLI) can mount any repo's `-home` volume. Only run code from checkouts you trust there. Revisit if a
+  second contributor or machine joins, or the WSL setup drifts from CI (a lint-and-test-only
+  devcontainer would still exclude image builds).
 - **No devcontainer** for org profile repos (`.github`), archived repos, or demo
   repositories.
 
