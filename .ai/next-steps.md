@@ -1,25 +1,29 @@
 # Next steps
 
-**Now:** P0: cross-org images -- implementing, milestone 1.
+**Now:** P0: cross-org images -- awaiting_review, milestone 1.
 
 **Just done:**
-- Fresh-session architect review of [#154](https://github.com/603-Identity/devcontainers/pull/154)
-  (head `be5dcf4`): no blocking findings, nothing filed. The new smoke case was witnessed by
-  mutation: with the `GIT_CONFIG_GLOBAL=/dev/null` origin read reverted, it goes red
-  (`other -> b.gitconfig`). The gate went green and the human merged it as `1c6b4a0`, closing #118 and #69.
-- Old cursor PR #153 closed.
+- [#157](https://github.com/603-Identity/devcontainers/pull/157) open for #124 (head `8e2dca5`):
+  the docs-only scope step is now `.github/scripts/image-scope.sh`; a new `scope` job gates
+  `publish` on push to `main`; schedule, dispatch and unknown events always publish. Pinned by
+  `tools/tests/image-scope-test.sh`, run by `run-gate-tests.sh`. It also closes #81 on merge.
+- First CI run was red on the non-ASCII cases (character count where `fast-import` needs bytes);
+  fixed in `8e2dca5`, the gate-test and selftest checks are green on it.
+- Critic pass: none ran on this diff (handed off without one, by choice of the session).
 
-**Next:** task #124 — make `build.yml` publish on push to `main` only when an image-affecting
-path changed (the weekly schedule and manual dispatch still publish), reusing the PR docs-only
-scope step, with a test. Then #58. Model: **sonnet** (coder).
+**Next:** `/way-of-working:architect-review 157`, in a **new session** (fresh-session review
+gate). Model: **opus** (architect). Wait for the PR's `Build and smoke-test (no push)` check to
+go green first. After it merges, task #58 is next in the milestone.
 
-**HITL Gate: OPEN** -- first anchor for milestone 1 at task #124, description sha `ebe3ff3e…`
-(no baseline: the review session's resume did not run `plan-anchor.sh verify`; a handoff-time
-`verify --plan` against the prior anchor printed `match`, so the description is unchanged). A human "go" is needed.
+**HITL Gate: OPEN** -- first anchor for milestone 1 at a review (not a task build), description
+sha `ebe3ff3e…`; no baseline because this session's resume did not run `plan-anchor.sh verify`,
+but a handoff-time `verify --plan` against the prior anchor printed `match`. A human "go" is needed.
 
-**Open for the owner (non-blocking):** amend spec §4 to the lint's wider scope; run the tag
-ruleset's App-token delete negative test once the bump-binaries App exists (#102). Still to
-delete in the UI: `Seuss27/devc-spike2-host` and `glunk-works/devc-spike2-consumer`. Use the
+**Open for the owner (non-blocking):** the first docs-only push to `main` after #157 merges is
+the live proof that `publish` skips (watch the `scope` job). Amend spec §4 to the lint's wider
+scope; run the tag ruleset's App-token delete negative test once the bump-binaries App exists
+(#102). Still to delete in the UI: `Seuss27/devc-spike2-host` and
+`glunk-works/devc-spike2-consumer`. The active `gh` account can flip to Seuss27: use the
 JaredGroves-603 token for this repo's `gh` calls. Run WSL jobs from the Windows side as one
 foreground `wsl` process; from Git Bash set `MSYS_NO_PATHCONV=1` before passing a `/mnt/c/...` path.
 
