@@ -49,43 +49,16 @@ jobs:
 
       # A docs-only PR skips the slow steps below. The JOB still runs and passes, because
       # this job's name is a required check: a workflow filtered out with `on.paths` never
-      # reports, and the check would stay pending forever. A `case` over the changed files,
-      # not a path-filter action, so no third-party Action holds this job's token.
-      # Only what decides an image's or the template's behaviour counts: images/, template/,
-      # tests/, the build script, this workflow, and the two root files that shape images.
-      # The diff is base..merge-commit, so a base that moved since the branch was cut only
-      # adds files (more runs, never fewer). `--no-renames` lists a renamed file's old path
-      # too, so moving a file out of scope cannot skip the build. `-z` makes the names
-      # NUL-delimited: without it git C-quotes a path with non-ASCII bytes, a control
-      # character such as a tab or newline, `"` or `\`, which then matches no pattern below
-      # (`core.quotePath=false` stops quoting only the non-ASCII bytes). The list goes
-      # through a file because a shell variable cannot hold a NUL. `set -e` is load-bearing:
-      # a failed fetch or diff fails the job, and an empty list fails it too, so neither
-      # ever reads as "nothing changed".
+      # reports, and the check would stay pending forever. A script over the changed files,
+      # not a path-filter action, so no third-party Action holds this job's token. What
+      # counts, and why the diff is read the way it is, is in the script's header; the
+      # tools/tests/image-scope-test.sh suite pins it.
       - name: Did the images or the template change?
         id: scope
         env:
+          EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: |
-          set -euo pipefail
-          git fetch --no-tags --depth=1 origin "$BASE_SHA"
-          files="$RUNNER_TEMP/changed-files.nul"
-          git diff -z --name-only --no-renames "$BASE_SHA" HEAD > "$files"
-          if [ ! -s "$files" ]; then
-            echo "::error::git diff listed no changed files. Failing closed rather than skipping the build."
-            exit 1
-          fi
-          build=0
-          while IFS= read -r -d '' f; do
-            case "$f" in
-              images/*|template/*|tests/*|.github/scripts/*|.github/workflows/build.yml) build=1 ;;
-              .trivyignore.yaml|.gitattributes) build=1 ;;
-            esac
-          done < "$files"
-          echo "build=$build" >> "$GITHUB_OUTPUT"
-          if [ "$build" != 1 ]; then
-            echo "No image, template, test or build file changed: build and smoke test skipped." >> "$GITHUB_STEP_SUMMARY"
-          fi
+        run: bash .github/scripts/image-scope.sh
 
       - name: Build and test all images
         if: steps.scope.outputs.build == '1'
@@ -98,9 +71,34 @@ jobs:
         if: steps.scope.outputs.build == '1'
         run: bash tests/template-proof.sh
 
+  # Every push to main used to publish a new tag set, docs-only pushes included, and each
+  # tag set is a Dependabot bump PR in every consumer. Publish only when the push changed
+  # something that affects an image. The weekly schedule and manual dispatch always do.
+  # This job is not a required check, so skipping the publish job below leaves PRs alone.
+  scope:
+    name: Did the push change an image?
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      build: ${{ steps.scope.outputs.build }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Did the images or the template change?
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.before }}
+        run: bash .github/scripts/image-scope.sh
+
   publish:
     name: Build, test, push and attest
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: scope
+    if: needs.scope.outputs.build == '1'
     runs-on: ubuntu-latest
     permissions:
       contents: read
