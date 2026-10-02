@@ -40,7 +40,7 @@ at build and publish time, before any consumer pulls.
 
 | Sink | Written by | Control |
 |---|---|---|
-| `ghcr.io/603-identity/devcontainer-*` | `build.yml`'s publish job, on push to `main`, the weekly schedule, or manual dispatch on `main` | The image is built, smoke-tested and scanned before any push. The job never runs on a pull request. |
+| `ghcr.io/603-identity/devcontainer-*` | `build.yml`'s publish job, on a push to `main` that changed an image-affecting path (`.github/scripts/image-scope.sh` decides), the weekly schedule, or manual dispatch on `main` | The image is built, smoke-tested and scanned before any push. The job never runs on a pull request. |
 | Attestations (build provenance, CycloneDX SBOM) | `actions/attest`, per pushed digest | Signed with Sigstore through the job's OIDC token, and stored on GitHub and in the registry. |
 | Code scanning (SARIF) | the publish job | Carries the full findings, including unfixed and allowlisted ones, so nothing the gate lets through is hidden. |
 | Commit statuses (`architect-review`) | `architect-review-gate.yml`, here and in every consumer's copy | `statuses: write` only here. It fails closed when it cannot look. A consumer's `post` job also holds `contents` and `pull-requests: write` to arm or disarm auto-merge, which is off (see below). |
@@ -198,9 +198,10 @@ What each piece trusts, and what it leaves open:
   switch makes "not created yet" the off state. When it is on, this repo's `main`, then the
   publish, then a consumer merge becomes an unattended chain whose only human control is this
   repo's own `architect-review`, an existence gate with known gaps (#92, #93, #94). The owner
-  creates `devc-automerge-on` only after docs-only pushes stop publishing (every push to
-  `main` publishes a new tag set today), the review-gate trust model is decided, and a pilot
-  has taken real bumps through the review path.
+  creates `devc-automerge-on` only after the review-gate trust model is decided and a pilot
+  has taken real bumps through the review path. Docs-only pushes no longer publish: a push
+  to `main` publishes only when it changed an image-affecting path (#124), so a docs-only
+  merge ships no new tag set.
 - **The kill-switch window.** Removing the tag stops later *arming*; `decide` still runs. It
   does **not** disarm open PRs: an armed PR merges whenever its remaining checks go green,
   possibly hours later. To close the window, post an allowlisted comment on each armed PR
