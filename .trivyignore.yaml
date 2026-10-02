@@ -9,83 +9,83 @@
 #     and the weekly rebuild goes red until someone re-reviews it: extends it with a
 #     fresh reason, or removes it because the fix has shipped.
 #
-# Current entries (added 2026-09-28, re-reviewed 2026-10-01 and renewed to 2026-10-30):
-# Go module and stdlib CVEs compiled into upstream release binaries. Fixing them needs a new upstream build. We cannot rebuild
-# tofu or tflint ourselves without giving up the upstream checksum verification that
-# is the point of pinning them.
-#   * tofu 1.13.0 is the newest release (2026-09-30). It must match every consuming repo's CI
-#     (tofu_version in each setup-opentofu step), so the pin moves only together with them.
-#     Only 3 tofu entries remain: CVE-2026-56864, CVE-2026-56865 and CVE-2026-84445 (shared
-#     with tflint, so they sit on the tflint-and-tofu entries below). The move from 1.12.6
-#     cleared the other 11.
-#   * tflint 0.64.0 is the newest tflint release (re-checked 2026-10-01: all 17 tflint
+# Current entries (added 2026-09-28, re-reviewed 2026-10-02 and renewed to 2026-11-01):
+# Go module and stdlib CVEs compiled into upstream release binaries. Fixing them needs
+# a new upstream build. We cannot rebuild tofu or tflint ourselves without giving up
+# the upstream checksum verification that is the point of pinning them.
+#   * tofu is pinned at 1.13.0. A consumer moves tofu_version in the same PR that takes
+#     the image digest (images/tofu/Dockerfile has the history). 1.13.1 (2026-10-01) is
+#     out and carries the same 3 findings, so no tofu release fixes them yet:
+#     CVE-2026-56864, CVE-2026-56865 and CVE-2026-84445 (shared with tflint, so they sit
+#     on the tflint-and-tofu entries below). The move from 1.12.6 cleared the other 11.
+#   * tflint 0.64.0 is the newest tflint release (re-checked 2026-10-02: all 17 tflint
 #     entries still match it, and no newer release exists).
 vulnerabilities:
   - id: CVE-2026-27145
     paths: ["usr/local/bin/tflint"]
     statement: "HIGH in stdlib compiled into upstream tflint; no fixed upstream release at this pin."
-    expired_at: 2026-10-30
+    expired_at: 2026-11-01
   - id: CVE-2026-33818
     paths: ["usr/local/bin/tflint"]
     statement: "HIGH in stdlib compiled into upstream tflint; no fixed upstream release at this pin."
-    expired_at: 2026-10-30
+    expired_at: 2026-11-01
   - id: CVE-2026-39821
     paths: ["usr/local/bin/tflint"]
     statement: "HIGH in golang.org/x/net, stdlib compiled into upstream tflint; no fixed upstream release at this pin."
-    expired_at: 2026-10-30
+    expired_at: 2026-11-01
   - id: CVE-2026-39822
     paths: ["usr/local/bin/tflint"]
     statement: "HIGH in stdlib compiled into upstream tflint; no fixed upstream release at this pin."
-    expired_at: 2026-10-30
+    expired_at: 2026-11-01
   - id: CVE-2026-42504
     paths: ["usr/local/bin/tflint"]
     statement: "HIGH in stdlib compiled into upstream tflint; no fixed upstream release at this pin."
-    expired_at: 2026-10-30
+    expired_at: 2026-11-01
   - id: CVE-2026-46600
     paths: ["usr/local/bin/tflint"]
     statement: "HIGH in golang.org/x/net, stdlib compiled into upstream tflint; no fixed upstream release at this pin."
-    expired_at: 2026-10-30
+    expired_at: 2026-11-01
   - id: CVE-2026-56853
     paths: ["usr/local/bin/tflint"]
     statement: "HIGH in stdlib compiled into upstream tflint; no fixed upstream release at this pin."
-    expired_at: 2026-10-30
+    expired_at: 2026-11-01
   - id: CVE-2026-56854
     paths: ["usr/local/bin/tflint"]
     statement: "HIGH in golang.org/x/crypto compiled into upstream tflint; no fixed upstream release at this pin."
-    expired_at: 2026-10-30
+    expired_at: 2026-11-01
   - id: CVE-2026-56858
     paths: ["usr/local/bin/tflint"]
     statement: "HIGH in stdlib compiled into upstream tflint; no fixed upstream release at this pin."
-    expired_at: 2026-10-30
+    expired_at: 2026-11-01
   - id: CVE-2026-56859
     paths: ["usr/local/bin/tflint"]
     statement: "HIGH in stdlib compiled into upstream tflint; no fixed upstream release at this pin."
-    expired_at: 2026-10-30
+    expired_at: 2026-11-01
   - id: CVE-2026-56860
     paths: ["usr/local/bin/tflint"]
     statement: "HIGH in stdlib compiled into upstream tflint; no fixed upstream release at this pin."
-    expired_at: 2026-10-30
+    expired_at: 2026-11-01
   - id: CVE-2026-56862
     paths: ["usr/local/bin/tflint"]
     statement: "HIGH in stdlib compiled into upstream tflint; no fixed upstream release at this pin."
-    expired_at: 2026-10-30
+    expired_at: 2026-11-01
   - id: CVE-2026-56864
     paths: ["usr/local/bin/tflint", "usr/local/bin/tofu"]
     statement: "HIGH in golang.org/x/mod compiled into upstream tflint and tofu; no fixed upstream release at this pin."
-    expired_at: 2026-10-30
+    expired_at: 2026-11-01
   - id: CVE-2026-56865
     paths: ["usr/local/bin/tflint", "usr/local/bin/tofu"]
     statement: "HIGH in golang.org/x/mod compiled into upstream tflint and tofu; no fixed upstream release at this pin."
-    expired_at: 2026-10-30
+    expired_at: 2026-11-01
   - id: CVE-2026-84304
     paths: ["usr/local/bin/tflint"]
     statement: "HIGH in google.golang.org/grpc compiled into upstream tflint; no fixed upstream release at this pin."
-    expired_at: 2026-10-30
+    expired_at: 2026-11-01
   - id: CVE-2026-84445
     paths: ["usr/local/bin/tflint", "usr/local/bin/tofu"]
     statement: "HIGH in google.golang.org/grpc compiled into upstream tflint and tofu; no fixed upstream release at this pin."
-    expired_at: 2026-10-30
+    expired_at: 2026-11-01
   - id: GHSA-hrxh-6v49-42gf
     paths: ["usr/local/bin/tflint"]
     statement: "HIGH in google.golang.org/grpc compiled into upstream tflint; no fixed upstream release at this pin."
-    expired_at: 2026-10-30
+    expired_at: 2026-11-01

@@ -17,9 +17,9 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 USER 0
 
 # --- OpenTofu. THE pin that matters most: it must equal `tofu_version` in every
-# consuming repo's setup-opentofu step. Bump this and every repo's workflows TOGETHER,
-# never this alone. A container that validates with a different tofu than CI reports a verdict CI
-# does not share.
+# consuming repo's setup-opentofu step. A consumer moves `tofu_version` in the same PR
+# that takes this image's digest, so the two never differ for long. A container that
+# validates with a different tofu than CI reports a verdict CI does not share.
 #
 # 1.11.14 (from 1.11.6, 2026-09-28): 1.11.6 carries GHSA-q7j3-v8qv-22vq (HIGH,
 # arbitrary file read during git operations via a crafted URL, fixed in 1.11.10).
@@ -32,6 +32,7 @@ USER 0
 # the same 14 HIGH findings as 1.11.14 (all allowlisted in .trivyignore.yaml), so this
 # bump clears none of them. Consumers must move tofu_version in the same PR that takes
 # this image's digest.
+#
 # 1.13.0 (from 1.12.6, 2026-10-01): the newest release (2026-09-30). Checksum from the
 # release's own tofu_1.13.0_SHA256SUMS. Trivy: 3 of the 14 HIGH findings remain
 # (CVE-2026-56864, CVE-2026-56865, CVE-2026-84445), so this clears 11 exceptions.
