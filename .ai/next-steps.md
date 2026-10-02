@@ -12,7 +12,7 @@ The README image-table versions are dropped.
 
 **Next:** task #25 — the
 [threat-model prose pass](https://github.com/603-Identity/devcontainers/issues/25#issuecomment-5914808846),
-on **sonnet** (coder), then `/way-of-working:ship` it as a docs-only PR. #4, #43 and #30 have all
+on **opus** (architect), then `/way-of-working:ship` it as a docs-only PR. #4, #43 and #30 have all
 landed, so the file can describe the final state. One PR also folds in the gap entries #54, #69
 and #58, which edit the same file (three separate edits would conflict). Extend what PR #35
 already delivered rather than adding it twice. #69 and #58 are documented only: no change to
