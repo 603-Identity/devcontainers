@@ -40,6 +40,28 @@ expect_pass "plain command" "ls -la"
 expect_pass "a grep that mentions the words" 'grep -n "gh pr merge" README.md'
 expect_pass "gh pr view mentioning merged" 'gh pr list --state merged --json mergeStateStatus'
 expect_pass "git merge" "git merge --ff-only origin/main"
+# Text that only MENTIONS the command: the false positives that blocked #169's own commit.
+expect_pass "quoted heredoc commit message" "git commit -q -F - <<'EOF'
+feat(claude): x
+
+but the
+\`gh pr merge\` deny rules beat every allow rule; gh pr merge 7
+EOF
+git push -u origin x"
+expect_pass "double-quoted delimiter heredoc" 'cat > f <<"EOF"
+gh pr merge 7 --squash
+EOF'
+expect_pass "dash heredoc with tab-indented end" "$(printf 'cat <<-'"'"'EOF'"'"'\n\tgh pr merge 7\n\tEOF\n')"
+expect_pass "single-quoted message" "git commit -m 'note: \`gh pr merge\` is denied; gh pr merge 7'"
+expect_pass "multi-line double-quoted body" 'gh pr create --title t --body "line one
+gh pr merge in a body line; also | gh pr merge 7"'
+expect_pass "escaped backticks in double quotes" 'gh pr comment 5 --body "use \`gh pr merge\` here"'
+expect_pass "comment" "ls # then gh pr merge 7"
+expect_pass "comment after a separator" "ls; # x; gh pr merge 7"
+expect_pass "grep -c on the words" 'grep -c "gh pr merge" README.md'
+expect_pass "unquoted heredoc mentioning the words" "cat <<EOF
+gh pr merge 7; echo \$HOME
+EOF"
 new_scenario merge-guard
 RC=0; printf 'not json, no keyword' | bash "$HOOK" > /dev/null 2>&1 || RC=$?
 assert_rc "non-JSON input without the keyword" 0 "$RC"
@@ -83,7 +105,34 @@ rm -rf x" \
   "true || gh pr merge 7" \
   "& gh pr merge 7 --squash" \
   "gh.exe pr merge 7 --squash" \
-  "gh pr merge 7 --repo other/fork --squash --match-head-commit $SHA"; do
+  "gh pr merge 7 --repo other/fork --squash --match-head-commit $SHA" \
+  'echo "x $(gh pr merge 7) y"' \
+  'echo "x `gh pr merge 7` y"' \
+  'echo "x $(echo $(gh pr merge 7)) y"' \
+  "bash -c 'gh pr merge 7'" \
+  "bash -lc 'gh pr merge 7'" \
+  'sh -c "gh pr merge 7"' \
+  "bash -x -c 'gh pr merge 7'" \
+  'eval "gh pr merge 7"' \
+  "pwsh -Command 'gh pr merge 7'" \
+  "iex 'gh pr merge 7'" \
+  'cat <<EOF
+$(gh pr merge 7)
+EOF' \
+  'cat <<EOF
+`gh pr merge 7`
+EOF' \
+  "cat <<'EOF'
+text
+EOF
+gh pr merge 7" \
+  "cat <<'EOF'
+never closed
+gh pr merge 7" \
+  "echo 'unterminated; gh pr merge 7" \
+  "ls #comment
+gh pr merge 7" \
+  "echo a#b; gh pr merge 7"; do
   new_scenario merge-guard
   expect_block "blocked shape: $c" "$c"
   assert_log_lacks "blocked shape: $c: no GitHub read" "gh api"
