@@ -22,8 +22,10 @@ outside `code_paths`: no critic pass, no `architect-review`. Do not merge.
 
 **HITL Gate: NONE OPEN.** The next gate is the human's merge of the #53 PR.
 
-**Open for the owner (non-blocking):** close #30, or keep it open until spec §7 step 4 (its
-step 3 pilots are #10, milestone 2); close
+#30 is closed. Its spec §7 step 3 checklist is on #10 (milestone 2). Step 4, turning auto-merge
+on, is #139 (milestone 3), which lists every precondition, #102's tag delete test included.
+
+**Open for the owner (non-blocking):** close
 [#137](https://github.com/603-Identity/devcontainers/pull/137), the superseded cursor sync;
 amend spec §4 to the lint's wider scope (`push`/`create`, an explicit `permissions:` block,
 hosted runners); run the tag ruleset's App-token delete negative test once the bump-binaries
