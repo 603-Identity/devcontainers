@@ -34,21 +34,92 @@ unaffected.
 
 1. Copy [`template/.devcontainer/`](template/.devcontainer/) into the repo unchanged.
 2. In its `Dockerfile`, set `FROM` to one image, by tag **and** digest. Take both from the
-   latest *Build images* run summary. Verify the image before its first use, and every new
-   digest after it (see step 3):
+   latest *Build images* run summary. CI verifies every digest on every pull request (step 3),
+   so a bad one fails the PR. To check one by hand first:
    ```sh
    gh attestation verify oci://ghcr.io/603-identity/devcontainer-tofu@sha256:<digest> \
      --repo 603-Identity/devcontainers \
-     --signer-workflow 603-Identity/devcontainers/.github/workflows/build.yml \
+     --cert-identity https://github.com/603-Identity/devcontainers/.github/workflows/build.yml@refs/heads/main \
+     --cert-oidc-issuer https://token.actions.githubusercontent.com \
      --source-ref refs/heads/main --deny-self-hosted-runners
    ```
-3. Add `.devcontainer` to the repo's `.github/dependabot.yml` under the `docker`
-   ecosystem. Image bumps then arrive as reviewed PRs. Verify each bump's digest with the
-   command above before merging it.
+3. Wire up CI (the full list is in [What the consuming repo needs](#what-the-consuming-repo-needs)):
+   - Copy [`template/.github/workflows/devcontainer-image.yml`](template/.github/workflows/devcontainer-image.yml)
+     and [`architect-review-gate.yml`](template/.github/workflows/architect-review-gate.yml)
+     into `.github/workflows/`. The first runs this repo's verifier as the check
+     `verify / verify` on every pull request. Copy it unchanged.
+   - Edit only the marked per-consumer values in the gate.
+   - Add `.devcontainer` to `.github/dependabot.yml` under the `docker` ecosystem, and
+     configure the `github-actions` ecosystem too. Image bumps and verify-pin bumps then
+     arrive as pull requests. **Dependabot's image bump is not exempt from review**: a human
+     merges it (auto-merge is off, see below).
+   - Run `tools/check-consumer-workflows.sh` from a checkout of this repo, against the
+     consuming repo's `.github/workflows`, before opening the adoption PR.
 4. Delete the dependency-volume lines the repo doesn't use (`node_modules`, `.venv`).
    Leave the `--read-only` and tmpfs `runArgs`, the `init` line and the home volume alone.
 5. Open the repo in the container, then store its GitHub credential once:
    `gh auth login --with-token` (see [Credentials](#credentials)).
+
+### What the consuming repo needs
+
+[`devcontainer-image.yml`](template/.github/workflows/devcontainer-image.yml) and the
+[gate](template/.github/workflows/architect-review-gate.yml) only mean something with these
+in place. `tools/check-consumer-workflows.sh` lints the workflow shapes named below (the caller, write
+permissions, `uses:` in the gate's `resolve` and `post`, the `.github/` rule, the pin shapes). It runs
+when you run it, at adoption and from the pilots; nothing re-runs it in the repo's CI. The rest is
+settings the adoption PR records, and review.
+
+- **Required checks, pinned.** The ruleset requires `architect-review` and `verify / verify`,
+  each with `integration_id: 15368` (GitHub Actions). Unpinned, a status posted by a user
+  with push access satisfies the requirement. Read the ruleset back through the API after
+  creating it, and attach the result to the adoption PR. The pin on `verify / verify` is
+  untested until the first pilot (#10).
+- **What `verify / verify` rejects.** It fails the PR unless `.devcontainer/Dockerfile` is the template's shape (the
+  header comment in the template Dockerfile lists the rules: one plain `FROM`, ASCII with LF endings, the
+  `# syntax=` line, no `COPY --from` or `ONBUILD`) and `devcontainer.json` has no top-level `image`,
+  `features`, `dockerComposeFile`, `dockerfile` or `context` key (any letter case), a `build` holding only
+  `dockerfile: "Dockerfile"` and, optionally, `context: "."`, and no second `devcontainer.json` anywhere in the
+  repo (a symlink or a case-variant path also fails). A
+  repo that needs Dev Container Features, or keeps a fixture `devcontainer.json`, cannot adopt the
+  template as it stands. An image built by a re-run of `build.yml` (attempt 2) fails too: use a digest from
+  a first-attempt run.
+- **The caller stays unfiltered.** `pull_request` with no `paths:` or `branches:` filter, one
+  job `verify` with no `name:` or `if:`. A filtered required check never reports and blocks
+  every other PR.
+- **Both pins are `@<sha> # vX.Y`.** A full commit SHA plus a version comment, never a bare tag:
+  the verifier fails unless its own pin is a SHA. The caller's pin and the gate's `decide` pin
+  name the same release (the lint only warns when they differ). Dependabot's `github-actions` ecosystem bumps them. A bump edits only
+  `.github/`, which is always in the gate's review scope whatever its `case` block says, so it
+  always needs a review.
+- **The gate's per-consumer values**, marked in the file, and nothing else: the `case` block
+  (this repo's `code_paths`; the `.github/` rule above it is not editable), `REVIEWER_IDS`,
+  `HEADER` and `ATTESTATION`, and the `decide` pin.
+- **Write tokens only where the gate needs them.** No job other than the gate's `post` holds
+  `statuses`, `contents`, `pull-requests`, `checks` or `actions: write` on a trigger that
+  Dependabot's own branch can run (a PR event, including `issue_comment` and `pull_request_target`, which the lint treats alike; `create`; and a `push` whose
+  filter is not `tags:` alone or a list of literal branch names; no `branches-ignore:` counts, because Dependabot's branch name is configurable (`pull-request-branch-name.separator`)). A job on such a trigger with no
+  `permissions:` block (the repo default token applies) or `write-all` counts too, so give every job
+  on those triggers an explicit block. `resolve` and `post` contain no `uses:`, `container:` or
+  `services:`, run on a GitHub-hosted runner, and `post` holds only `statuses`, `contents` and `pull-requests: write` and `issues: read`. That keeps upstream action code, which
+  Dependabot bumps, off the runner that holds the status token.
+- **Settings.** "Allow auto-merge" on, and an approval count of 0 in the ruleset. The `docker`
+  and `github-actions` Dependabot ecosystems both configured. **Private repos:** "Send write
+  tokens to workflows from fork pull requests" stays **off**.
+- **A caller that fails to start fails closed.** No `verify / verify` check is reported, so the
+  required check blocks the PR.
+
+**Auto-merge is off.** The gate can merge a verified, same-MAJOR Dependabot image bump on its
+own, but only while the tag `devc-automerge-on` exists in *this* repo, and nobody has created
+it. Until the owner does (a separate decision with preconditions, tracked in #30), every bump
+takes the review path and a human merges it. The tags `v*` and `devc-automerge-*` are
+protected by a tag ruleset here: creating, moving or deleting one needs the Repository admin
+role.
+
+**If the tag ever exists, and is then removed,** that stops later *arming* only. It does not
+disarm a pull request that is already armed: that merges whenever its remaining checks go
+green, possibly hours later. To close the window, post a comment as an allowlisted reviewer on
+each armed PR (that re-runs the gate's `post` job, which disarms it), or run
+`gh pr merge --disable-auto` on each.
 
 ### Toolchain versions must match CI
 
@@ -61,7 +132,8 @@ bundled npm 11 until each repo takes it (#27).
 ### Consuming from another org
 
 1. Every org pulls `ghcr.io/603-identity/devcontainer-*` and verifies it against this
-   repo's `build.yml` on `main`, with the command in step 2 above. There is no per-org
+   repo's `build.yml` on `main`: the `verify / verify` check does it on every PR, and step 2 has the
+   command to run by hand. There is no per-org
    image or fork: this repo is the single publisher.
 2. **The GHCR packages must stay public.** Package visibility is set per package, separately
    from the repo's visibility. A private package fails the next pull or rebuild of every
@@ -99,6 +171,9 @@ the known gaps. In short:
   scan is an entry in [`.trivyignore.yaml`](.trivyignore.yaml), and every entry expires
   within 30 days.
 - Every published digest carries signed build provenance and an SBOM.
+- Consumer CI re-verifies every image digest on every pull request, and a verified Dependabot image
+  bump can be auto-merged only while a kill-switch tag exists that nobody has created (see
+  [What the consuming repo needs](#what-the-consuming-repo-needs)).
 - The container runs as non-root, with no Linux capabilities and no way to gain privileges.
 
 ## Disk, speed and volumes
