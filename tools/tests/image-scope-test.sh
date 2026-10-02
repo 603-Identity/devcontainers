@@ -10,15 +10,18 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 SCRIPT="$ROOT_DIR/.github/scripts/image-scope.sh"
 
 # commit_file REPO-FEED BRANCH-MSG path... is awkward; instead build a stream by hand.
+# blen STRING: byte length (fast-import counts bytes; ${#s} counts characters in a UTF-8 locale).
+blen() { printf "%s" "$1" | LC_ALL=C wc -c | tr -d " "; }
+
 # stream_commit MSG OP... where OP is "M:path" (add/modify), "D:path", or "R:old:new".
 stream_commit() {
   local msg="$1"; shift
-  printf 'commit refs/heads/main\ncommitter t <t@example.test> 0 +0000\ndata %d\n%s\n' "${#msg}" "$msg"
+  printf 'commit refs/heads/main\ncommitter t <t@example.test> 0 +0000\ndata %d\n%s\n' "$(blen "$msg")" "$msg"
   local op path blob
   for op in "$@"; do
     case "$op" in
       M:*) path="${op#M:}"; blob="content of $path"
-           printf 'M 100644 inline %s\ndata %d\n%s\n' "$(quote "$path")" "${#blob}" "$blob" ;;
+           printf 'M 100644 inline %s\ndata %d\n%s\n' "$(quote "$path")" "$(blen "$blob")" "$blob" ;;
       D:*) printf 'D %s\n' "$(quote "${op#D:}")" ;;
       R:*) op="${op#R:}"; printf 'R %s %s\n' "$(quote "${op%%:*}")" "$(quote "${op#*:}")" ;;
     esac
