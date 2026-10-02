@@ -13,6 +13,8 @@ packages must stay public (DEVC-D3). Since #2 they are built on Ubuntu 26.04. Th
 `main-required-checks` ruleset and the `architect-review` gate protect `main`, and
 `.ai/project.yml` records both.
 
+P0: cross-org images (milestone 1) is done. Its last change merged as `6f63aec` (#174).
+
 No repo has adopted the template yet. The first pilots are terraform-cloudflare-dns and
 terraform-microsoft365-entra (#10).
 
@@ -23,7 +25,8 @@ The next piece of work is set by the open milestone on this repo, since
 `/way-of-working:plan-sprint` to triage the open issues into one.
 
 Two dates are fixed:
-- #8: the `tofu` image's Trivy exceptions expire on 2026-10-30 (renewed 2026-10-01 under #8, which stays open for the next review).
+- #148: the `tofu` and `tflint` Trivy exceptions expire on 2026-11-01. Renew or retire them
+  before then; each renewal extends at most 30 days.
 - GitHub's `ubuntu-latest` moves to 26.04 between 2026-10-19 and 2026-11-19. Until then CI
   runners (24.04) and the images (26.04) differ.
 
