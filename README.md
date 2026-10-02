@@ -6,9 +6,9 @@ costs almost no disk, because the image layers are stored once per machine.
 
 | Image | Contents |
 |---|---|
-| `ghcr.io/603-identity/devcontainer-base` | Ubuntu 26.04, non-root `app` (uid 1000), git, gh, jq, yq, Python 3.14 (system), uv, pre-commit, bc-detect-secrets, zizmor |
+| `ghcr.io/603-identity/devcontainer-base` | Ubuntu, non-root `app` (uid 1000), git, gh, jq, yq, Python (system), uv, pre-commit, bc-detect-secrets, zizmor |
 | `ghcr.io/603-identity/devcontainer-tofu` | base + OpenTofu + tflint |
-| `ghcr.io/603-identity/devcontainer-node` | base + Node.js 24 + npm 12 |
+| `ghcr.io/603-identity/devcontainer-node` | base + Node.js + npm |
 
 Exact versions live in one place each, not here: the Dockerfile `ARG`s for the downloaded
 binaries and [`images/base/tools/uv.lock`](images/base/tools/uv.lock) for the Python tools.
