@@ -52,7 +52,7 @@ check "setuid/setgid binaries" 0 "$(find / -xdev -perm /6000 -type f 2>/dev/null
 # an empty volume, so each mount point must exist in the image and be app-owned, or it
 # comes up root-owned and unwritable as uid 1000. ~/.cache is the shared mount's parent,
 # seeded into the home volume, so it must be app-owned too.
-for d in /home/app /home/app/.cache /home/app/.cache/tofu-plugins     /workspace/.venv /workspace/node_modules; do
+for d in /home/app /home/app/.cache /home/app/.cache/tofu-plugins /workspace/.venv /workspace/node_modules; do
     check "owner $d" app "$(stat -c %U "$d")"
 done
 # Image-owned configuration must not live in the home directory: the home volume freezes
@@ -289,13 +289,20 @@ mkdir -p /home/app/.config/git; printf '[user]\n\tname = planted\n' >/home/app/.
 setorigin "$POS_URL"; run_fx "planted xdg git config"; expect_id "planted xdg git config"
 check "XDG git config removed" 0 "$([ -e /home/app/.config/git/config ] && echo 1 || echo 0)"
 # A symlinked ~/.config/git is not followed: its target's file survives.
-rm -rf /home/app/.config/git; mkdir -p "$fx/dot-git"; printf '[user]
-	name = dotfile
-' >"$fx/dot-git/config"
+rm -rf /home/app/.config/git; mkdir -p "$fx/dot-git"; printf '[user]\n\tname = dotfile\n' >"$fx/dot-git/config"
 ln -s "$fx/dot-git" /home/app/.config/git
 setorigin "$POS_URL"; run_fx "symlinked xdg dir"; expect_id "symlinked xdg dir"
 check "symlinked XDG git dir not followed" 1 "$([ -e "$fx/dot-git/config" ] && echo 1 || echo 0)"
 rm -f /home/app/.config/git
+# The origin is read with git's global config off: ~/.gitconfig-identity is the previous
+# start's copy on the home volume, and ~/.gitconfig includes it, so a url.*.insteadOf planted
+# there must not steer the org (#118). Success is still fixture-org -> a.gitconfig, never
+# `other` (b.gitconfig).
+setorigin "https://github.com/fixture-org/r"; run_fx "live before planted insteadOf"; expect_id "live before planted insteadOf"
+printf '[url "https://github.com/other/r"]\n\tinsteadOf = https://github.com/fixture-org/r\n' >>"$OUT"
+check "planted insteadOf steers git's view of the origin" https://github.com/other/r \
+    "$(git -C "$repo" remote get-url origin)"
+run_fx "planted insteadOf in identity"; expect_id "planted insteadOf in identity"
 # The identity is denied, yet the include is still in place: start from no file, so only
 # a write on the denied path can produce it.
 rm -f /home/app/.gitconfig

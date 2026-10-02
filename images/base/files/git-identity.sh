@@ -111,7 +111,11 @@ deny() { # deny <reason> [detail]
 [ -n "$tmp" ] || deny "cannot create a temp file next to $OUT"
 
 # --- origin -> org
-if url=$(git -C "$WORKSPACE" remote get-url origin 2>/dev/null); then :; else
+# GIT_CONFIG_GLOBAL=/dev/null: ~/.gitconfig-identity is still the PREVIOUS start's copy on the
+# per-repo home volume (replaced only at the end), and the stub above includes it, so a
+# `url.*.insteadOf` planted there would change the URL parsed here and steer the identity to
+# another org. Same as owner-check.sh (#118). /etc/gitconfig and the repo's own config still apply.
+if url=$(GIT_CONFIG_GLOBAL=/dev/null git -C "$WORKSPACE" remote get-url origin 2>/dev/null); then :; else
     deny "no origin"
 fi
 nl='
