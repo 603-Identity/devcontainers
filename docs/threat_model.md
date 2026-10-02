@@ -413,7 +413,9 @@ These are stated plainly so nobody trusts the setup for more than it does:
   across both orgs: the editor forwards one agent to every container, so a glunk-works
   container whose `user.signingkey` were changed could sign with the 603-Identity key.
   Accepted: the agent is the signing boundary, and `git-identity.sh` only sets the key each
-  org's identity file names.
+  org's identity file names. The host passphrase cache (README § Host signing policy, 8h if
+  configured as recommended) widens the same boundary in time: once unlocked, any attached container signs without a
+  prompt until the cache expires.
 - **`/workspace/.git` sits on the host bind mount** (pre-existing), so a container
   process can plant hooks, `core.hooksPath` or `core.fsmonitor` that the **host's** git
   then runs.

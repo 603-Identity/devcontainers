@@ -324,7 +324,28 @@ and the container still starts.
   `HOME`, so the template's source path doubles (`C:\Users\x` + `C:\Users\x/.gitconfig.d`)
   and the same error appears. Run `unset HOME` in that shell first if you must use it.
 - Edits to the host files apply on the **next container start**.
-- Signing goes through VS Code's forwarded GPG agent. SSH signing is out of scope.
+- Signing goes through VS Code's forwarded GPG agent. SSH signing is out of scope. See [Host signing policy](#host-signing-policy) for the host cache TTL.
+
+## Host signing policy
+
+Signing uses the passphrase cache of the **host's** gpg-agent, reached through VS Code's
+forwarded socket. No image component warms or extends that cache, and nothing in one can raise the host's TTL. When it expires
+mid-session, the host agent raises a pinentry prompt on the host, where nobody is watching,
+and the container's commit fails with `gpg: signing failed: Timeout`. A retry signs immediately
+once the prompt is answered. The cause is a cache shorter than the session, so set it to
+cover a working day (8 hours). In the host's `gpg-agent.conf` (Gpg4win:
+`%APPDATA%\gnupg\gpg-agent.conf`; elsewhere `~/.gnupg/gpg-agent.conf`):
+
+```
+default-cache-ttl 28800
+max-cache-ttl 28800
+```
+
+Apply it with `gpgconf --reload gpg-agent`, which also clears the cache, so the next
+signature prompts once. The cost of fewer prompts: any container attached to the host agent
+can sign without a prompt for up to 8 hours (see the identity-selection gap in the
+[threat model](docs/threat_model.md)). Re-prompting as a deliberate presence check was considered and declined
+(#5).
 
 ## Repairing Claude Code plugin state
 
