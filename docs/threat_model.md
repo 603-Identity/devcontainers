@@ -286,8 +286,9 @@ These are stated plainly so nobody trusts the setup for more than it does:
   (#58). The verified signer identity is recorded beside `TOFU_SHA256` in
   `images/tofu/Dockerfile`. No build checks a signature, and `bump-binaries.sh` doesn't
   either (#29). An automated bump rewrites the pin and leaves the hand-written record
-  untouched, so the record covers only the version it names, and nothing in a bump PR
-  prompts the re-check beyond README's bump checklist. For the other pins, each
+  untouched, so the record covers only the version it names. Nothing in a bump PR
+  prompts the re-check: only README's bump checklist does, and the PR body does not
+  link it. For the other pins, each
   mechanism above except Node's was confirmed to exist for the current pin on
   2026-10-02. That is not a verification of record: no signer identity is pinned for
   them.

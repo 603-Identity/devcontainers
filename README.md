@@ -407,8 +407,8 @@ A human still has to:
 2. Check the Dockerfile's own prose for anything tied to the specific version being
    replaced -- the node image's npm-bundled-CVE override block and its "Node X bundles
    npm Y" comments, the tofu image's per-bump CVE/Trivy-count notes and its
-   `SHA256SUMS` signature record (repeat the cosign check it describes, or leave the
-   record naming the version it covers) -- and update or remove what the new version
+   `SHA256SUMS` signature record (repeat the whole check it describes, cosign and the
+   grep against the pin, or leave the record naming the version it covers) -- and update or remove what the new version
    makes stale. The workflow only ever touches the `ARG`
    lines themselves.
 3. For OpenTofu or Node, open the matching CI-pin PRs in every consuming repo.
