@@ -62,10 +62,62 @@ unaffected.
      merges it (auto-merge is off, see below).
    - Run `tools/check-consumer-workflows.sh` from a checkout of this repo, against the
      consuming repo's `.github/workflows`, before opening the adoption PR.
-4. Delete the dependency-volume lines the repo doesn't use (`node_modules`, `.venv`).
+4. Delete the dependency-volume lines the repo doesn't use (`node_modules`, `.venv`), and the
+   trailing comma left on the last remaining mount.
    Leave the `--read-only` and tmpfs `runArgs`, the `init` line and the home volume alone.
-5. Open the repo in the container, then store its GitHub credential once:
-   `gh auth login --with-token` (see [Credentials](#credentials)).
+   Then the repo-side housekeeping the pilot of terraform-cloudflare-dns turned up:
+   - **Force LF checkouts.** On a Windows host with `core.autocrlf=true`, every file in the
+     bind mount is CRLF, so the container's git (no `autocrlf`) reports the whole tree as
+     modified and a gate that reads the git index fails (detect-secrets: "baseline file is
+     unstaged"). Add `* text=auto eol=lf` to `.gitattributes` (this repo does), or at least
+     `.devcontainer/** text eol=lf`, which `verify / verify` needs anyway (it rejects CR).
+   - **Ignore `.terraform-devcontainer/`** in tofu repos. The tofu image sets
+     `TF_DATA_DIR=.terraform-devcontainer` so the container's `tofu init` stays apart from
+     the host's `.terraform`, and it lands untracked in the workspace.
+   - **A secret scanner will flag the digests.** The two pinned digests (the `# syntax=` line
+     and the `FROM` line) read as `Hex High Entropy String` to detect-secrets. Allowlist them
+     in the scanner's baseline (the inline `pragma: allowlist secret` form would break the
+     Dockerfile shape `verify / verify` enforces), keeping the baseline in the version the
+     repo's CI pins: the image's own `detect-secrets` can be newer than that pin, and a
+     baseline it rewrites is rejected by the older one. The baseline entries carry line
+     numbers, so a bump that moves those lines needs the entries moved too.
+   - **`tofu init` in the container rewrites the lock file** (it adds the `linux_amd64` hash
+     and its header comment). Commit that as its own change or discard it; do not let it
+     ride along in the adoption PR.
+5. Open the repo's checkout with **Dev Containers: Open Folder in Container**, started from
+   PowerShell, cmd or the Start menu (not Git Bash). Do not use *Clone Repository in
+   Container Volume*: the template bind-mounts the host checkout, and a clone of a branch
+   without `.devcontainer/` just offers VS Code's own template picker. Then store the repo's
+   GitHub credential once, without echoing it into the terminal (see
+   [Credentials](#credentials)):
+   ```sh
+   read -rs T && printf '%s' "$T" | gh auth login --with-token; unset T
+   ```
+
+### Checking a container
+
+What a healthy container looks like (from the terraform-cloudflare-dns pilot):
+
+- `grep -E 'CapEff|NoNewPrivs' /proc/self/status` prints `CapEff: 0000000000000000` and
+  `NoNewPrivs: 1`; `id -un` is `app`; `touch /usr/local/x` fails with "Read-only file system".
+- `/home/app` and `/home/app/.cache/tofu-plugins` are owned by `app`. `/tmp` is the volume's
+  root-owned directory, mode 1777, which is normal: `app` writes there through the sticky bit.
+- **`docker diff` is not literally empty.** Expect exactly `A /vscode` (the mount point VS Code
+  creates for its server) and `C /usr/sbin`, `A /usr/sbin/docker-init` (the init binary Docker
+  injects for `"init": true`). Anything else is a write the container should not be making,
+  and it stayed that way after a full working session (editor, git, tofu, tflint, pre-commit,
+  Claude Code, `gh`).
+- Commit signing goes through VS Code's forwarded agent: the passphrase prompt appears on the
+  host. Inside the container `git log --show-signature` prints "Can't check signature: No
+  public key" in red even when the signature was made; that only means the container's
+  keyring lacks your public key. Check with `git log --format=%G?` on the host (`G` is good).
+- **`tofu init` dirties the tree.** It adds a `linux_amd64` hash and its own header comment to
+  `.terraform.lock.hcl`, and the image's `detect-secrets` then rewrites `.secrets.baseline` to
+  its own, newer version, which the repo's pinned CI version rejects. Before committing, run
+  `git checkout -- .terraform.lock.hcl .secrets.baseline`. A lock committed without the
+  `linux_amd64` hash makes `tofu validate` and `tofu test` fail until `tofu init` has run;
+  record the Linux hash in the repo's lock (`tofu providers lock -platform=linux_amd64 ...`)
+  as its own reviewed change.
 
 ### What the consuming repo needs
 
@@ -281,6 +333,12 @@ needs:
   it coordinates. Its wider reach is deliberate, because coordinating is its job.
 - **Admin work** (rulesets, repo settings, applying `tenants/*/github*`): **never** done
   with a container token. It happens from the host's org login, or in CI, when needed.
+
+A token that covers one repo is created with the resource owner set to the org (the personal
+account's picker only offers public or all repositories). A working set for a pilot is Contents,
+Issues and Pull requests at read and write, Metadata read-only, and nothing else. Leave out
+**Workflows**: with it, anything that reads the token in the container could push a workflow
+change. Push `.github/workflows/` changes from the host login instead.
 
 Tokens expire after 90 days at most. Record each one in the owning org's credential
 ledger (603-Identity: infrastructure-core's).
