@@ -1,25 +1,22 @@
 # Next steps
 
-**Now:** P1: pilot adoption (milestone 2) -- planning.
+**Now:** P1: pilot adoption (milestone 2) -- implementing.
 
 **Just done:**
-- P0: cross-org images archived and milestone 1 closed. The roadmap records P0 as done
-  (#177, `0c3271d`).
-- `/way-of-working:plan-sprint` placed #170, #171 and #172 (the merge-guard follow-ups) in
-  milestone 4 (Repo hardening), in that order.
-- Opened #178: ignore `.ai/archive/`, where archive-sprint snapshots each sprint's ledger.
-- Retro routed upstream: a "confirmed again" on glunk-works/claude-workbench#209, plus new
-  issues #219 (`.ai/archive/` ignore check) and #220 (plan-sprint's uncommitted ledger
-  blocks archive-sprint).
+- P1 planned. The owner approved the build order with #103 (adoption runbook) added as
+  step 3: #5, then #10, then #103. First anchor for milestone 2, description sha `3c385bea`.
+- #5 decided: option 1, raise the host GPG cache TTL. Spec recorded as
+  [a comment on #5](https://github.com/603-Identity/devcontainers/issues/5#issuecomment-5961624408)
+  and anchored.
 
-**Milestone close:** closed -- milestone 1 (P0: cross-org images), 0 open issues, plan anchor verified.
+**Next:** task #5 — build the host signing policy per the anchored spec comment: document
+an 8h `default-cache-ttl`/`max-cache-ttl` in the host `gpg-agent.conf` in README.md's host
+setup, point `images/base/files/gpg-check.sh` at it, run the green gate, then
+`/way-of-working:critic-gate` (`docs-consistency` for README.md) and `/way-of-working:ship`.
+Model: **sonnet** (coder).
 
-**Next:** plan P1: pilot adoption (milestone 2). Confirm the build order, #5 (host signing
-policy) then #10 (the pilot), pick the first task, and hand off with that task anchored.
-Model: **opus** (architect).
-
-**HITL Gate: OPEN** -- first anchor for milestone 2, description sha `e54dcdde`. Confirm the
-description is the approved P1 plan.
+**HITL Gate: NONE OPEN** -- the owner approved the plan and the #5 decision in-session.
+Next gate: the owner merges the #5 PR.
 
 **Open for the owner (non-blocking):**
 - Merge #178, so `.ai/archive/` stops showing as untracked.
