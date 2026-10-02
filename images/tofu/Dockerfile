@@ -48,10 +48,20 @@ USER 0
 # The image does not check this, and bump-binaries.sh does not either: it rewrites the
 # two ARGs below and leaves this comment alone. A pin at any other version is
 # unverified until someone repeats the check and updates this record (see
-# docs/threat_model.md, Known gaps). To repeat it:
+# docs/threat_model.md, Known gaps). To repeat it, download tofu_<v>_SHA256SUMS and its
+# .sig and .pem from the v<v> release, then run all three steps on those files (cosign
+# needs network access to Rekor: the certificate itself expired minutes after signing):
 #   cosign verify-blob --certificate tofu_<v>_SHA256SUMS.pem --signature tofu_<v>_SHA256SUMS.sig \
 #     --certificate-identity "https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/heads/v<major>.<minor>" \
-#     --certificate-oidc-issuer https://token.actions.githubusercontent.com tofu_<v>_SHA256SUMS
+#     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+#     --certificate-github-workflow-repository opentofu/opentofu \
+#     --certificate-github-workflow-sha "$(gh api repos/opentofu/opentofu/commits/v<v> --jq .sha)" \
+#     tofu_<v>_SHA256SUMS
+#   grep -qx "<TOFU_SHA256>  tofu_<v>_linux_amd64.zip" tofu_<v>_SHA256SUMS
+# The identity names a branch, not a tag, so it accepts any release run from that
+# branch; --certificate-github-workflow-sha is what binds the signature to v<v>'s
+# commit. The grep is what ties the verified file to the pin: a valid signature on one
+# copy of SHA256SUMS says nothing about a sha taken from another.
 ARG TOFU_VERSION=1.13.0
 ARG TOFU_SHA256=ad494034a03aaa66d93fc1c2c164d01bedf21b44cfb8b616182cb69424a67672
 RUN curl -fsSL "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.zip" \

@@ -286,8 +286,11 @@ These are stated plainly so nobody trusts the setup for more than it does:
   (#58). The verified signer identity is recorded beside `TOFU_SHA256` in
   `images/tofu/Dockerfile`. No build checks a signature, and `bump-binaries.sh` doesn't
   either (#29). An automated bump rewrites the pin and leaves the hand-written record
-  untouched, so the record covers only the version it names. Each mechanism listed
-  above except Node's was checked against the current pin on 2026-10-02.
+  untouched, so the record covers only the version it names, and nothing in a bump PR
+  prompts the re-check beyond README's bump checklist. For the other pins, each
+  mechanism above except Node's was confirmed to exist for the current pin on
+  2026-10-02. That is not a verification of record: no signer identity is pinned for
+  them.
 - **`~/.local/bin` leads `PATH` by design**, and `app` can write it in the persistent home
   volume, where `uv tool install` and `npm install -g` put their entry points. Any bare
   tool name (`git`, `pre-commit`, `tofu`, `node`, ...) can be shadowed there, by accident
