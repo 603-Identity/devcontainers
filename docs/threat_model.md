@@ -24,7 +24,7 @@ at build and publish time, before any consumer pulls.
 |---|---|---|
 | Ubuntu base image | `FROM` in `images/base/Dockerfile` | Pinned by digest. Dependabot proposes new digests as reviewed PRs. |
 | apt packages | `apt-get install` in the base image | **Not version-pinned** (see [Known gaps](#known-gaps)). Bounded by the base digest and the weekly rebuild. |
-| Release binaries (gh, yq, uv, tofu, tflint, node) | `curl` in each Dockerfile | Pinned by version and sha256. Each sha256 comes from that release's own published checksum file, never from a first download. That file's own signature is not checked (see Known gaps). |
+| Release binaries (gh, yq, uv, tofu, tflint, node) | `curl` in each Dockerfile | Pinned by version and sha256. Each sha256 comes from that release's own published checksum file, never from a first download. Neither the build nor the automated bump checks that file's signature or the binary's provenance. Only tofu 1.13.0's checksum file was checked, by hand (see Known gaps). |
 | uv-provisioned interpreters | `uv` at run time, when a repo's `.python-version` asks for an older Python | Not part of the image: uv downloads the interpreter from upstream on demand, into the per-repo home volume (`~/.local/share/uv`, kept across rebuilds, never the shared cache volume). uv checks it against a sha256 built into the pinned uv binary; the build's Trivy gate never scans it. Only a repo that cannot use the system 3.14 does this. |
 | Python tools | `uv sync --locked` in the base image | Installed only from `images/base/tools/uv.lock`, which carries hashes; `--locked` fails on any drift from `pyproject.toml`. |
 | npm, and the `brace-expansion` and `undici` copies replaced inside it | the node image | Each checked against the registry's sha512 `integrity` value, pinned as an `ARG`; the replaced versions are asserted after the swap. |
@@ -271,11 +271,27 @@ These are stated plainly so nobody trusts the setup for more than it does:
 
 - **Checksum files are trusted without their signatures.** Each release binary's sha256
   comes from that release's own checksum file, which comes from the same release page as
-  the binary, so whoever can replace one can replace the other. Node.js signs
-  `SHASUMS256.txt` with GPG; verifying it means pinning the Node release team's keyring
-  here. OpenTofu signs `tofu_<version>_SHA256SUMS` with cosign (keyless, `.sig` and `.pem`)
-  and with GPG (`.gpgsig`); tflint signs its `checksums.txt` with cosign too. None of these
-  signatures is checked, neither when a pin is bumped nor in the build (#58).
+  the binary, so whoever can replace one can replace the other. Every ARG-pinned upstream
+  publishes a way to check this, and nothing here uses it routinely:
+  - OpenTofu signs `tofu_<version>_SHA256SUMS` with cosign (keyless, `.sig` and `.pem`)
+    and with GPG (`.gpgsig`).
+  - tflint signs `checksums.txt` with cosign (keyless, `.keyless.sig` and `.pem`).
+  - yq signs `checksums` with cosign as a Sigstore bundle (`checksums.bundle`).
+  - gh and uv do not sign their checksum files, but publish a GitHub artifact attestation
+    (SLSA build provenance) for each binary, checked with `gh attestation verify`.
+  - Node.js signs `SHASUMS256.txt` with GPG. Verifying it means pinning the Node release
+    team's keyring here.
+
+  The one exception is tofu 1.13.0's checksum file, verified by hand when it was pinned
+  (#58). The verified signer identity is recorded beside `TOFU_SHA256` in
+  `images/tofu/Dockerfile`. No build checks a signature, and `bump-binaries.sh` doesn't
+  either (#29). An automated bump rewrites the pin and leaves the hand-written record
+  untouched, so the record covers only the version it names. Nothing in a bump PR
+  prompts the re-check: only README's bump checklist does, and the PR body does not
+  link it. For the other pins, each
+  mechanism above except Node's was confirmed to exist for the current pin on
+  2026-10-02. That is not a verification of record: no signer identity is pinned for
+  them.
 - **`~/.local/bin` leads `PATH` by design**, and `app` can write it in the persistent home
   volume, where `uv tool install` and `npm install -g` put their entry points. Any bare
   tool name (`git`, `pre-commit`, `tofu`, `node`, ...) can be shadowed there, by accident
