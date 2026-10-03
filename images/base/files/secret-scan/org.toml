@@ -2,7 +2,8 @@
 # 2.0.0-rc.1, the version pinned by BETTERLEAKS_VERSION in images/base/Dockerfile.
 #
 # This file is the single authority for the org rule set. The reusable workflow reads it at
-# the caller's pinned SHA; the base image ships a copy at /usr/local/share/devc/secret-scan/.
+# the caller's pinned SHA, and the base image ships it at /usr/local/share/devc/secret-scan/org.toml.
+# It lives under images/base/ so the image build context holds it and a rule change rebuilds the image.
 # A consumer's own betterleaks.toml may only extend it (see tools/secret-scan-lint.sh).
 title = "603-Identity org secret-scanning rules"
 

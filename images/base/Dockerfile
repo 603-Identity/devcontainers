@@ -71,13 +71,29 @@ RUN curl -fsSL "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}
     && install -m 0755 /tmp/yq /usr/local/bin/yq \
     && rm /tmp/yq
 
-# --- Betterleaks, the org secret scanner (#190). NOT installed in the image yet: these two ARGs
-# are the single version authority, read at run time by .github/workflows/secret-scan.yml from
-# the caller's pinned commit. The sha256 is the linux_x64 tarball's entry in the release's
-# sigstore-signed checksums.txt (signer: betterleaks/betterleaks release.yml at refs/tags/v*,
-# issuer https://token.actions.githubusercontent.com).
+# --- Betterleaks, the org secret scanner (#190). ARG-pinned like every binary here. These two
+# ARGs are also the single version authority for CI: .github/workflows/secret-scan.yml reads
+# them at the caller's pinned commit, so the scanner a PR is checked with and the one in the
+# container are the same release. The sha256 is the linux_x64 tarball's entry in the release's
+# checksums.txt, which `bump-binaries.sh betterleaks` verifies against its sigstore bundle
+# (signer: betterleaks/betterleaks release.yml at refs/tags/v<version>, issuer
+# https://token.actions.githubusercontent.com) before taking it.
+# /usr/local/bin/betterleaks is an absolute path on purpose: ~/.local/bin leads PATH.
 ARG BETTERLEAKS_VERSION=2.0.0-rc.1
 ARG BETTERLEAKS_SHA256=ccbbf68d0a403af44ed5d118c495d20c06bbf39d09129d2ae733d69aa9242404
+RUN curl -fsSL "https://github.com/betterleaks/betterleaks/releases/download/v${BETTERLEAKS_VERSION}/betterleaks_${BETTERLEAKS_VERSION}_linux_x64.tar.gz" \
+        -o /tmp/betterleaks.tar.gz \
+    && echo "${BETTERLEAKS_SHA256}  /tmp/betterleaks.tar.gz" | sha256sum -c - \
+    && tar -xzf /tmp/betterleaks.tar.gz -C /tmp betterleaks \
+    && install -m 0755 /tmp/betterleaks /usr/local/bin/betterleaks \
+    && rm -f /tmp/betterleaks.tar.gz /tmp/betterleaks
+
+# The org rule set. A repo's own betterleaks.toml may only `extend` this exact path (the
+# lint in tools/secret-scan-lint.sh enforces it); CI installs the same file at the same path.
+# The directory is created first: --chmod on a COPY also sets the mode of the parent
+# directories it creates, and 0644 would make /usr/local/share/devc untraversable for `app`.
+RUN install -d -m 0755 /usr/local/share/devc /usr/local/share/devc/secret-scan
+COPY --chmod=0644 files/secret-scan/org.toml /usr/local/share/devc/secret-scan/org.toml
 
 # --- uv, the project manager for every Python repo. The sha256 is the release's own
 # published `.sha256` asset (also verifiable with `gh attestation verify --repo

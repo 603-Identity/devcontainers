@@ -24,7 +24,7 @@ at build and publish time, before any consumer pulls.
 |---|---|---|
 | Ubuntu base image | `FROM` in `images/base/Dockerfile` | Pinned by digest. Dependabot proposes new digests as reviewed PRs. |
 | apt packages | `apt-get install` in the base image | **Not version-pinned** (see [Known gaps](#known-gaps)). Bounded by the base digest and the weekly rebuild. |
-| Release binaries (gh, yq, uv, tofu, tflint, node) | `curl` in each Dockerfile | Pinned by version and sha256. Each sha256 comes from that release's own published checksum file, never from a first download. Neither the build nor the automated bump checks that file's signature or the binary's provenance. Only tofu 1.13.0's checksum file was checked, by hand (see Known gaps). |
+| Release binaries (gh, yq, uv, tofu, tflint, node, betterleaks) | `curl` in each Dockerfile | Pinned by version and sha256. Each sha256 comes from that release's own published checksum file, never from a first download. Neither the build nor the automated bump checks that file's signature or the binary's provenance. Only tofu 1.13.0's checksum file was checked, by hand (see Known gaps). The exception is betterleaks: `bump-binaries.sh` verifies its sigstore bundle before taking the checksum (see Org secret scanning). |
 | uv-provisioned interpreters | `uv` at run time, when a repo's `.python-version` asks for an older Python | Not part of the image: uv downloads the interpreter from upstream on demand, into the per-repo home volume (`~/.local/share/uv`, kept across rebuilds, never the shared cache volume). uv checks it against a sha256 built into the pinned uv binary; the build's Trivy gate never scans it. Only a repo that cannot use the system 3.14 does this. |
 | Python tools | `uv sync --locked` in the base image | Installed only from `images/base/tools/uv.lock`, which carries hashes; `--locked` fails on any drift from `pyproject.toml`. |
 | npm, and the `brace-expansion` and `undici` copies replaced inside it | the node image | Each checked against the registry's sha512 `integrity` value, pinned as an `ARG`; the replaced versions are asserted after the swap. |
@@ -248,7 +248,7 @@ separate from `verify-devcontainer-image.yml` on purpose: verify never checks ou
 content, and this one must.
 
 - **A new boundary: this repo's workflow checks out consumer content.** It does so as data
-  only. The scanner, `secret-scan/org.toml`, `tools/secret-scan.sh` and the lint all come from
+  only. The scanner, `images/base/files/secret-scan/org.toml`, `tools/secret-scan.sh` and the lint all come from
   this repo at the caller's pin (`job.workflow_sha`); nothing from the consumer is executed.
   The consumer is checked out at the PR's **base** commit and the head is fetched by SHA, so a PR
   cannot supply its own config, ignore file or `.gitattributes` (`-diff`) to hide a secret.
@@ -257,8 +257,12 @@ content, and this one must.
   at exactly `refs/pull/<n>/merge`.
 - **A new untrusted input: the Betterleaks release.** The version and sha256 are the
   `BETTERLEAKS_*` ARGs in `images/base/Dockerfile`. The sha256 comes from the release's
-  sigstore-signed `checksums.txt`; the signer identity is recorded beside the ARGs. Automated
-  signature verification in `bump-binaries.sh` is a follow-up.
+  sigstore-signed `checksums.txt`. `bump-binaries.sh betterleaks` takes that checksum only after
+  `cosign verify-blob` accepts the release's bundle for the exact tag's signer identity
+  (`betterleaks/betterleaks` `release.yml` at `refs/tags/v<version>`, GitHub Actions OIDC), and
+  fails closed otherwise. The cosign binary that does it is pinned by sha256 from its own
+  release's checksum file, which is the same unsigned-checksum trust as the other binaries.
+  The base image installs the same pinned release and ships the org rules from the same commit.
 - **Fail closed.** v2 exits 1 for findings and for errors alike, so the wrapper requires the
   JSONL `scan` record to say `complete`. A missing or incomplete record is red (one retry on
   `incomplete`, never on findings). The env vars that change the config or contact credential
@@ -308,7 +312,8 @@ These are stated plainly so nobody trusts the setup for more than it does:
 - **Checksum files are trusted without their signatures.** Each release binary's sha256
   comes from that release's own checksum file, which comes from the same release page as
   the binary, so whoever can replace one can replace the other. Every ARG-pinned upstream
-  publishes a way to check this, and nothing here uses it routinely:
+  publishes a way to check this, and nothing here uses it routinely (the one exception is
+  betterleaks, whose signed `checksums.txt` the bump verifies before taking the sha256):
   - OpenTofu signs `tofu_<version>_SHA256SUMS` with cosign (keyless, `.sig` and `.pem`)
     and with GPG (`.gpgsig`).
   - tflint signs `checksums.txt` with cosign (keyless, `.keyless.sig` and `.pem`).
