@@ -1,24 +1,26 @@
 # Next steps
 
-**Now:** P1: pilot adoption (milestone 2) -- awaiting_review.
+**Now:** P1: pilot adoption (milestone 2) -- blocked on the owner's `v1.2` tag push.
 
-**Just done** (coder session, last_commit `4f62a7d`):
-- Resumed on #211 and fixed `tools/secret-scan.sh`: each finding now prints
-  `::error file=<path>,line=<n>::<rule> at <path>:<n>`; `line=` only for a numeric `start_line`
-  (a path-rule finding is a file-level annotation); the `safe` filter still covers path and rule id.
-- Tests: `line=`, a finding with no `start_line`, hostile path/rule id/`start_line`; WSL shellcheck
-  and `run-gate-tests.sh` pass. The Docker and Go gate steps were left to CI.
-- Critic pass (`security-critic` + `architect`): 2 rounds, converged; no second-opinion round (declined).
-- Opened [PR #218](https://github.com/603-Identity/devcontainers/pull/218) for #211.
+**Just done** (architect session, last_commit `e28b10b`):
+- Posted the fresh-session architect review on #218, which went green. The review ran in a WSL
+  sandbox: the suite passed, two planted mutations were each caught, and the root cause was
+  confirmed on terraform-cloudflare-dns#49. The owner merged #218 (`d83d655`, closes #211) and #219.
+- Filed #220 (non-blocking): a `start_line` of 0 still emits `line=0`.
+- First plan anchor for milestone 2 written at handoff, description sha `3c385bea...`. It equals
+  the prior anchor (`verify --plan` printed match), but this session's resume never verified it,
+  so it is a gate.
 
-**Next:** `/way-of-working:architect-review 218` -- fresh session, **opus** (architect); the PR touches
-`tools/`, so the review gate applies. The human merges. Then the new `vX.Y` tag and the template pin
-bump need the owner's go-ahead.
+**Next:** after the owner pushes `v1.2`, open a PR that repins
+`template/.github/workflows/secret-scan.yml` from `5bccf29 # v1.1` to
+`d83d655d756c1f91ce3fbb5674696654626f080f # v1.2`. Check first that the tag resolves to that SHA.
+Model: **sonnet** (coder). The PR touches `template/`, so the review gate applies.
 
-**HITL Gate: NONE OPEN** for the review. Next gate: the tag push and the pin bump after #218 merges.
+**HITL Gate: OPEN.** The owner pushes the `v1.2` tag on `d83d655`, after
+`git merge-base --is-ancestor d83d655 origin/main`. The session does not cut it. The owner also
+confirms the milestone 2 anchor above.
 
 **Open for the owner (non-blocking):**
-- Close #217 (the earlier cursor-sync PR for #211) as superseded by this sync.
 - #10, still to do: one real image bump through the review path (the precondition for #139); a
   PR on -entra showing the `verify / verify` pin blocks; tick #10's checklist; answer whether the
   forwarded GPG agent should expose the personal and org keys, and whether a persistent `/tmp` is
