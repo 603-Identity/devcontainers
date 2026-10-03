@@ -1,0 +1,4 @@
+# Reviewed false positives only (devcontainers#190). Fingerprints are hashes of the secret
+# VALUE, so an entry suppresses that value everywhere in this repo. One line each, with the reason.
+# tests/smoke.sh: the fixture URL https://x-token:secret@github.com/... (a fake credential).
+2bb80d537b1da3e38bd30361aa855686bde0eacd7162fef6a25fe97bf527a25b
