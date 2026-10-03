@@ -23,6 +23,9 @@ if [ "$n" -eq 1 ] && [ -n "${FAKE_BL_FIRST:-}" ]; then mode="$FAKE_BL_FIRST"; fi
 finding='{"schema_version":"1","finding":{"rule_id":"org-x","location":{"path":"a b::c.tf","start_line":3}}}'
 case "$mode" in
   clean)      echo '{"schema_version":"1","scan":{"state":"complete"}}'; exit 0 ;;
+  hostile)    echo '{"schema_version":"1","finding":{"rule_id":"r,x::%0A::warning::y","location":{"path":"p,%0A::q.tf","start_line":"3,col=1"}}}'
+              echo '{"schema_version":"1","finding":{"rule_id":"org-pem","location":{"path":"k.pem"}}}'
+              echo '{"schema_version":"1","scan":{"state":"complete"}}'; exit 1 ;;
   findings)   echo "$finding"; echo '{"schema_version":"1","scan":{"state":"complete"}}'; exit 1 ;;
   incomplete) echo '{"schema_version":"1","scan":{"state":"incomplete"}}'; exit 0 ;;
   norecord)   echo "config error" >&2; exit 1 ;;
@@ -77,10 +80,18 @@ done
 
 MODE=findings run
 assert_rc "findings fail" 1 "$RC"
-err_has "finding is named" "::error file=a_b__c.tf::org-x at 3"
+err_has "annotation carries file and line" "::error file=a_b__c.tf,line=3::org-x at a_b__c.tf:3"
 err_has "rotate, don't rewrite" "rotate the secret"
 err_lacks "file name cannot inject a workflow command" "file=a b::c.tf"
 assert_eq "findings are never retried" 1 "$(ncalls)"
+
+MODE=hostile run
+assert_rc "hostile fields still fail" 1 "$RC"
+err_has "rule id and non-numeric line are sanitized, no line property" "::error file=p__0A__q.tf::r_x___0A__warning__y at p__0A__q.tf"
+err_has "a finding with no start_line is a file-level annotation" "::error file=k.pem::org-pem at k.pem"
+err_lacks "no injected warning command" "::warning"
+err_lacks "no injected property" ",col="
+err_lacks "no escape sequence survives" "%0A"
 
 MODE=norecord run
 assert_rc "an error with no scan record fails" 1 "$RC"
