@@ -469,9 +469,26 @@ needs:
 
 A token that covers one repo is created with the resource owner set to the org (the personal
 account's picker only offers public or all repositories). A working set for a pilot is Contents,
-Issues and Pull requests at read and write, Metadata read-only, and nothing else. Leave out
-**Workflows**: with it, anything that reads the token in the container could push a workflow
-change. Push `.github/workflows/` changes from the host login instead.
+Issues and Pull requests at read and write; Actions, Commit statuses and Metadata read-only;
+and nothing else. The two read-only CI grants let the container see whether CI passed: Actions
+for `gh run list` and run logs, Commit statuses for the `architect-review` status. Neither can
+re-run, cancel or post anything, or read a secret. Leave out **Workflows**: with it, anything
+that reads the token in the container could push a workflow change. Push
+`.github/workflows/` changes from the host login instead.
+
+A fine-grained token **cannot read check runs**, whatever it is granted: GitHub offers no
+Checks permission for one. So `GET /commits/{ref}/check-runs` and `gh pr checks` return 403
+("Resource not accessible by personal access token") in the container (found in the #10
+pilot). In the container, read a PR's CI like this instead:
+
+```sh
+sha=$(gh pr view <N> --json headRefOid -q .headRefOid)
+gh run list --commit "$sha"     # every Actions workflow
+gh api "repos/{owner}/{repo}/commits/$sha/status" \
+  --jq '.statuses[] | "\(.context) \(.state)"'   # architect-review
+```
+
+For a merge-ready verdict (`gh pr checks`, `/way-of-working:pr-checks`), use the host login.
 
 The first push of an adoption PR changes `.github/workflows/`, which a token without
 **Workflows** rejects. Push that one from the host login, as above, rather than adding the
