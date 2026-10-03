@@ -11,13 +11,14 @@ LINT="$TOOLS_DIR/check-consumer-workflows.sh"
 TEMPLATE_DIR="$ROOT_DIR/template/.github/workflows"
 CALLER=devcontainer-image.yml
 GATE=architect-review-gate.yml
+SCAN=secret-scan.yml
 
 # new_wf: a scratch copy of the shipped template workflows in $WF.
 new_wf() {
   SCRATCH="$(mktemp -d)"
   WF="$SCRATCH/wf"
   mkdir -p "$WF"
-  cp "$TEMPLATE_DIR/$CALLER" "$TEMPLATE_DIR/$GATE" "$WF/"
+  cp "$TEMPLATE_DIR/$CALLER" "$TEMPLATE_DIR/$GATE" "$TEMPLATE_DIR/$SCAN" "$WF/"
 }
 # lint: run the lint on $WF, leaving the exit code in RC and stderr in ERR.
 lint() {
@@ -317,6 +318,62 @@ lint; expect "a job-level block overriding a workflow-level write-all" 0; rm -rf
 new_wf
 printf 'name: Other\non: pull_request\njobs:\n  post:\n    runs-on: ubuntu-latest\n    permissions:\n      statuses: write\n    steps:\n      - run: true\n' > "$WF/ci.yml"
 lint; expect "a job called post outside the gate" 1 "job 'post' holds statuses: write"; rm -rf "$SCRATCH"
+
+# --- the secret-scan caller (#190) -----------------------------------------------------------
+new_wf; sed -i 's|^  pull_request:$|  pull_request:\n    paths: ["**.tf"]|' "$WF/$SCAN"
+lint; expect "a paths: filter on the scan caller" 1 "secret-scan.yml: pull_request must have no paths:"; rm -rf "$SCRATCH"
+
+new_wf; sed -i 's|^  pull_request:$|  pull_request:\n    branches: [main]|' "$WF/$SCAN"
+lint; expect "a branches: filter on the scan caller" 1 "secret-scan.yml: pull_request must have no paths:"; rm -rf "$SCRATCH"
+
+new_wf; sed -i 's|^  pull_request:$|  pull_request:\n  push:|' "$WF/$SCAN"
+lint; expect "a second trigger on the scan caller" 1 "secret-scan.yml: the only trigger"; rm -rf "$SCRATCH"
+
+new_wf; sed -i 's|^  pull_request:$|  pull_request_target:|' "$WF/$SCAN"
+lint; expect "pull_request_target on the scan caller" 1 "secret-scan.yml: the only trigger"; rm -rf "$SCRATCH"
+
+new_wf; sed -i 's|^  secrets:$|  secrets:\n    name: Scan|' "$WF/$SCAN"
+lint; expect "a name: override on the secrets job" 1 "secret-scan.yml: job 'secrets' must have no name:"; rm -rf "$SCRATCH"
+
+new_wf; sed -i 's|^  secrets:$|  secrets:\n    if: github.actor != '"'"'bot'"'"'|' "$WF/$SCAN"
+lint; expect "an if: on the secrets job" 1 "secret-scan.yml: job 'secrets' must have no name:"; rm -rf "$SCRATCH"
+
+new_wf; sed -i 's|^  secrets:$|  scan:|' "$WF/$SCAN"
+lint; expect "a renamed scan job" 1 "secret-scan.yml: the only job must be 'secrets'"; rm -rf "$SCRATCH"
+
+new_wf; sed -i 's|contents: read|contents: write|' "$WF/$SCAN"
+lint; expect "contents: write on the secrets job" 1 "secret-scan.yml: job 'secrets' must have exactly"; rm -rf "$SCRATCH"
+
+new_wf; sed -i 's|contents: read|contents: read\n      pull-requests: read|' "$WF/$SCAN"
+lint; expect "an extra permission on the secrets job" 1 "secret-scan.yml: job 'secrets' must have exactly"; rm -rf "$SCRATCH"
+
+new_wf; sed -i 's|^    permissions:$|    with: {}\n    permissions:|' "$WF/$SCAN"
+lint; expect "with: on the secrets job" 1 "secret-scan.yml: job 'secrets' takes no with:"; rm -rf "$SCRATCH"
+
+new_wf; sed -i 's|^    permissions:$|    secrets: inherit\n    permissions:|' "$WF/$SCAN"
+lint; expect "secrets: inherit on the secrets job" 1 "secret-scan.yml: job 'secrets' takes no with:"; rm -rf "$SCRATCH"
+
+new_wf; sed -i -E 's|(secret-scan\.yml)@[0-9a-f]{40} # v[0-9.]+|\1@v1.1|' "$WF/$SCAN"
+lint; expect "a bare-tag secrets pin" 1 "the secrets pin"; rm -rf "$SCRATCH"
+
+new_wf; sed -i -E 's|(secret-scan\.yml@[0-9a-f]{40}) # v[0-9.]+|\1|' "$WF/$SCAN"
+lint; expect "a secrets pin with no version comment" 1 "the secrets pin"; rm -rf "$SCRATCH"
+
+new_wf; sed -i -E 's|(secret-scan\.yml)@[0-9a-f]{40} # |\1@5bccf291f80b # |' "$WF/$SCAN"
+lint; expect "a short-SHA secrets pin" 1 "the secrets pin"; rm -rf "$SCRATCH"
+
+new_wf; sed -i 's|603-Identity/devcontainers/.github/workflows/secret-scan.yml|evil/repo/.github/workflows/secret-scan.yml|' "$WF/$SCAN"
+lint; expect "a secrets pin to another repo" 1 "the secrets pin"; rm -rf "$SCRATCH"
+
+new_wf; printf '  other:\n    runs-on: ubuntu-latest\n    permissions: {}\n    steps:\n      - run: true\n' >> "$WF/$SCAN"
+lint; expect "a second job in the scan caller" 1 "secret-scan.yml: the only job must be 'secrets'"; rm -rf "$SCRATCH"
+
+new_wf; rm "$WF/$SCAN"
+lint; expect "a missing scan caller" 1 "secret-scan.yml is missing"; rm -rf "$SCRATCH"
+
+# The scan pin is independent of the verify/decide pins, but must still be a full SHA.
+scan_sha="$(grep -oE 'workflows/secret-scan\.yml@[0-9a-f]{40}' "$TEMPLATE_DIR/$SCAN" | cut -d@ -f2)"
+if [[ "$scan_sha" =~ ^[0-9a-f]{40}$ ]]; then pass; else fail "the template scan caller carries a 40-hex pin"; fi
 
 # --- input handling ------------------------------------------------------------------------
 new_wf; printf 'a: [unclosed\n' > "$WF/bad.yml"
