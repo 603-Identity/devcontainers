@@ -6,7 +6,7 @@ costs almost no disk, because the image layers are stored once per machine.
 
 | Image | Contents |
 |---|---|
-| `ghcr.io/603-identity/devcontainer-base` | Ubuntu, non-root `app` (uid 1000), git, gh, jq, yq, Python (system), uv, pre-commit, bc-detect-secrets, zizmor |
+| `ghcr.io/603-identity/devcontainer-base` | Ubuntu, non-root `app` (uid 1000), git, gh, jq, yq, Python (system), uv, pre-commit, bc-detect-secrets, betterleaks, zizmor |
 | `ghcr.io/603-identity/devcontainer-tofu` | base + OpenTofu + tflint |
 | `ghcr.io/603-identity/devcontainer-node` | base + Node.js + npm |
 
@@ -207,7 +207,7 @@ The design, the fail-open cases it closes and the acceptance results are in #190
 model is in [`docs/threat_model.md`](docs/threat_model.md#org-secret-scanning-190).
 
 **What the check does.** `secrets / scan` scans the **full history** of the PR head (merge
-commits included, `-diff` attributes ignored), with `secret-scan/org.toml` and the scanner pinned
+commits included, `-diff` attributes ignored), with `images/base/files/secret-scan/org.toml` and the scanner pinned
 by the `BETTERLEAKS_*` ARGs in `images/base/Dockerfile`, both read at the commit your caller pins.
 It reads the repo's `betterleaks.toml` and `.betterleaksignore` from the PR's **base** commit,
 never the PR's own, so a PR cannot switch off its own scan. A scan that errors or does not
@@ -234,7 +234,7 @@ Do these in order, so the repo is never covered by neither scanner:
 2. **Add the ignore file for reviewed false positives only.** Copy the `fingerprint` of each
    one into `.betterleaksignore` with a comment saying why. A fingerprint is a hash of the secret
    *value*, so the entry suppresses that value everywhere in the repo. A false-positive *shape*
-   that recurs gets a rule fix in `secret-scan/org.toml` here instead.
+   that recurs gets a rule fix in `images/base/files/secret-scan/org.toml` here instead.
    - A finding from a **path rule** (a committed `*.tfstate`, `*.tfvars`, `*.pem` and so on) has
      no value and cannot be ignored this way. If history really holds a reviewed file, the only
      way to accept it is a commit-bound `filter` on that org rule (`attributes["git.sha"]`),
@@ -259,7 +259,7 @@ rules whose ids start with `repo-`. `tools/secret-scan-lint.sh` rejects anything
 to weaken the org rules.
 
 **Pre-commit hook (a convenience, not the control).** In a repo that uses the shared image,
-once the image ships the binary at `/usr/local/bin/betterleaks`, add this to
+(the base image ships the binary at `/usr/local/bin/betterleaks`), add this to
 `.pre-commit-config.yaml`. The absolute path matters: `~/.local/bin` leads `PATH`.
 ```yaml
 default_install_hook_types: [pre-commit]
@@ -567,14 +567,21 @@ WSL integration for it (Settings, Resources, WSL integration).
 ## Updating a pinned tool
 
 `bump-binaries.yml` runs weekly, and on manual dispatch, for gh, yq, uv, tofu, tflint,
-node and npm. **It cannot run for real yet**: it needs a GitHub App that hasn't been
+node, npm and betterleaks. **It cannot run for real yet**: it needs a GitHub App that hasn't been
 created (docs/threat_model.md's Known gaps). Until that App exists and its secrets are
 set, every run fails at the token step, and the fallback below is how to bump a tool.
 The workflow resolves each tool's newest release (node: the current LTS line; npm:
 the newest release the current node pin supports), takes the sha256 from that release's
 own published checksum file (npm: the registry's `integrity` field) -- never from
 hashing the download -- and opens one PR per tool that is behind, with the release page
-linked in the body (not a diff -- see step 1 below). `tests/smoke.sh` reads the expected
+linked in the body (not a diff -- see step 1 below). **betterleaks is the exception on
+both counts** (#190): it takes the highest-versioned release *including release candidates*
+(it is on 2.0.0-rc.1), and it takes the sha256 only after `cosign verify-blob` accepts the
+release's sigstore bundle for `checksums.txt` against the signer identity for that exact tag
+(`betterleaks/betterleaks` `release.yml` at `refs/tags/v<version>`, issuer GitHub Actions). A
+failed or missing verification fails the job, never falls back. The cosign binary is pinned
+by version and sha256 in `bump-binaries.yml`; nothing bumps it, so re-pin it by hand from
+its own `cosign_checksums.txt` when you move it. `tests/smoke.sh` reads the expected
 version from the same `ARG` lines the workflow rewrites, so there is nothing else to
 edit there. (The Python tools are not `ARG`s: they live in
 `images/base/tools/pyproject.toml` and `uv.lock`, and Dependabot bumps those on its own
@@ -597,6 +604,11 @@ A human still has to:
 4. If the Trivy scan now passes without an entry in `.trivyignore.yaml`, delete that
    entry in the same PR.
 5. Merge -- the workflow never does.
+6. For betterleaks, accepting the bump also means cutting a `vX.Y` tag of this repo on the
+   merge commit (see "Secret scanning"): consuming repos' `secrets / scan` pins take the
+   scanner version and the org rules from the commit they pin, so the new scanner reaches
+   them through the Dependabot pin bump, not before. The image and CI use one version: the
+   same `BETTERLEAKS_*` ARGs.
 
 To bump a tool the workflow doesn't cover, or while it's down, do the same by hand: read
 the release notes, take the sha256 from the release's own checksum file (never

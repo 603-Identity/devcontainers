@@ -11,12 +11,16 @@
 # everything else -- the surrounding comments, consumer CI pins, .trivyignore.yaml --
 # for the human review the PR goes through.
 #
-# Usage: bump-binaries.sh <gh|yq|uv|tofu|tflint|node|npm>
+# betterleaks (#190) is the exception to "stable only": it is on a release candidate, so it takes
+# the highest-versioned release including prereleases, and only after cosign verifies the
+# release's sigstore bundle for its checksums.txt against the pinned signer identity.
+#
+# Usage: bump-binaries.sh <gh|yq|uv|tofu|tflint|node|npm|betterleaks>
 # Env:   REPO (owner/repo), GH_TOKEN (gh, authenticated for push+PR), APP_SLUG,
 #        APP_ID (the commit's bot identity)
 set -euo pipefail
 
-tool="${1:?usage: bump-binaries.sh <gh|yq|uv|tofu|tflint|node|npm>}"
+tool="${1:?usage: bump-binaries.sh <gh|yq|uv|tofu|tflint|node|npm|betterleaks>}"
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 repo="${REPO:?REPO must be set, e.g. 603-Identity/devcontainers}"
 
@@ -112,6 +116,49 @@ resolve_node() {
     || echo "https://github.com/nodejs/node/blob/main/doc/changelogs/CHANGELOG_V${major}.md")"
 }
 
+# ver_key <X.Y.Z or X.Y.Z-rc.N> -> a fixed-width key that sorts as a version does, with every
+# release candidate below its own GA release and rc.N below rc.N+1. `sort -V` cannot be used:
+# it puts X.Y.Z-rc.1 above X.Y.Z.
+ver_key() {
+  local v="$1" core a b c rc=999999
+  core="${v%%-*}"
+  if [[ "$v" == *-rc.* ]]; then rc="${v##*-rc.}"; fi
+  IFS=. read -r a b c <<< "$core"
+  printf '%06d.%06d.%06d.%06d' "$((10#$a))" "$((10#$b))" "$((10#$c))" "$((10#$rc))"
+}
+
+# Betterleaks is on a 2.0 release candidate, so /releases/latest (which skips prereleases)
+# is the wrong question. Take the highest-versioned non-draft release instead, and never a
+# tag that is not exactly vX.Y.Z or vX.Y.Z-rc.N. Its checksums.txt is taken ONLY after the
+# release's sigstore bundle verifies with the pinned signer identity for that exact tag
+# (the release workflow, run at that tag, via GitHub Actions OIDC); a failed or missing
+# verification is an error, never a fallback to the unsigned file. Needs `cosign` on PATH.
+BETTERLEAKS_ISSUER="https://token.actions.githubusercontent.com"
+resolve_betterleaks() {
+  local best="" best_key="" best_url="" tag url key dir identity
+  while IFS=$'\t' read -r tag url; do
+    [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]] || continue
+    key="$(ver_key "${tag#v}")"
+    if [ -z "$best" ] || [[ "$key" > "$best_key" ]]; then best="$tag"; best_key="$key"; best_url="$url"; fi
+  done < <(gh api "repos/betterleaks/betterleaks/releases" --jq '.[] | select(.draft | not) | [.tag_name, .html_url] | @tsv')
+  [ -n "$best" ] || { echo "::error::betterleaks: no release with a vX.Y.Z[-rc.N] tag" >&2; exit 1; }
+  command -v cosign > /dev/null || { echo "::error::betterleaks: cosign is required to verify the release signature" >&2; exit 1; }
+
+  NEW_VERSION="${best#v}"
+  RELEASE_URL="$best_url"
+  dir="$(mktemp -d)"
+  curl -fsSL "https://github.com/betterleaks/betterleaks/releases/download/${best}/checksums.txt" -o "$dir/checksums.txt"
+  curl -fsSL "https://github.com/betterleaks/betterleaks/releases/download/${best}/checksums.txt.sigstore.json" -o "$dir/checksums.txt.sigstore.json"
+  identity="https://github.com/betterleaks/betterleaks/.github/workflows/release.yml@refs/tags/${best}"
+  if ! cosign verify-blob --bundle "$dir/checksums.txt.sigstore.json" \
+      --certificate-identity "$identity" --certificate-oidc-issuer "$BETTERLEAKS_ISSUER" \
+      "$dir/checksums.txt" >&2; then
+    echo "::error::betterleaks: the signature on ${best}'s checksums.txt did not verify against ${identity}: refusing to take its checksum" >&2
+    exit 1
+  fi
+  NEW_CHECKSUM="$(awk -v f="betterleaks_${NEW_VERSION}_linux_x64.tar.gz" '$2 == f { print $1; exit }' "$dir/checksums.txt")"
+}
+
 # satisfies <version> <engines.node range> -> exit 0 if version satisfies range.
 # Implements only the operators npm's own engines field actually uses (`||`-joined
 # clauses of `^x.y.z` / `>=x.y.z` / an exact `x.y.z`), so an unrecognised operator
@@ -186,6 +233,7 @@ case "$tool" in
   tflint) dockerfile_dir=tofu; ver_arg=TFLINT_VERSION; sha_arg=TFLINT_SHA256; resolve_tflint ;;
   node)   dockerfile_dir=node; ver_arg=NODE_VERSION;   sha_arg=NODE_SHA256;   resolve_node ;;
   npm)    dockerfile_dir=node; ver_arg=NPM_VERSION;    sha_arg=NPM_INTEGRITY; resolve_npm ;;
+  betterleaks) dockerfile_dir=base; ver_arg=BETTERLEAKS_VERSION; sha_arg=BETTERLEAKS_SHA256; resolve_betterleaks ;;
   *) echo "::error::unknown tool '$tool'" >&2; exit 1 ;;
 esac
 
@@ -199,8 +247,10 @@ fi
 # program, a git branch name, a commit message and a PR title/body. Reject anything
 # that isn't the exact shape expected BEFORE any of that -- never a loose sanity check
 # a crafted tag or checksum line could still slip through.
-if ! [[ "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "::error::$tool: resolved version is not a plain X.Y.Z: rejecting" >&2
+version_re='^[0-9]+\.[0-9]+\.[0-9]+$'
+[ "$tool" != betterleaks ] || version_re='^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$'
+if ! [[ "$NEW_VERSION" =~ $version_re ]]; then
+  echo "::error::$tool: resolved version is not a plain X.Y.Z (or, for betterleaks, X.Y.Z-rc.N): rejecting" >&2
   exit 1
 fi
 if [ "$tool" = npm ]; then
@@ -222,12 +272,12 @@ if [ "$NEW_VERSION" = "$current_version" ]; then
   exit 0
 fi
 
-# NEW_VERSION is validated X.Y.Z above; current_version is read from this repo's own
-# Dockerfile, so a plain version-sort tells newer from older. Refuse a downgrade
+# NEW_VERSION is validated above; current_version is read from this repo's own
+# Dockerfile, so ver_key tells newer from older. Refuse a downgrade
 # rather than opening a PR for one -- "latest" moving backwards (a yanked release, a
 # tag deleted and reused) is a signal to fail closed on, not to propose as this
 # week's bump.
-if [ "$(printf '%s\n%s\n' "$NEW_VERSION" "$current_version" | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)" != "$NEW_VERSION" ]; then
+if [[ "$(ver_key "$NEW_VERSION")" < "$(ver_key "$current_version")" ]]; then
   echo "::error::$tool: resolved $NEW_VERSION is older than the current pin $current_version -- refusing to open a downgrade PR" >&2
   exit 1
 fi

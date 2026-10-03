@@ -27,13 +27,14 @@ lockver() { # lockver <package>: the version uv.lock resolved for it
   sed -n "/^name = \"$1\"\$/{n;s/^version = \"\(.*\)\"\$/\1/p;q;}" "$root/images/base/tools/uv.lock"
 }
 export EXPECT_GH EXPECT_YQ EXPECT_UV EXPECT_TOFU EXPECT_TFLINT EXPECT_NODE EXPECT_NPM
-export EXPECT_PRE_COMMIT EXPECT_BC_DETECT_SECRETS EXPECT_ZIZMOR
+export EXPECT_PRE_COMMIT EXPECT_BC_DETECT_SECRETS EXPECT_ZIZMOR EXPECT_BETTERLEAKS
 EXPECT_GH="$(arg base GH_VERSION)"
 EXPECT_UV="$(arg base UV_VERSION)"
+EXPECT_BETTERLEAKS="$(arg base BETTERLEAKS_VERSION)"
 EXPECT_PRE_COMMIT="$(lockver pre-commit)"
 EXPECT_BC_DETECT_SECRETS="$(lockver bc-detect-secrets)"
 EXPECT_ZIZMOR="$(lockver zizmor)"
-for v in EXPECT_UV EXPECT_PRE_COMMIT EXPECT_BC_DETECT_SECRETS EXPECT_ZIZMOR; do
+for v in EXPECT_UV EXPECT_BETTERLEAKS EXPECT_PRE_COMMIT EXPECT_BC_DETECT_SECRETS EXPECT_ZIZMOR; do
   [ -n "${!v}" ] || { echo "::error::could not read $v from the Dockerfile or images/base/tools/uv.lock"; exit 1; }
 done
 EXPECT_YQ="$(arg base YQ_VERSION)"
@@ -49,7 +50,7 @@ ref() { # ref <flavor> -> the tag this run builds
 smoke() { # smoke <flavor>
   docker run --rm \
     -e EXPECT_GH -e EXPECT_YQ -e EXPECT_UV -e EXPECT_PRE_COMMIT -e EXPECT_BC_DETECT_SECRETS \
-    -e EXPECT_ZIZMOR -e EXPECT_TOFU -e EXPECT_TFLINT -e EXPECT_NODE -e EXPECT_NPM \
+    -e EXPECT_ZIZMOR -e EXPECT_BETTERLEAKS -e EXPECT_TOFU -e EXPECT_TFLINT -e EXPECT_NODE -e EXPECT_NPM \
     -v "$root/tests:/tests:ro" "$(ref "$1")" sh /tests/smoke.sh "$1"
 }
 

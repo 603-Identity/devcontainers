@@ -18,6 +18,11 @@
 #     out and carries the same 3 findings, so no tofu release fixes them yet:
 #     CVE-2026-56864, CVE-2026-56865 and CVE-2026-84445 (shared with tflint, so they sit
 #     on the tflint-and-tofu entries below). The move from 1.12.6 cleared the other 11.
+#   * betterleaks is pinned at 2.0.0-rc.1 (#190), built with Go 1.25.12. 7 stdlib findings,
+#     fixed in Go 1.25.13 and later; the newest betterleaks release is still rc.1 (checked
+#     2026-10-03), so none fixes them yet. The scanner reads repository content, so when you
+#     re-review these, check whether the affected package (encoding/xml, net/http, crypto/tls
+#     and so on) is reachable from a scan before extending them.
 #   * tflint 0.64.0 is the newest tflint release (re-checked 2026-10-02: all 17 tflint
 #     entries still match it, and no newer release exists).
 vulnerabilities:
@@ -88,4 +93,32 @@ vulnerabilities:
   - id: GHSA-hrxh-6v49-42gf
     paths: ["usr/local/bin/tflint"]
     statement: "HIGH in google.golang.org/grpc compiled into upstream tflint; no fixed upstream release at this pin."
+    expired_at: 2026-11-01
+  - id: CVE-2026-33818
+    paths: ["usr/local/bin/betterleaks"]
+    statement: "HIGH in encoding/asn1 (Go 1.25.12 stdlib) compiled into upstream betterleaks 2.0.0-rc.1; no fixed upstream release at this pin."
+    expired_at: 2026-11-01
+  - id: CVE-2026-39821
+    paths: ["usr/local/bin/betterleaks"]
+    statement: "HIGH in golang.org/x/net/idna (Go 1.25.12 stdlib) compiled into upstream betterleaks 2.0.0-rc.1; no fixed upstream release at this pin."
+    expired_at: 2026-11-01
+  - id: CVE-2026-56853
+    paths: ["usr/local/bin/betterleaks"]
+    statement: "HIGH in net/http (Go 1.25.12 stdlib) compiled into upstream betterleaks 2.0.0-rc.1; no fixed upstream release at this pin."
+    expired_at: 2026-11-01
+  - id: CVE-2026-56858
+    paths: ["usr/local/bin/betterleaks"]
+    statement: "HIGH in html/template (Go 1.25.12 stdlib) compiled into upstream betterleaks 2.0.0-rc.1; no fixed upstream release at this pin."
+    expired_at: 2026-11-01
+  - id: CVE-2026-56859
+    paths: ["usr/local/bin/betterleaks"]
+    statement: "HIGH in encoding/xml (Go 1.25.12 stdlib) compiled into upstream betterleaks 2.0.0-rc.1; no fixed upstream release at this pin."
+    expired_at: 2026-11-01
+  - id: CVE-2026-56860
+    paths: ["usr/local/bin/betterleaks"]
+    statement: "HIGH in net/url (Go 1.25.12 stdlib) compiled into upstream betterleaks 2.0.0-rc.1; no fixed upstream release at this pin."
+    expired_at: 2026-11-01
+  - id: CVE-2026-56862
+    paths: ["usr/local/bin/betterleaks"]
+    statement: "HIGH in crypto/tls (Go 1.25.12 stdlib) compiled into upstream betterleaks 2.0.0-rc.1; no fixed upstream release at this pin."
     expired_at: 2026-11-01

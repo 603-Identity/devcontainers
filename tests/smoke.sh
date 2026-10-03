@@ -42,6 +42,42 @@ check "uv" "$EXPECT_UV" "$(uv --version | awk '{print $2}')"
 check "bc-detect-secrets" "$EXPECT_BC_DETECT_SECRETS" "$(detect-secrets --version)"
 check "zizmor" "$EXPECT_ZIZMOR" "$(zizmor --version | awk '{print $2}')"
 check "pre-commit" "$EXPECT_PRE_COMMIT" "$(pre-commit --version | awk '{print $2}')"
+# Betterleaks (#190): the pinned release, the org config at the path a repo config extends,
+# and a scan that passes a clean history and fails one holding a planted token. Offline. The
+# token is derived from a fixed string, so the run is deterministic and the file holds no
+# literal that a scanner would flag.
+check "betterleaks" "$EXPECT_BETTERLEAKS" "$(/usr/local/bin/betterleaks version)"
+check "org secret-scan config mode" 644 "$(stat -c %a /usr/local/share/devc/secret-scan/org.toml)"
+bl=$(mktemp -d)
+git -C "$bl" init -q
+git -C "$bl" config user.email t@example.test
+git -C "$bl" config user.name t
+git -C "$bl" config commit.gpgsign false
+echo ok > "$bl/README"
+git -C "$bl" add -A
+git -C "$bl" commit -qm clean
+bl_clean=$(git -C "$bl" rev-parse HEAD)
+bl_tok=$(python3 -c 'import hashlib,base64;print(base64.b64encode(hashlib.sha256(b"devc-smoke").digest()).decode().replace("+","A").replace("/","B").replace("=",""))')
+printf 'cf = "%s"\n' "$bl_tok" > "$bl/a.tf"
+git -C "$bl" add -A
+git -C "$bl" commit -qm leak
+bl_leak=$(git -C "$bl" rev-parse HEAD)
+bl_scan() { # bl_scan <head sha>: the flags the reusable workflow uses
+    /usr/local/bin/betterleaks git "$bl" -c /usr/local/share/devc/secret-scan/org.toml \
+        --ignore-file /dev/null --no-allow-signatures --redact --no-banner --no-color --jsonl \
+        --log-opts="-m --text $1" 2>/dev/null
+}
+bl_rc=0
+bl_out=$(bl_scan "$bl_clean") || bl_rc=$?
+check "betterleaks clean history exit" 0 "$bl_rc"
+check "betterleaks clean history scan state" complete \
+    "$(printf '%s\n' "$bl_out" | jq -rs '[.[] | select(has("scan")) | .scan.state] | last')"
+bl_rc=0
+bl_out=$(bl_scan "$bl_leak") || bl_rc=$?
+check "betterleaks planted token exit" 1 "$bl_rc"
+check "betterleaks planted token rule" org-high-entropy-quoted \
+    "$(printf '%s\n' "$bl_out" | jq -rs '[.[] | select(has("finding")) | .finding.rule_id] | first')"
+rm -rf "$bl"
 check "PATH has ~/.local/bin" 1 "$(printf '%s' ":$PATH:" | grep -c ':/home/app/.local/bin:')"
 check "python3" 3.14 "$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
 check "tools venv" /opt/devc/tools/bin/pre-commit "$(readlink /usr/local/bin/pre-commit)"
