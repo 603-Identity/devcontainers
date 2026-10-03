@@ -56,3 +56,67 @@ jobs:
           APP_ID: ${{ vars.BUMP_BINARIES_APP_ID }}
           TOOL: ${{ matrix.tool }}
         run: bash .github/scripts/bump-binaries.sh "$TOOL"
+
+  # bc-detect-secrets is not "newest release": it follows the version
+  # 603-Identity/checkov-ledger-action's latest vX.Y.Z tag uses (its Checkov pins it
+  # exactly, and every 603 repo's baseline and CI pin follow that release). Dependabot
+  # ignores it for the same reason (.github/dependabot.yml), so this is its only proposer.
+  sync-detect-secrets:
+    name: sync (bc-detect-secrets)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read   # checkout only; the push and PR use the App token below
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Read-only, with the job's own read token: in sync ends the job green here, before
+      # any write token exists. Drift goes on to propose the PR, so while the App is not
+      # provisioned a drifted run fails at the token step -- red, which notifies.
+      - name: Check against the action's latest release
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rc=0
+          DRY_RUN=1 bash .github/scripts/sync-detect-secrets.sh || rc=$?
+          case "$rc" in
+            0) echo "drift=false" >> "$GITHUB_OUTPUT" ;;
+            3) echo "drift=true" >> "$GITHUB_OUTPUT" ;;
+            *) exit "$rc" ;;
+          esac
+
+      # The same uv the image ships, checked against the Dockerfile's own pinned sha256.
+      # `uv lock` fetches a 3.14 interpreter if the runner lacks one, verified against
+      # the sha256 built into this pinned uv.
+      - name: Install uv (pinned by images/base/Dockerfile)
+        if: steps.check.outputs.drift == 'true'
+        run: |
+          ver="$(sed -n 's/^ARG UV_VERSION=//p' images/base/Dockerfile)"
+          sum="$(sed -n 's/^ARG UV_SHA256=//p' images/base/Dockerfile)"
+          curl -fsSL "https://github.com/astral-sh/uv/releases/download/${ver}/uv-x86_64-unknown-linux-gnu.tar.gz" -o "$RUNNER_TEMP/uv.tar.gz"
+          echo "${sum}  $RUNNER_TEMP/uv.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/uv.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/uv-x86_64-unknown-linux-gnu" >> "$GITHUB_PATH"
+
+      - name: Generate a token for the bump-binaries app
+        if: steps.check.outputs.drift == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.BUMP_BINARIES_APP_ID }}
+          private-key: ${{ secrets.BUMP_BINARIES_APP_PRIVATE_KEY }}
+          repositories: devcontainers
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Resolve and sync
+        if: steps.check.outputs.drift == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          APP_ID: ${{ vars.BUMP_BINARIES_APP_ID }}
+        run: bash .github/scripts/sync-detect-secrets.sh

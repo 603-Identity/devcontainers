@@ -7,13 +7,17 @@
 #   FAKE_LOG    every call is appended as one line: `gh <args>`
 #   FAKE_STATE  per-run call counters
 #   FAKE_MERGE_RC / FAKE_DISARM_RC   exit codes for `gh pr merge --auto` / `--disable-auto`
+#   FAKE_PR_OPEN  what `gh pr list ... --jq length` prints (open PRs on that head; default 0)
 set -euo pipefail
 : "${FAKE_FIX:?}" "${FAKE_LOG:?}" "${FAKE_STATE:?}"
 printf 'gh %s\n' "$*" >> "$FAKE_LOG"
 
 case "${1:-}" in
+  auth) [ "${2:-}" = setup-git ] && exit 0; echo "fake gh: unsupported: $*" >&2; exit 2 ;;
   pr)
     case " $* " in
+      *" list "*) echo "${FAKE_PR_OPEN:-0}"; exit 0 ;;
+      *" create "*) exit 0 ;;
       *" view "*)
         # `gh pr view --json autoMergeRequest --jq '.autoMergeRequest // empty'`: an armed PR
         # prints its request, an unarmed one prints nothing. FAKE_ARMED=0 means unarmed;

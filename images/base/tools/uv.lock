@@ -4,16 +4,16 @@ requires-python = ">=3.14"
 
 [[package]]
 name = "bc-detect-secrets"
-version = "1.5.51"
+version = "1.5.52"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pyyaml" },
     { name = "requests" },
     { name = "unidiff" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/58/62/ccbea13e5259b5815aa34c0cd1e837f55f44f03371ad650f956f0c9de1ec/bc_detect_secrets-1.5.51.tar.gz", hash = "sha256:6bd40106a326f5fd29f19e74ae7b9db30d5912e96ec03ddf902f0ea94e7bc9be", size = 99526, upload-time = "2026-09-10T07:45:00.941Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/da/a6/8833c273f54c33e5d6fa421dc38117f35a9fc36b60c8c2cd7d8958628702/bc_detect_secrets-1.5.52.tar.gz", hash = "sha256:bb437db4b4ad81b19d52feaf8e0ebaf6ca0421ee6fefbdd9d41210bd4983e16b", size = 99702, upload-time = "2026-09-30T13:46:52.898Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cd/78/7a7420409587dd3c81d3f0ddad0a80448479c86d85b73eb260c2a884ca1a/bc_detect_secrets-1.5.51-py3-none-any.whl", hash = "sha256:cba1112c129c24671150f102a6c77a52ff76de5b52182ff995c9f9c659f481d3", size = 126679, upload-time = "2026-09-10T07:44:59.785Z" },
+    { url = "https://files.pythonhosted.org/packages/b8/fe/49953a7263c4b56c2c51dd26fb4cd4adc4aff942733f6c2c5fdeeae63bdd/bc_detect_secrets-1.5.52-py3-none-any.whl", hash = "sha256:772353c949a131b7b5efd2b20473e0128af9c25ea27cdb15a3a6a6727ca73c4e", size = 126742, upload-time = "2026-09-30T13:46:51.726Z" },
 ]
 
 [[package]]
@@ -140,7 +140,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "bc-detect-secrets", specifier = "==1.5.51" },
+    { name = "bc-detect-secrets", specifier = "==1.5.52" },
     { name = "pre-commit" },
     { name = "zizmor", specifier = "==1.30.1" },
 ]

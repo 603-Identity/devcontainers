@@ -3,8 +3,10 @@ version: 2
 #   * github-actions: the SHA-pinned actions in .github/workflows/.
 #   * docker: images/base's `FROM ubuntu:26.04@sha256:...` digest. The tofu and node
 #     Dockerfiles have no fixed FROM to bump (it is a build arg, set by CI).
-#   * uv: images/base/tools/pyproject.toml -> uv.lock (hashes kept). bc-detect-secrets is
-#     excluded from the group so its bump is a PR of its own (see README.md).
+#   * uv: images/base/tools/pyproject.toml -> uv.lock (hashes kept), except
+#     bc-detect-secrets: it follows checkov-ledger-action's latest release, not PyPI's
+#     newest, so .github/scripts/sync-detect-secrets.sh (bump-binaries.yml) proposes it
+#     and it is ignored below (see README.md).
 # NOT bumped by Dependabot: the ARG-pinned binaries (gh, yq, uv, tofu, tflint, node,
 # npm), and the `# syntax=docker/dockerfile:...@sha256:...` line in all four
 # Dockerfiles (the docker updater reads only FROM lines; bump the four together,
@@ -42,4 +44,5 @@ updates:
     groups:
       python-tools:
         patterns: ["*"]
-        exclude-patterns: ["bc-detect-secrets"]
+    ignore:
+      - dependency-name: bc-detect-secrets
