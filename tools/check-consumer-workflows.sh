@@ -27,7 +27,11 @@
 #     that rule is what makes it always need review);
 #   * devcontainer-image.yml is not the caller the template ships: one job `verify`, no `name:`
 #     and no `if:`, `pull_request` with no filter, `contents: read` only, a verify workflow
-#     pinned `@<40-hex sha> # vX.Y`.
+#     pinned `@<40-hex sha> # vX.Y`;
+#   * secret-scan.yml is not the caller the template ships (#190): one job `secrets`, no `name:`
+#     and no `if:`, `pull_request` with no filter, `contents: read` only, no `with:` or
+#     `secrets:`, a secret-scan workflow pinned `@<40-hex sha> # vX.Y`. Its pin is independent
+#     of the verify and decide pins.
 # It also checks the gate's `decide` pin has that same shape, and warns when the two pins
 # name different commits.
 set -euo pipefail
@@ -35,6 +39,7 @@ export LC_ALL=C
 
 dir="${1:-.github/workflows}"
 VERIFY_WF='603-Identity/devcontainers/.github/workflows/verify-devcontainer-image.yml'
+SCAN_WF='603-Identity/devcontainers/.github/workflows/secret-scan.yml'
 DECIDE_WF='603-Identity/devcontainers/.github/workflows/devcontainer-bump-decision.yml'
 # yq's line_comment returns "v1.0" or "# v1.0" depending on its version.
 VERSION_COMMENT='^(#[[:space:]]*)?v[0-9]+\.[0-9]+$'
@@ -215,6 +220,28 @@ else
     finding "$caller: the verify pin must be '$VERIFY_WF@<40-hex sha> # vX.Y'."
   elif [ -n "${decide_sha:-}" ] && [ "$decide_sha" != "$verify_sha" ]; then
     warn "the verify pin ($verify_sha) and the decide pin ($decide_sha) name different commits. Bump them together."
+  fi
+fi
+
+# Rule 5: the secret-scan caller (#190). Same shape as the verify caller, job `secrets`; its pin
+# is independent of the verify/decide pins (a scanner bump should not need an image re-verify).
+scan_caller="$dir/secret-scan.yml"
+if [ ! -f "$scan_caller" ]; then
+  finding "$scan_caller is missing. Copy template/.github/workflows/secret-scan.yml."
+elif ! sjson="$(yq -o=json '.' "$scan_caller" 2> /dev/null)" || [ "$(printf '%s' "$sjson" | j "$SHAPE_JQ")" != "true" ]; then
+  :   # the loop above already reported it as not parseable, or not a workflow
+else
+  s() { printf '%s' "$sjson" | j "$@"; }
+  [ "$(s '(.jobs // {}) | keys | join(",")')" = "secrets" ]     || finding "$scan_caller: the only job must be 'secrets' (found: $(s '(.jobs // {}) | keys | join(",")'))."
+  [ "$(s '[.jobs.secrets | has("name"), has("if")] | any')" = "false" ]     || finding "$scan_caller: job 'secrets' must have no name: and no if:, so the check is always 'secrets / scan'."
+  [ "$(s "[$EVENTS_JQ] | join(\",\")")" = "pull_request" ]     || finding "$scan_caller: the only trigger must be pull_request."
+  [ "$(s '(.on | if type == "object" then (.pull_request // {}) else {} end) | (type == "object") and (keys | length == 0)')" = "true" ]     || finding "$scan_caller: pull_request must have no paths:, paths-ignore:, branches: or branches-ignore: filter (a filtered required check never reports)."
+  [ "$(s '.jobs.secrets.permissions | . == {"contents":"read"}')" = "true" ]     || finding "$scan_caller: job 'secrets' must have exactly 'permissions: { contents: read }'."
+  [ "$(s '.jobs.secrets | has("with") or has("secrets")')" = "false" ]     || finding "$scan_caller: job 'secrets' takes no with: or secrets:."
+  scan_uses="$(s '.jobs.secrets.uses // ""')"
+  scan_comment="$(yq '.jobs.secrets.uses | line_comment' "$scan_caller" 2> /dev/null | tr -d '\r' || true)"
+  if ! { [[ "$scan_uses" == "$SCAN_WF@"* ]] && [[ "${scan_uses#"$SCAN_WF"@}" =~ ^[0-9a-f]{40}$ ]] && [[ "$scan_comment" =~ $VERSION_COMMENT ]]; }; then
+    finding "$scan_caller: the secrets pin must be '$SCAN_WF@<40-hex sha> # vX.Y'."
   fi
 fi
 
