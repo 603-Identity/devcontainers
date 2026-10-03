@@ -56,6 +56,9 @@ unaffected.
      into `.github/workflows/`. The first runs this repo's verifier as the check
      `verify / verify` on every pull request. Copy it unchanged.
    - Edit only the marked per-consumer values in the gate.
+     **Choose `code_paths` knowing what it leaves unguarded.** A change outside it passes
+     `architect-review` ("No code_paths touched"), so it is guarded only by the two secret
+     scans and whatever else the repo requires.
    - Copy [`secret-scan.yml`](template/.github/workflows/secret-scan.yml) too, unchanged: it
      runs the org secret scan as the check `secrets / scan`. Follow [Secret
      scanning](#secret-scanning-190), which sets the order for requiring it.
@@ -122,6 +125,21 @@ What a healthy container looks like (from the terraform-cloudflare-dns pilot):
   `linux_amd64` hash makes `tofu validate` and `tofu test` fail until `tofu init` has run;
   record the Linux hash in the repo's lock (`tofu providers lock -platform=linux_amd64 ...`)
   as its own reviewed change.
+- **Run `tofu init` before `tofu test`, and restore the lock last.** Restoring first drops the
+  `linux_amd64` hash and the cached provider no longer matches. `tofu test` also runs every
+  `*.tftest.hcl`, including ones that need real credentials (CI runs those only on merge): use
+  `tofu test -filter=<mocked file>.tftest.hcl` for the mocked run.
+- **`pre-commit run --all-files` rewrites the same two files.** A `terraform_validate` hook runs
+  init (the lock), and the image's `detect-secrets` rewrites the baseline's `version`. Restore
+  both; never commit them. Until bc-detect-secrets is removed (#191), the image's version can
+  differ from the consumer's CI pin and `.secrets.baseline`, and the hook then exits 3.
+- **A Windows checkout from before `.gitattributes` forced LF stays CRLF** in the working tree
+  (`git ls-files --eol` shows `i/lf w/crlf`), and `git status` hides it. Re-checkout it:
+  `git rm --cached -r -q . && git reset --hard`, with the tree clean first.
+- **The container token cannot do admin work.** Check it from inside the container:
+  `gh api repos/<owner>/<repo>/branches/main/protection` must return 403 (it needs
+  `administration=read`). Do not use `GET .../rulesets` (any token with `metadata=read` gets a
+  200) or `.permissions` on `GET /repos/<owner>/<repo>` (it shows your role, not the token's scope).
 
 ### What the consuming repo needs
 
@@ -231,6 +249,8 @@ Do these in order, so the repo is never covered by neither scanner:
    jq -c 'select(.finding).finding | {rule_id, path: .location.path, line: .location.start_line}' scan.jsonl
    ```
    Rotate anything real. A scan that does not say `"complete"` proves nothing: run it again.
+   A made-up token in a test PR stays in `refs/pull/<n>/head`, and `--all` scans it, so run
+   negative tests (a deliberate bad secret) in a throwaway repo, or expect to ignore that finding.
 2. **Add the ignore file for reviewed false positives only.** Copy the `fingerprint` of each
    one into `.betterleaksignore` with a comment saying why. A fingerprint is a hash of the secret
    *value*, so the entry suppresses that value everywhere in the repo. A false-positive *shape*
@@ -452,6 +472,11 @@ account's picker only offers public or all repositories). A working set for a pi
 Issues and Pull requests at read and write, Metadata read-only, and nothing else. Leave out
 **Workflows**: with it, anything that reads the token in the container could push a workflow
 change. Push `.github/workflows/` changes from the host login instead.
+
+The first push of an adoption PR changes `.github/workflows/`, which a token without
+**Workflows** rejects. Push that one from the host login, as above, rather than adding the
+permission to the container token. Confirm the token cannot do admin work (see
+[Checking a container](#checking-a-container)).
 
 Tokens expire after 90 days at most. Record each one in the owning org's credential
 ledger (603-Identity: infrastructure-core's).
