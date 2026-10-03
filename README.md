@@ -164,6 +164,18 @@ settings the adoption PR records, and review.
 - **Settings.** "Allow auto-merge" on, and an approval count of 0 in the ruleset. The `docker`
   and `github-actions` Dependabot ecosystems both configured. **Private repos:** "Send write
   tokens to workflows from fork pull requests" stays **off**.
+- **Private repos: the push ruleset that blocks secret-bearing files.** Apply
+  [`rulesets/block-secret-bearing-files.json`](rulesets/block-secret-bearing-files.json) with
+  `gh api -X POST repos/<org>/<repo>/rulesets --input rulesets/block-secret-bearing-files.json`.
+  GitHub then rejects, server-side, any push containing a `*.tfstate*`, `*.tfvars` or
+  `*.tfvars.json` file (`*.example.tfvars` and `*.example.tfvars.json` are exempt) or a `.pfx`,
+  `.p12`, `.pem` or `.key` file. `git push --no-verify` doesn't get past it, the owner gets no
+  bypass, and every commit in the push is checked, so a file added and then deleted is still
+  rejected. Rulesets are set per repo (organisation-level rulesets need Enterprise), and they
+  check new pushes only, so files already in history are left to the CI secret scan (#190).
+  Before applying it, list the repo's tracked files that match and decide each exception: a
+  fixture that must stay goes in that repo's `ignored_file_paths`, recorded in the adoption PR.
+  Tested on the Team plan in #192. GitHub offers push rulesets for private repos only.
 - **A caller that fails to start fails closed.** No `verify / verify` check is reported, so the
   required check blocks the PR.
 
