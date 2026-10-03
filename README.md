@@ -269,10 +269,21 @@ repos:
       - id: betterleaks
         name: betterleaks (staged changes)
         language: system
-        entry: /usr/local/bin/betterleaks git . --staged -c /usr/local/share/devc/secret-scan/org.toml --ignore-file .betterleaksignore --no-allow-signatures --redact --no-banner
+        entry: env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0=/workspace /usr/local/bin/betterleaks git . --staged -c /usr/local/share/devc/secret-scan/org.toml --ignore-file .betterleaksignore --no-allow-signatures --redact --no-banner
         pass_filenames: false
         always_run: true
 ```
+Two things the hook needs that are easy to miss, both found piloting terraform-cloudflare-dns (#10):
+- **The `env … safe.directory` prefix is required in the container.** The workspace is a bind mount
+  the `app` user does not own. Betterleaks ignores the system-level `safe.directory` that the image
+  sets (plain `git` honours it), so without the prefix `git diff --staged` degrades to its no-index
+  mode and the scan ends `incomplete`: every commit fails, clean or not. It fails closed, never open.
+- **`.betterleaksignore` must exist.** A missing `--ignore-file` is fatal (`unable to load ignore
+  file`), so commit one (a comment line is enough) before turning the hook on.
+
+To test that the hook catches something, stage a file holding a made-up GitHub token (`ghp_` plus
+36 random characters), not an AWS `…EXAMPLE` key: the rules treat those as documentation and skip them.
+
 Hooks can be skipped, and edits made on github.com or outside the container are not scanned
 until CI, so CI is what you rely on. To stop an agent skipping the hook to get a commit
 through, add `Bash(git commit --no-verify:*)`, `Bash(git commit -n:*)` and
