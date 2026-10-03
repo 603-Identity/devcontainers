@@ -6,7 +6,7 @@ costs almost no disk, because the image layers are stored once per machine.
 
 | Image | Contents |
 |---|---|
-| `ghcr.io/603-identity/devcontainer-base` | Ubuntu, non-root `app` (uid 1000), git, gh, jq, yq, Python (system), uv, pre-commit, bc-detect-secrets, betterleaks, zizmor |
+| `ghcr.io/603-identity/devcontainer-base` | Ubuntu, non-root `app` (uid 1000), git, gh, jq, yq, Python (system), uv, pre-commit, betterleaks, zizmor |
 | `ghcr.io/603-identity/devcontainer-tofu` | base + OpenTofu + tflint |
 | `ghcr.io/603-identity/devcontainer-node` | base + Node.js + npm |
 
@@ -74,20 +74,14 @@ unaffected.
    Then the repo-side housekeeping the pilot of terraform-cloudflare-dns turned up:
    - **Force LF checkouts.** On a Windows host with `core.autocrlf=true`, every file in the
      bind mount is CRLF, so the container's git (no `autocrlf`) reports the whole tree as
-     modified and a gate that reads the git index fails (detect-secrets: "baseline file is
-     unstaged"). Add `* text=auto eol=lf` to `.gitattributes` (this repo does), or at least
+     modified and a gate that reads the git index fails. Add `* text=auto eol=lf` to `.gitattributes` (this repo does), or at least
      `.devcontainer/** text eol=lf`, which `verify / verify` needs anyway (it rejects CR).
    - **Ignore `.terraform-devcontainer/`** in tofu repos. The tofu image sets
      `TF_DATA_DIR=.terraform-devcontainer` so the container's `tofu init` stays apart from
      the host's `.terraform`, and it lands untracked in the workspace.
-   - **detect-secrets will flag the digests** (the org's Betterleaks scan does not, so a repo
-     on `secrets / scan` skips this). The two pinned digests (the `# syntax=` line
-     and the `FROM` line) read as `Hex High Entropy String` to detect-secrets. Allowlist them
-     in the scanner's baseline (the inline `pragma: allowlist secret` form would break the
-     Dockerfile shape `verify / verify` enforces), keeping the baseline in the version the
-     repo's CI pins: the image's own `detect-secrets` can be newer than that pin, and a
-     baseline it rewrites is rejected by the older one. The baseline entries carry line
-     numbers, so a bump that moves those lines needs the entries moved too.
+   - **Scan secrets with `secrets / scan`, not detect-secrets** (see "Secret scanning"). The
+     image no longer ships detect-secrets (#191). Its baseline allowlists each pinned digest
+     by hash, so every image bump fails it (#189); Betterleaks does not flag the digests.
    - **`tofu init` in the container rewrites the lock file** (it adds the `linux_amd64` hash
      and its header comment). Commit that as its own change or discard it; do not let it
      ride along in the adoption PR.
@@ -119,9 +113,7 @@ What a healthy container looks like (from the terraform-cloudflare-dns pilot):
   public key" in red even when the signature was made; that only means the container's
   keyring lacks your public key. Check with `git log --format=%G?` on the host (`G` is good).
 - **`tofu init` dirties the tree.** It adds a `linux_amd64` hash and its own header comment to
-  `.terraform.lock.hcl`, and the image's `detect-secrets` then rewrites `.secrets.baseline` to
-  its own, newer version, which the repo's pinned CI version rejects. Before committing, run
-  `git checkout -- .terraform.lock.hcl .secrets.baseline`. A lock committed without the
+  `.terraform.lock.hcl`. Before committing, run `git checkout -- .terraform.lock.hcl`. A lock committed without the
   `linux_amd64` hash makes `tofu validate` and `tofu test` fail until `tofu init` has run;
   record the Linux hash in the repo's lock (`tofu providers lock -platform=linux_amd64 ...`)
   as its own reviewed change.
@@ -129,10 +121,8 @@ What a healthy container looks like (from the terraform-cloudflare-dns pilot):
   `linux_amd64` hash and the cached provider no longer matches. `tofu test` also runs every
   `*.tftest.hcl`, including ones that need real credentials (CI runs those only on merge): use
   `tofu test -filter=<mocked file>.tftest.hcl` for the mocked run.
-- **`pre-commit run --all-files` rewrites the same two files.** A `terraform_validate` hook runs
-  init (the lock), and the image's `detect-secrets` rewrites the baseline's `version`. Restore
-  both; never commit them. Until bc-detect-secrets is removed (#191), the image's version can
-  differ from the consumer's CI pin and `.secrets.baseline`, and the hook then exits 3.
+- **`pre-commit run --all-files` rewrites the lock too.** A `terraform_validate` hook runs
+  init. Restore it; never commit it.
 - **A Windows checkout from before `.gitattributes` forced LF stays CRLF** in the working tree
   (`git ls-files --eol` shows `i/lf w/crlf`), and `git status` hides it. Re-checkout it:
   `git rm --cached -r -q . && git reset --hard`, with the tree clean first.
@@ -641,7 +631,7 @@ its own `cosign_checksums.txt` when you move it. `tests/smoke.sh` reads the expe
 version from the same `ARG` lines the workflow rewrites, so there is nothing else to
 edit there. (The Python tools are not `ARG`s: they live in
 `images/base/tools/pyproject.toml` and `uv.lock`, and Dependabot bumps those on its own
-schedule, except bc-detect-secrets: see below.)
+schedule.)
 
 A human still has to:
 
@@ -675,17 +665,4 @@ pinned by digest but no bot bumps it (Dependabot's docker updater reads only `FR
 lines). Move the four together, taking the digest from `docker buildx imagetools inspect
 docker/dockerfile:<tag>`.
 
-Dependabot handles the base image digest, the GitHub Actions pins, and the Python tool lock (`uv` ecosystem on `images/base/tools`). Dependabot
-ignores `bc-detect-secrets`, because its version is not "the newest on PyPI": it is the one
-[checkov-ledger-action](https://github.com/603-Identity/checkov-ledger-action)'s latest
-`vX.Y.Z` tag uses. Checkov pins it exactly, and every 603 repo's `.secrets.baseline` and CI
-secret-scan pin follow that release, so a different version on the image's PATH rewrites a
-repo's baseline to one its CI rejects. `bump-binaries.yml`'s `sync (bc-detect-secrets)` job
-(`.github/scripts/sync-detect-secrets.sh`) reads that tag's `.secrets.baseline` version and
-the version its example ledger's `checkov_version` pins on PyPI, fails if the two disagree,
-and otherwise opens a `bump/bc-detect-secrets-<version>` PR when the image is behind. The
-check runs with the job's read token, so it works before the App exists: a run that finds
-drift then fails at the token step, and the failed run is the signal to bump by hand. To bump
-by hand, change the pin in `pyproject.toml` and run `uv lock --upgrade-package
-bc-detect-secrets` there. Merge the image bump alongside the consuming repos' baseline
-regeneration and CI pin (and their ledgers' `checkov_version`).
+Dependabot handles the base image digest, the GitHub Actions pins, and the Python tool lock (`uv` ecosystem on `images/base/tools`).

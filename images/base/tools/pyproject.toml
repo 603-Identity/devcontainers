@@ -1,18 +1,10 @@
 # Python tools every devcontainer carries, installed into /opt/devc/tools from uv.lock
 # only (`uv sync --locked`, hashes verified). Not a package: it exists to hold the lock.
-#
-# bc-detect-secrets is Bridgecrew's fork, NOT Yelp's detect-secrets: the two reject
-# each other's .secrets.baseline. The version is not chosen here: it is the one the
-# checkov_version of 603-Identity/checkov-ledger-action's latest release pins exactly
-# (v0.1.2: checkov 3.3.22 -> 1.5.52). Every 603 repo's baseline and CI secret-scan job
-# pin the same version. .github/scripts/sync-detect-secrets.sh proposes the bump (it
-# rewrites this pin and the release line above); Dependabot ignores the package.
 [project]
 name = "devc-tools"
 version = "0.0.0"
 requires-python = ">=3.14"
 dependencies = [
-    "bc-detect-secrets==1.5.52",
     "pre-commit",
     "zizmor==1.30.1",
 ]
