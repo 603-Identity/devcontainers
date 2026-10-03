@@ -1,37 +1,31 @@
 # Next steps
 
-**Now:** P1: pilot adoption (milestone 2) -- implementing.
+**Now:** P1: pilot adoption (milestone 2) -- awaiting_review.
 
-**Just done** (coder session, base `8d2398f`):
-- Piloted terraform-cloudflare-dns for [#10](https://github.com/603-Identity/devcontainers/issues/10):
-  adoption PR #45 merged (image 4.244 with Betterleaks, `secrets / scan` caller). The container
-  checklist passed in VS Code; `docker diff` showed only the expected init and `/vscode` entries.
-- Ruleset there now requires `architect-review`, `verify / verify` and `secrets / scan`, each pinned
-  to `integration_id: 15368`; read back on #10. Real PRs proved the pins (#50 merged after review),
-  the secret scan blocking a made-up token (#49, closed), and Dependabot parsing (#48 closed).
-- #210 merged: the README's pre-commit hook needs `safe.directory` through `env` and a
-  `.betterleaksignore`. Critic pass on it: 2 rounds, converged (docs-consistency and
-  security-critic; no second-opinion round).
-- Filed [#211](https://github.com/603-Identity/devcontainers/issues/211) (annotation has no
-  `line=`) and [#212](https://github.com/603-Identity/devcontainers/issues/212) (README and
-  template findings from the pilot).
+**Just done** (coder session, last_commit `4f62a7d`):
+- Resumed on #211 and fixed `tools/secret-scan.sh`: each finding now prints
+  `::error file=<path>,line=<n>::<rule> at <path>:<n>`; `line=` only for a numeric `start_line`
+  (a path-rule finding is a file-level annotation); the `safe` filter still covers path and rule id.
+- Tests: `line=`, a finding with no `start_line`, hostile path/rule id/`start_line`; WSL shellcheck
+  and `run-gate-tests.sh` pass. The Docker and Go gate steps were left to CI.
+- Critic pass (`security-critic` + `architect`): 2 rounds, converged; no second-opinion round (declined).
+- Opened [PR #218](https://github.com/603-Identity/devcontainers/pull/218) for #211.
 
-**Next:** task #10 — pilot the template on terraform-microsoft365-entra, per the issue checklist
-and the [carried-over adoption steps](https://github.com/603-Identity/devcontainers/issues/10#issuecomment-5952372434)
-(auto-merge off); follow the README's Secret scanning adoption order; fold in #211 and #212 as
-they apply. The entra repo has no `.devcontainer` yet and only the way-of-working `.ai/project.yml`.
-Model: **sonnet** (coder).
+**Next:** `/way-of-working:architect-review 218` -- fresh session, **opus** (architect); the PR touches
+`tools/`, so the review gate applies. The human merges. Then the new `vX.Y` tag and the template pin
+bump need the owner's go-ahead.
 
-**HITL Gate: OPEN**
-- #10 needs the owner at VS Code against terraform-microsoft365-entra.
-- The ruleset change on that repo needs the owner's go-ahead (it is a live change).
-- Milestone 2's description is unedited (sha unchanged, verified at handoff); it does not list
-  #190-#192, #182, #183.
+**HITL Gate: NONE OPEN** for the review. Next gate: the tag push and the pin bump after #218 merges.
 
 **Open for the owner (non-blocking):**
+- Close #217 (the earlier cursor-sync PR for #211) as superseded by this sync.
+- #10, still to do: one real image bump through the review path (the precondition for #139); a
+  PR on -entra showing the `verify / verify` pin blocks; tick #10's checklist; answer whether the
+  forwarded GPG agent should expose the personal and org keys, and whether a persistent `/tmp` is
+  intended.
+- Check #212's items against #215 and close what it covers.
 - After the pilots: #191 removes bc-detect-secrets and #186, and the follow-up PR drops
   `Secret scan (detect-secrets)` from each pilot's ruleset; close #187-#189 when #191 lands.
-- A Dependabot image bump taking the review path is the precondition for #139.
 - Decide whether the image should ship a wrapper script for the betterleaks hook's `env` prefix.
 - Still to do under #190: lint that a consumer's pinned SHA is an ancestor of `main`. Cosign
   (pinned in `bump-binaries.yml`) is bumped by hand; a Betterleaks bump also means a new `vX.Y` tag.
