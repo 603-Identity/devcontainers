@@ -71,6 +71,14 @@ RUN curl -fsSL "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}
     && install -m 0755 /tmp/yq /usr/local/bin/yq \
     && rm /tmp/yq
 
+# --- Betterleaks, the org secret scanner (#190). NOT installed in the image yet: these two ARGs
+# are the single version authority, read at run time by .github/workflows/secret-scan.yml from
+# the caller's pinned commit. The sha256 is the linux_x64 tarball's entry in the release's
+# sigstore-signed checksums.txt (signer: betterleaks/betterleaks release.yml at refs/tags/v*,
+# issuer https://token.actions.githubusercontent.com).
+ARG BETTERLEAKS_VERSION=2.0.0-rc.1
+ARG BETTERLEAKS_SHA256=ccbbf68d0a403af44ed5d118c495d20c06bbf39d09129d2ae733d69aa9242404
+
 # --- uv, the project manager for every Python repo. The sha256 is the release's own
 # published `.sha256` asset (also verifiable with `gh attestation verify --repo
 # astral-sh/uv`). uv provisions an older interpreter only for a repo whose

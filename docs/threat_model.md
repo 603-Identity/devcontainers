@@ -240,6 +240,41 @@ What each piece trusts, and what it leaves open:
   `gh` and `setup-go`'s download are part of the TCB. No `on: push` run follows an auto-merge made with
   `GITHUB_TOKEN` (E12).
 
+## Org secret scanning (#190)
+
+`secret-scan.yml` is a reusable workflow, called by each repo as the job `secrets` (required
+check `secrets / scan`). It runs Betterleaks over the full ancestry of the PR head. It is
+separate from `verify-devcontainer-image.yml` on purpose: verify never checks out consumer
+content, and this one must.
+
+- **A new boundary: this repo's workflow checks out consumer content.** It does so as data
+  only. The scanner, `secret-scan/org.toml`, `tools/secret-scan.sh` and the lint all come from
+  this repo at the caller's pin (`job.workflow_sha`); nothing from the consumer is executed.
+  The consumer is checked out at the PR's **base** commit and the head is fetched by SHA, so a PR
+  cannot supply its own config, ignore file or `.gitattributes` (`-diff`) to hide a secret.
+  The job has `contents: read`, no secrets and no `persist-credentials`. It runs on
+  `pull_request` only; a branch or tag pin is refused, except this repo's own self-test caller
+  at exactly `refs/pull/<n>/merge`.
+- **A new untrusted input: the Betterleaks release.** The version and sha256 are the
+  `BETTERLEAKS_*` ARGs in `images/base/Dockerfile`. The sha256 comes from the release's
+  sigstore-signed `checksums.txt`; the signer identity is recorded beside the ARGs. Automated
+  signature verification in `bump-binaries.sh` is a follow-up.
+- **Fail closed.** v2 exits 1 for findings and for errors alike, so the wrapper requires the
+  JSONL `scan` record to say `complete`. A missing or incomplete record is red (one retry on
+  `incomplete`, never on findings). The env vars that change the config or contact credential
+  providers are refused. Findings are always redacted and never uploaded.
+- **Residual risks.**
+  - Unlabeled high-entropy strings outside the entropy rule's file types and shape are not found.
+  - Pre-commit hooks can be bypassed and web or host-side edits go unscanned until CI, so CI is
+    the control.
+  - A compromised commit here reaches consumers only through a human-merged SHA bump, which the
+    new version itself scans; the impact is bounded by `contents: read` and no secrets.
+  - A commit anywhere in the fork network can be named by SHA, so a consumer's pin could point at
+    a commit that is not on `main`. Follow-up: have `check-consumer-workflows.sh` check the pin is
+    an ancestor of `main`.
+  - A PR that introduces its own false positive needs the ignore or rule change merged first,
+    because the config is read from the base commit.
+
 ## Exceptions
 
 Every repo in both orgs gets a container from these images unless one of these applies:

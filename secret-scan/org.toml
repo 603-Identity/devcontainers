@@ -1,0 +1,91 @@
+# Org secret-scanning rules for 603-Identity (devcontainers#190). Tested against betterleaks
+# 2.0.0-rc.1, the version pinned by BETTERLEAKS_VERSION in images/base/Dockerfile.
+#
+# This file is the single authority for the org rule set. The reusable workflow reads it at
+# the caller's pinned SHA; the base image ships a copy at /usr/local/share/devc/secret-scan/.
+# A consumer's own betterleaks.toml may only extend it (see tools/secret-scan-lint.sh).
+title = "603-Identity org secret-scanning rules"
+
+# Skipped paths (CI scans the full ancestry on every PR, so history matters):
+# - detect-secrets baselines hold SHA-1 hashes of reviewed findings, not secrets;
+# - .terraform/ and .terraform-devcontainer/ are tool caches (provider binaries, modules);
+#   a committed provider .exe yields Go-module h1: hashes and format strings, never authored secrets.
+prefilter = '''
+attributes["path"] == ".secrets.baseline" || attributes["path"] endsWith "/.secrets.baseline" ||
+attributes["path"] startsWith ".terraform/" || attributes["path"] contains "/.terraform/" ||
+attributes["path"] startsWith ".terraform-devcontainer/" || attributes["path"] contains "/.terraform-devcontainer/"
+'''
+
+[extend]
+useDefault = true
+
+# Unlabeled high-entropy quoted strings in config-like files: the default rules are
+# keyword/format based and miss e.g. cf = "<random 40>". Lock-file and digest hashes
+# are excluded; hex (<= 4.0 bits) never clears the 4.3 threshold anyway.
+[[rules]]
+id = "org-high-entropy-quoted"
+description = "High-entropy quoted string in a config or IaC file"
+regex = '''["']([A-Za-z0-9_+/=~.\-]{32,128})["']'''
+path = '''(?i)\.(tf|tfvars|hcl|env|json|ya?ml|toml)$|(^|/)\.env(\.|$)'''
+confidence = "medium"
+# Skip: low entropy; readable text such as paths and identifiers (v2 helper); lock/integrity
+# hashes; SSH public keys (not secrets).
+filter = '''
+entropy(finding.secret) <= 4.3 ||
+failsTokenEfficiency(finding.secret) ||
+finding.secret matches "^(h1:|zh:|sha256:|sha512-)" ||
+finding.secret matches "^AAAA[BC]3NzaC"
+'''
+
+# Standalone copies of default rules that rc.1 gates on REQUIRED components (the default
+# azure-ad-client-secret reports only when a tenant id AND client id are within 8 lines; the
+# default aws-access-token only with a secret key nearby). A lone secret is the common leak.
+# No validate/components: detection only.
+[[rules]]
+id = "org-azure-ad-client-secret"
+description = "Entra ID / Azure AD client secret (standalone, no component gate)"
+regex = '''(?:^|[\'"\x60\s>=:(,)])([a-zA-Z0-9_~.]{3}\dQ~[a-zA-Z0-9_~.-]{31,34})(?:$|[\'"\x60\s<),])'''
+keywords = ["0q~", "1q~", "2q~", "3q~", "4q~", "5q~", "6q~", "7q~", "8q~", "9q~"]
+confidence = "high"
+filter = '''entropy(finding.secret) <= 3.0'''
+
+[[rules]]
+id = "org-aws-access-key-id"
+description = "AWS access key id (standalone, no component gate)"
+regex = '''\b((?:A3T[A-Z0-9]|AKIA|ASIA|ABIA|ACCA)[A-Z2-7]{16})\b'''
+keywords = ["a3t", "akia", "asia", "abia", "acca"]
+confidence = "high"
+filter = '''finding.secret matches "EXAMPLE$"'''
+
+[[rules]]
+id = "org-passphrase"
+description = "Passphrase or password assigned a literal value"
+regex = '''(?i)\b[\w.-]{0,20}(?:passphrase|password|passwd)\b[\w.-]{0,20}\s*(?:=|:|=>)\s*["']([^"'\s]{8,128})["']'''
+keywords = ["passphrase", "password", "passwd"]
+confidence = "medium"
+filter = '''entropy(finding.secret) <= 3.0 || finding.secret startsWith "$"'''
+
+[[rules]]
+id = "org-tfstate-file"
+description = "Terraform/OpenTofu state file committed"
+path = '''(?i)(^|/)[^/]*\.tfstate(\.backup|\.[0-9]+\.backup)?$'''
+confidence = "high"
+# Reviewed historical commits only (path-only findings have no value fingerprint, so
+# .betterleaksignore cannot suppress them). Commit-bound: a new commit is still caught.
+# Each SHA needs an assessment link beside it; this is the only way to accept a historical
+# path-rule finding.
+# glunk-works/bounty-infra bootstrap state, assessed 2026-10-03: no credentials (glunk-works/bounty-infra#170).
+filter = '''attributes["git.sha"] in ["fb0be950098e847bdaff0bf361fecc4528d40168", "4d7264e4a177fcf99e499dcdc3cd95bed38e7f7e", "2744164c7fb2fdf2694bc6d28c7873fbb5775e0e"]'''
+
+[[rules]]
+id = "org-tfvars-file"
+description = "Non-example tfvars file committed (variable values often include secrets)"
+path = '''(?i)(^|/)[^/]*\.tfvars(\.json)?$'''
+filter = '''attributes["path"] matches "(?i)(example|sample|template)"'''
+confidence = "medium"
+
+[[rules]]
+id = "org-key-material-file"
+description = "Key or certificate container file committed"
+path = '''(?i)\.(pfx|p12|pem|key)$'''
+confidence = "high"
