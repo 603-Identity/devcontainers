@@ -479,7 +479,7 @@ linked in the body (not a diff -- see step 1 below). `tests/smoke.sh` reads the 
 version from the same `ARG` lines the workflow rewrites, so there is nothing else to
 edit there. (The Python tools are not `ARG`s: they live in
 `images/base/tools/pyproject.toml` and `uv.lock`, and Dependabot bumps those on its own
-schedule.)
+schedule, except bc-detect-secrets: see below.)
 
 A human still has to:
 
@@ -509,6 +509,16 @@ lines). Move the four together, taking the digest from `docker buildx imagetools
 docker/dockerfile:<tag>`.
 
 Dependabot handles the base image digest, the GitHub Actions pins, and the Python tool lock (`uv` ecosystem on `images/base/tools`). Dependabot
-proposes a `bc-detect-secrets` bump as a PR of its own: it is excluded from the grouped `uv`
-PR, not ignored (#22 removed the old ignore on purpose). Do not merge one until every 603 repo is ready to regenerate its
-`.secrets.baseline` and bump its CI pin in the same change.
+ignores `bc-detect-secrets`, because its version is not "the newest on PyPI": it is the one
+[checkov-ledger-action](https://github.com/603-Identity/checkov-ledger-action)'s latest
+`vX.Y.Z` tag uses. Checkov pins it exactly, and every 603 repo's `.secrets.baseline` and CI
+secret-scan pin follow that release, so a different version on the image's PATH rewrites a
+repo's baseline to one its CI rejects. `bump-binaries.yml`'s `sync (bc-detect-secrets)` job
+(`.github/scripts/sync-detect-secrets.sh`) reads that tag's `.secrets.baseline` version and
+the version its example ledger's `checkov_version` pins on PyPI, fails if the two disagree,
+and otherwise opens a `bump/bc-detect-secrets-<version>` PR when the image is behind. The
+check runs with the job's read token, so it works before the App exists: a run that finds
+drift then fails at the token step, and the failed run is the signal to bump by hand. To bump
+by hand, change the pin in `pyproject.toml` and run `uv lock --upgrade-package
+bc-detect-secrets` there. Merge the image bump alongside the consuming repos' baseline
+regeneration and CI pin (and their ledgers' `checkov_version`).
