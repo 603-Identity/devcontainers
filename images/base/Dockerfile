@@ -20,7 +20,7 @@
 FROM ubuntu:26.04@sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78
 
 LABEL org.opencontainers.image.source="https://github.com/603-Identity/devcontainers" \
-      org.opencontainers.image.description="Shared devcontainer base: git, gh, jq, yq, uv, pre-commit, bc-detect-secrets, zizmor, non-root app user" \
+      org.opencontainers.image.description="Shared devcontainer base: git, gh, jq, yq, uv, pre-commit, betterleaks, zizmor, non-root app user" \
       org.opencontainers.image.licenses="NOASSERTION"
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -108,18 +108,16 @@ RUN curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/
     && install -m 0755 /tmp/uv-x86_64-unknown-linux-gnu/uv /tmp/uv-x86_64-unknown-linux-gnu/uvx /usr/local/bin/ \
     && rm -rf /tmp/uv.tar.gz /tmp/uv-x86_64-unknown-linux-gnu
 
-# --- Python tools (pre-commit, bc-detect-secrets, zizmor) in their own venv, NOT the
+# --- Python tools (pre-commit, zizmor) in their own venv, NOT the
 # system site-packages. That avoids --break-system-packages, and it keeps a repo's own
 # `python3 -m venv .venv` from inheriting them. Installed only from tools/uv.lock:
 # `uv sync --locked` fails on any drift from pyproject.toml and verifies every hash.
 # They land on the system interpreter; --no-cache keeps uv's cache out of the image and
 # --no-build refuses source builds, whose build requirements are not in the lock.
-# bc-detect-secrets is pinned in tools/pyproject.toml because every consuming repo's
-# .secrets.baseline and CI secret-scan job pin that version.
 COPY tools/pyproject.toml tools/uv.lock /opt/devc/tools-src/
 RUN UV_PYTHON_DOWNLOADS=never UV_PROJECT_ENVIRONMENT=/opt/devc/tools \
         uv sync --locked --no-cache --no-build --python /usr/bin/python3 --project /opt/devc/tools-src \
-    && for b in pre-commit detect-secrets detect-secrets-hook zizmor; do \
+    && for b in pre-commit zizmor; do \
         ln -s "/opt/devc/tools/bin/$b" "/usr/local/bin/$b"; \
     done
 

@@ -39,7 +39,6 @@ check "user" app "$(id -un)"
 check "gh" "$EXPECT_GH" "$(gh --version | awk 'NR==1{print $3}')"
 check "yq" "v$EXPECT_YQ" "$(yq --version | awk '{print $NF}')"
 check "uv" "$EXPECT_UV" "$(uv --version | awk '{print $2}')"
-check "bc-detect-secrets" "$EXPECT_BC_DETECT_SECRETS" "$(detect-secrets --version)"
 check "zizmor" "$EXPECT_ZIZMOR" "$(zizmor --version | awk '{print $2}')"
 check "pre-commit" "$EXPECT_PRE_COMMIT" "$(pre-commit --version | awk '{print $2}')"
 # Betterleaks (#190): the pinned release, the org config at the path a repo config extends,
