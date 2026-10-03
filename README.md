@@ -56,6 +56,9 @@ unaffected.
      into `.github/workflows/`. The first runs this repo's verifier as the check
      `verify / verify` on every pull request. Copy it unchanged.
    - Edit only the marked per-consumer values in the gate.
+   - Copy [`secret-scan.yml`](template/.github/workflows/secret-scan.yml) too, unchanged: it
+     runs the org secret scan as the check `secrets / scan`. Follow [Secret
+     scanning](#secret-scanning-190), which sets the order for requiring it.
    - Add `.devcontainer` to `.github/dependabot.yml` under the `docker` ecosystem, and
      configure the `github-actions` ecosystem too. Image bumps and verify-pin bumps then
      arrive as pull requests. **Dependabot's image bump is not exempt from review**: a human
@@ -74,7 +77,8 @@ unaffected.
    - **Ignore `.terraform-devcontainer/`** in tofu repos. The tofu image sets
      `TF_DATA_DIR=.terraform-devcontainer` so the container's `tofu init` stays apart from
      the host's `.terraform`, and it lands untracked in the workspace.
-   - **A secret scanner will flag the digests.** The two pinned digests (the `# syntax=` line
+   - **detect-secrets will flag the digests** (the org's Betterleaks scan does not, so a repo
+     on `secrets / scan` skips this). The two pinned digests (the `# syntax=` line
      and the `FROM` line) read as `Hex High Entropy String` to detect-secrets. Allowlist them
      in the scanner's baseline (the inline `pragma: allowlist secret` form would break the
      Dockerfile shape `verify / verify` enforces), keeping the baseline in the version the
@@ -128,7 +132,8 @@ permissions, `uses:` in the gate's `resolve` and `post`, the `.github/` rule, th
 when you run it, at adoption and from the pilots; nothing re-runs it in the repo's CI. The rest is
 settings the adoption PR records, and review.
 
-- **Required checks, pinned.** The ruleset requires `architect-review` and `verify / verify`,
+- **Required checks, pinned.** The ruleset requires `architect-review`, `verify / verify` and,
+  once the repo has adopted [secret scanning](#secret-scanning-190), `secrets / scan`,
   each with `integration_id: 15368` (GitHub Actions). Unpinned, a status posted by a user
   with push access satisfies the requirement. Read the ruleset back through the API after
   creating it, and attach the result to the adoption PR. The pin on `verify / verify` is
@@ -191,6 +196,88 @@ disarm a pull request that is already armed: that merges whenever its remaining 
 green, possibly hours later. To close the window, post a comment as an allowlisted reviewer on
 each armed PR (that re-runs the gate's `post` job, which disarms it), or run
 `gh pr merge --disable-auto` on each.
+
+### Secret scanning (#190)
+
+Every 603 repo is scanned for committed secrets on every pull request by
+[Betterleaks](https://github.com/betterleaks/betterleaks), through a reusable workflow in this repo.
+This repo owns the scanner version and the org rule set; a consuming repo owns almost nothing.
+It replaces the per-repo bc-detect-secrets baseline (which ties every repo to one exact version).
+The design, the fail-open cases it closes and the acceptance results are in #190; the trust
+model is in [`docs/threat_model.md`](docs/threat_model.md#org-secret-scanning-190).
+
+**What the check does.** `secrets / scan` scans the **full history** of the PR head (merge
+commits included, `-diff` attributes ignored), with `secret-scan/org.toml` and the scanner pinned
+by the `BETTERLEAKS_*` ARGs in `images/base/Dockerfile`, both read at the commit your caller pins.
+It reads the repo's `betterleaks.toml` and `.betterleaksignore` from the PR's **base** commit,
+never the PR's own, so a PR cannot switch off its own scan. A scan that errors or does not
+complete is red, never green. `betterleaks:allow` comments and credential validation are off.
+
+**A red `secrets / scan` means rotate the secret.** Never rewrite history and re-push: the
+commit is already visible to everything that fetched it. The finding names the rule, file and
+line, not the value.
+
+#### Adopting it in a repo
+
+Do these in order, so the repo is never covered by neither scanner:
+
+1. **Run the one-off full-history scan first**, before any allowlist exists, from a checkout
+   with every ref fetched (`git fetch origin '+refs/pull/*/head:refs/remotes/origin/pull/*'`).
+   `org.toml` is in this repo at the commit you will pin:
+   ```sh
+   betterleaks git . -c <path to org.toml> --ignore-file /dev/null --no-allow-signatures \
+     --redact --jsonl --log-opts="-m --text --all" > scan.jsonl
+   jq -c 'select(.scan).scan.state' scan.jsonl     # must print "complete"
+   jq -c 'select(.finding).finding | {rule_id, path: .location.path, line: .location.start_line}' scan.jsonl
+   ```
+   Rotate anything real. A scan that does not say `"complete"` proves nothing: run it again.
+2. **Add the ignore file for reviewed false positives only.** Copy the `fingerprint` of each
+   one into `.betterleaksignore` with a comment saying why. A fingerprint is a hash of the secret
+   *value*, so the entry suppresses that value everywhere in the repo. A false-positive *shape*
+   that recurs gets a rule fix in `secret-scan/org.toml` here instead.
+   - A finding from a **path rule** (a committed `*.tfstate`, `*.tfvars`, `*.pem` and so on) has
+     no value and cannot be ignored this way. If history really holds a reviewed file, the only
+     way to accept it is a commit-bound `filter` on that org rule (`attributes["git.sha"]`),
+     reviewed in this repo with a link to the assessment beside each SHA.
+3. **Add the caller beside the old scanner.** Copy
+   [`template/.github/workflows/secret-scan.yml`](template/.github/workflows/secret-scan.yml)
+   unchanged into `.github/workflows/`, and make sure Dependabot's `github-actions` ecosystem
+   is configured so the pin is bumped as a reviewed PR. Run `tools/check-consumer-workflows.sh`
+   against the repo's `.github/workflows` before opening the PR.
+4. **Require the new check, then drop the old one.** Once `secrets / scan` has reported on a
+   PR, add it to the ruleset's required checks with `integration_id: 15368`, and read the
+   ruleset back through the API to confirm the pin. Then remove the old scanner's required
+   context and delete its job, in one PR.
+
+**The cost to know about.** The config is read from the base commit, so a PR that adds its own
+false positive is red until the ignore entry (or rule change) is merged first. Merge that as
+its own small PR.
+
+**A repo's own `betterleaks.toml`** is optional, and may only `extend` the org config and add
+rules whose ids start with `repo-`. `tools/secret-scan-lint.sh` rejects anything else (`useDefault`,
+`filter`, `disabledRules`, overriding a rule, unknown keys), because a repo file must not be able
+to weaken the org rules.
+
+**Pre-commit hook (a convenience, not the control).** In a repo that uses the shared image,
+once the image ships the binary at `/usr/local/bin/betterleaks`, add this to
+`.pre-commit-config.yaml`. The absolute path matters: `~/.local/bin` leads `PATH`.
+```yaml
+default_install_hook_types: [pre-commit]
+repos:
+  - repo: local
+    hooks:
+      - id: betterleaks
+        name: betterleaks (staged changes)
+        language: system
+        entry: /usr/local/bin/betterleaks git . --staged -c /usr/local/share/devc/secret-scan/org.toml --ignore-file .betterleaksignore --no-allow-signatures --redact --no-banner
+        pass_filenames: false
+        always_run: true
+```
+Hooks can be skipped, and edits made on github.com or outside the container are not scanned
+until CI, so CI is what you rely on. To stop an agent skipping the hook to get a commit
+through, add `Bash(git commit --no-verify:*)`, `Bash(git commit -n:*)` and
+`Bash(git push --no-verify:*)` (and the `PowerShell(...)` forms) to the repo's
+`.claude/settings.json` `permissions.deny`, as this repo does for force-push.
 
 ### Toolchain versions must match CI
 

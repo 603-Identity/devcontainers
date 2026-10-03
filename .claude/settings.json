@@ -18,7 +18,13 @@
       "Bash(git push -f:*)",
       "PowerShell(git push --force:*)",
       "PowerShell(git push --force-with-lease:*)",
-      "PowerShell(git push -f:*)"
+      "PowerShell(git push -f:*)",
+      "Bash(git commit --no-verify:*)",
+      "Bash(git commit -n:*)",
+      "Bash(git push --no-verify:*)",
+      "PowerShell(git commit --no-verify:*)",
+      "PowerShell(git commit -n:*)",
+      "PowerShell(git push --no-verify:*)"
     ]
   },
   "hooks": {
