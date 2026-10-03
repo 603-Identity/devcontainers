@@ -2,19 +2,14 @@
 
 **Now:** P1: pilot adoption (milestone 2) -- implementing.
 
-**Just done** (planning session, no code; base `5cc9b30`):
-- Decided the org secret-scanning strategy: **Betterleaks v2.0.0-rc.1**, run by a reusable
-  workflow in this repo that reads the scanner pin and `org.toml` at `job.workflow_sha`.
-  It replaces bc-detect-secrets, so #186's sync is reversed. The plan converged after
-  3 adversarial rounds (security-critic + architect). rc.1 was verified against our use
-  cases: 35/35 acceptance cases pass, and the dry-run adoption scans are clean across the
-  603 and glunk-works repos. The design, the tested `org.toml` and the test suite are in
-  [#190](https://github.com/603-Identity/devcontainers/issues/190) (body + 2 verification comments).
-- Opened #190 (build), #191 (remove detect-secrets; blocked on the pilot) and #192 (push
-  rulesets on Team; owner test). Opened or rewrote migration issues in each consumer repo,
-  linked from #190. Marked #187/#188/#189 superseded.
-- Turned on Dependabot alerts and security updates for 3 private repos, and as the org
-  default for new repos. Two archived repos were skipped.
+**Just done** (planning session, no code; base `6854248`):
+- Ran plan-sprint on the 8 unmilestoned issues: #190, #191, #192, #182 and #183 went into
+  milestone 2 (order #5, #190, #10, #191, #192, #103); #187–#189 stay unmilestoned as
+  superseded. Each has a triage comment. The anchor still verifies (`match`).
+- Earlier in the sitting: decided the org secret-scanning strategy (Betterleaks v2.0.0-rc.1
+  via a reusable workflow in this repo; design and verification in
+  [#190](https://github.com/603-Identity/devcontainers/issues/190)), opened #190–#192, and
+  turned on Dependabot alerts and security updates for 3 private repos plus the org default.
 
 **Next:** task #10 — pilot the template on terraform-cloudflare-dns and
 terraform-microsoft365-entra, per the issue checklist and the
@@ -26,8 +21,10 @@ Model: **sonnet** (coder).
 **HITL Gate: OPEN**
 - First anchor for milestone 2 written without a resume-verified baseline (description sha
   `3c385bea`, unchanged). #10's `updated_at` moved because of this session's comment.
-- Run `/way-of-working:plan-sprint` to place #190–#192, which have no milestone. Decide
-  whether #190 lands before #10's cloudflare-dns half (recommended).
+- Sequencing resolved 2026-10-03: plan-sprint placed #190, #191, #192, #182 and #183 in
+  milestone 2 (order #5, #190, #10, #191, #192, #103; its description is unedited, so a
+  `/way-of-working:handoff` re-anchor is what lists them). #190 lands before #10.
+  #187–#189 stay unmilestoned as superseded; close them when #191 lands.
 - #10 needs the owner at VS Code against two real repos.
 
 **Open for the owner (non-blocking):**
