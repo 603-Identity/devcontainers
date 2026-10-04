@@ -1,27 +1,25 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Implementing: #245 is next for a
-coder session.
+**Now:** Milestone 4, Repo hardening: review gate and CI. Awaiting review: PR #248 (#245) is
+open and needs a fresh-session architect review.
 
-**Just done** (architect session on opus, last_commit `6660921`):
-- PR #243 (#214) merged as `6660921`.
-- #240 and #245 joined milestone 4 (owner's call). The milestone description's build order
-  gained 3a (#245, before the waves) and 10a (#240, after #198); the critic-gate line names
-  both. Re-anchored on the edited description (`aa8c259…`, verified `match` before and after
-  the edit) and on task #245.
-- Recommended order for the coder work that doesn't wait on items 4 and 5: #245, #202, #198,
-  #240. In parallel, an opus session can run the #233 spike and draft the #93 + #122 decision
-  for the owner, since items 6-8 wait on both.
+**Just done** (coder session on sonnet, last_commit `bfa0a38`):
+- #245 shipped as PR #248 (`bfa0a38`): rule 2b of `tools/check-consumer-workflows.sh` strips a
+  leading `./` from each `code_paths` entry before sampling, with a test for each direction.
+- Critic pass (architect, security-critic, docs-consistency): 2 rounds, converged, all on the
+  critics' own default models. The one finding acted on was a wrong comment (the gate reads the
+  GitHub files API, not `git diff`). The full green gate passed.
+- Filed #249: a bare `./` or `.` entry still fails open in rule 2b (same shape as #245); not in
+  #248, deliberately.
 
-**Next:** task #245 — In `tools/check-consumer-workflows.sh` rule 2b, strip a leading `./`
-from each `code_paths` entry before building samples and in the reverse-direction match (or
-reject a `./`-prefixed entry as its own finding naming the form), add a test for each
-direction per the issue, run the green gate, run `/way-of-working:critic-gate` (architect +
-security-critic), then `/way-of-working:ship`. Model: **sonnet** (coder).
+**Next:** `/way-of-working:architect-review 248` in a **new window** (the fresh-session review
+is an integrity property, not just context hygiene). Model: **opus** (architect). File any
+non-blocking findings; never approve or merge. After it, the coder work that doesn't wait on
+items 4 and 5 is #202, #198, #240 (build order is in the milestone description).
 
-**HITL Gate: NONE OPEN** for #245. The next gate is the owner's merge of #245's PR after a
-fresh-session architect review. Also owner-owned this sprint: the #93 + #122 decision (by
-2026-10-17), the #233 spike result, the `v1.3` tag.
+**HITL Gate: NONE OPEN** for #248. The next gate is the owner's merge of #248 after that review.
+Also owner-owned this sprint: the #93 + #122 decision (by 2026-10-17), the #233 spike result,
+the `v1.3` tag.
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before
