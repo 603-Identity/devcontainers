@@ -353,8 +353,8 @@ These are stated plainly so nobody trusts the setup for more than it does:
   proof ([`tests/template-proof.sh`](../tests/template-proof.sh), run in CI) asserts an
   empty capability bounding set, `NoNewPrivs` and uid 1000 in a container brought up from
   the template. Whether a given repo's own tooling runs without any capability is still
-  unverified: the first pilot repos check it (#10), and this line is updated with the
-  result.
+  unverified for each repo; the two pilots ran with it (#10), and each later adopter
+  checks its own tooling ([docs/adopting.md](adopting.md), step 7).
 - **The app user is uid 1000 on every host, so a Linux host with another uid loses
   write access to `/workspace`.** The template sets `updateRemoteUserUID: false`: the
   CLI's rewrite to the host uid would chown only `/home/app` and leave the dependency
@@ -371,7 +371,7 @@ These are stated plainly so nobody trusts the setup for more than it does:
 - **Verifying a new digest is automatic only in a repo that has adopted #30's workflows.** A
   repo that has not copied `devcontainer-image.yml` and does not require `verify / verify`
   still takes whatever digest a Dependabot image bump proposes, including a branch-built
-  one, unless a human runs the verify command. No repo has adopted them yet (pilots, #10).
+  one, unless a human runs the verify command. Only the two pilots have adopted them (#10).
 - **The tag ruleset's App-token negative test has not been run.** Deleting a `v*` or
   `devc-automerge-*` tag with the `bump-binaries` App's token is the test; the App does not
   exist yet, so it is deferred until it is created. Org owners and any admin team bypass the
@@ -397,7 +397,7 @@ These are stated plainly so nobody trusts the setup for more than it does:
   force in a container brought up from the template with the pinned devcontainer CLI
   (`findmnt`, an `EROFS` write, init as PID 1, and the CLI's own setup succeeding under
   `--read-only`). It runs against a fixture, so a repo's own edited copy of the template
-  is still unchecked; the live pilot check is open too.
+  is still unchecked; the pilots ran the live checks (#10).
 - **Folder-name uniqueness is detected at start, not prevented.** A collision between two
   checkouts' folder names merges two repos' trust domains (up to four per-repo volumes).
   `owner-check.sh` (DEVC-D6) runs first in the template's `postStartCommand`, keeps the
@@ -454,8 +454,9 @@ These are stated plainly so nobody trusts the setup for more than it does:
   container whose `user.signingkey` were changed could sign with the 603-Identity key.
   Accepted: the agent is the signing boundary, and `git-identity.sh` only sets the key each
   org's identity file names. The host passphrase cache (README § Host signing policy, 8h if
-  configured as recommended) widens the same boundary in time: once unlocked, any attached container signs without a
-  prompt until the cache expires.
+  configured as recommended) widens the same boundary in time: once unlocked, any attached
+  container signs without a prompt until the cache expires. The owner accepted the key
+  exposure on purpose (#10): the forwarded agent offers the personal and the org keys alike.
 - **`/workspace/.git` sits on the host bind mount** (pre-existing), so a container
   process can plant hooks, `core.hooksPath` or `core.fsmonitor` that the **host's** git
   then runs.
