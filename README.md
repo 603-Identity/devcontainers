@@ -632,8 +632,10 @@ WSL integration for it (Settings, Resources, WSL integration).
 
 `bump-binaries.yml` runs weekly, and on manual dispatch, for gh, yq, uv, tofu, tflint,
 node, npm and betterleaks. **It cannot run for real yet**: it needs a GitHub App that hasn't been
-created (docs/threat_model.md's Known gaps). Until that App exists and its secrets are
-set, every run fails at the token step, and the fallback below is how to bump a tool.
+created (docs/threat_model.md's Known gaps). Until that App exists and the repo-level variable
+`BUMP_BINARIES_APP_ID` is set, the job is skipped (#87), and the fallback below is how to bump a
+tool. Set the variable last, after the private-key secret: with the variable set and the secret
+missing, the job runs and fails at the token step.
 The workflow resolves each tool's newest release (node: the current LTS line; npm:
 the newest release the current node pin supports), takes the sha256 from that release's
 own published checksum file (npm: the registry's `integrity` field) -- never from

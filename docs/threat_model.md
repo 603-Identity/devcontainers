@@ -439,9 +439,11 @@ These are stated plainly so nobody trusts the setup for more than it does:
   (only `issue_comment` uses `main`'s), so a branch that edits the gate, or its
   `REVIEWER_IDS`, is checked by the edited gate. Pushing a branch already takes write
   access, and the edit shows in the diff the human reads before merging (#93).
-- **`bump-binaries.yml` cannot run for real yet**: the App it needs has not been created,
-  and `BUMP_BINARIES_APP_ID`/`BUMP_BINARIES_APP_PRIVATE_KEY` are not set on this repo.
-  When it is, put the private key in a GitHub Environment restricted to deploy from
+- **`bump-binaries.yml` is skipped until the App exists**: the App it needs has not been created,
+  and `BUMP_BINARIES_APP_ID`/`BUMP_BINARIES_APP_PRIVATE_KEY` are not set on this repo (the job's
+  `if:` on the variable skips it, #87). `BUMP_BINARIES_APP_ID` must stay a repo-level variable,
+  never an Environment one: a job-level `if:` cannot see Environment variables, so the job would
+  skip forever. When the App exists, put the private key in a GitHub Environment restricted to deploy from
   `main` (the workflow job would then need an `environment:` key, which it has not
   been given) -- a plain repo secret is readable by any workflow run on any branch a
   write-access user pushes.
