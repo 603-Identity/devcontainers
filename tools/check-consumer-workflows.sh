@@ -34,6 +34,19 @@
 #     of the verify and decide pins.
 # It also checks the gate's `decide` pin has that same shape, and warns when the two pins
 # name different commits.
+#
+# When `.ai/project.yml` sits next to `.github/` (<dir>/../../.ai/project.yml) it also fails when
+# (#214), for the gate's CONSUMER code_paths block:
+#   * the block's `>>> CONSUMER: code_paths` region is missing from the post job;
+#   * `code_paths` is not a list of strings;
+#   * a line in the block, other than a blank or `#` comment line, is not a literal
+#     `<glob>[|<glob>...]) touches=1 ;;` arm (the block is evaluated to read it, so nothing else
+#     may reach that), or the arms together do not parse as `case` arms (`esac)` is one);
+#   * a `code_paths` entry reads `touches=0` through the gate's `case`, one finding per entry. It
+#     is a spot check: a dir `x/` is tried as a few paths under it, a glob as a few paths that
+#     match it (`**/` also with zero directories). A block copied from another adopter fails here.
+# and warns when a block pattern matches no entry's sample, or when a glob entry (a bracket
+# class, say) gets no sample that matches it, so that entry is not checked.
 set -euo pipefail
 export LC_ALL=C
 
@@ -188,6 +201,97 @@ elif [ -n "$gate_json" ]; then
   if [ -z "$decide_sha" ] || ! [[ "$decide_comment" =~ $VERSION_COMMENT ]]; then
     decide_sha=""
     finding "$gate: the decide pin must be '$DECIDE_WF@<40-hex sha> # vX.Y'."
+  fi
+
+  # Rule 2b (#214): the CONSUMER `code_paths` block must cover the repo's own `.ai/project.yml`
+  # code_paths. A block copied from another adopter fails silently in the unsafe direction: a
+  # missing glob reads as "No code_paths touched -- no review required", never as a red check.
+  # Runs only when `.ai/project.yml` sits next to `.github/` (dir/../../.ai/project.yml).
+  root="$(CDPATH="" cd -- "$dir/../.." 2> /dev/null && pwd -P)" || root=""
+  project="$root/.ai/project.yml"
+  if [ -n "$root" ] && [ -f "$project" ]; then
+    region="$(printf '%s' "$gate_json" | j '.jobs.post.steps[]? | .run? // empty' \
+      | awk '/# <<< CONSUMER: code_paths/ { on = 0 } on { print } /# >>> CONSUMER: code_paths/ { on = 1; seen = 1 } END { if (!seen) exit 3 }')" \
+      || region="__missing__"
+    if [ "$region" = "__missing__" ]; then
+      finding "$gate: the post job's '>>> CONSUMER: code_paths' region is missing, so $project's code_paths cannot be checked against it."
+    elif ! cp_json="$(yq -o=json '.code_paths' "$project" 2> /dev/null)" \
+        || [ "$(printf '%s' "$cp_json" | j 'type == "array" and all(.[]; type == "string")')" != "true" ]; then
+      finding "$project: code_paths must be a list of strings."
+    else
+      arms="" arm_ok=true
+      while IFS= read -r line; do
+        case "$line" in *[![:space:]]*) ;; *) continue ;; esac   # blank
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        # Only literal case arms. The block is evaluated below, so nothing else may reach eval.
+        # [[:blank:]], not [[:space:]]: a \v or \f would turn `touches=1` into a command name.
+        if [[ "$line" =~ ^[[:blank:]]*[]A-Za-z0-9_./*?[-]+(\|[]A-Za-z0-9_./*?[-]+)*\)[[:blank:]]+touches=1[[:blank:]]+\;\;[[:blank:]]*$ ]]; then
+          arms+="$line"$'\n'
+        else
+          finding "$gate: the CONSUMER code_paths block holds a line that is not '<glob>|<glob>) touches=1 ;;': $line"
+          arm_ok=false
+        fi
+      done <<< "$region"
+      if [ "$arm_ok" = true ]; then
+        # The gate's own two `case` statements, the fixed `.github/` rule first.
+        # A reserved word as a pattern (`esac)`) passes the arm shape but is a syntax error here.
+        if ! eval "gate_touches() { local touches=0; case \"\$1\" in .github/*) touches=1 ;; esac; case \"\$1\" in
+$arms
+        esac; echo \"\$touches\"; }" 2> /dev/null; then
+          finding "$gate: the CONSUMER code_paths block does not parse as case arms."
+          arm_ok=false
+        fi
+      fi
+      if [ "$arm_ok" = true ]; then
+        samples=()
+        while IFS= read -r entry; do
+          [ -n "$entry" ] || continue
+          # Several samples per entry, so one lucky shape (`images/a)` for `images/`) cannot pass.
+          cands=(); match="$entry"
+          # `**/` also covers zero directories, so a base without it too; a glob in a dir entry
+          # (`modules/*/`) is filled in the same way.
+          if [[ "$entry" == */ ]] || [ -d "$root/$entry" ]; then
+            base="${entry%/}/"; match="${base}*"
+            bases=("${base//[*?]/a}" "${base//\*/Z9_-.}" "${base//\*\*\//}")
+            bases[1]="${bases[1]//\?/Z}"; bases[2]="${bases[2]//[*?]/a}"
+            for b in "${bases[@]}"; do cands+=("${b}a" "${b}A" "${b}.a" "${b}a/b" "${b}Z9_-."); done
+          else
+            cands=("${entry//[*?]/a}" "${entry//\*/Z9_-.}" "${entry//\*\*\//}")
+            cands[1]="${cands[1]//\?/Z}"; cands[2]="${cands[2]//[*?]/a}"
+          fi
+          checked=0
+          hint=""
+          [[ "$entry" == *[/*?\[]* ]] || hint=" (A directory entry needs a trailing slash, or to exist next to .github/.)"
+          zero="${match//\*\*\//}"
+          for sample in "${cands[@]}"; do
+            # A sample built from a glob must itself match it, or it proves nothing.
+            # (`**/` matching zero directories is how gitignore reads it, not bash, so try both.)
+            # shellcheck disable=SC2053  # the glob match is the point
+            if [[ "$match" == *[*?\[]* ]] && ! [[ "$sample" == $match || "$sample" == $zero ]]; then continue; fi
+            checked=1
+            samples+=("$sample")
+            if [ "$(gate_touches "$sample")" != 1 ]; then
+              finding "$gate: the CONSUMER block does not cover code_paths entry '$entry' in $project ($sample reads touches=0). A PR touching only it would post 'no review required'. Derive the block from this repo's own code_paths, never from another adopter's gate.${hint}"
+              break   # one finding per entry
+            fi
+          done
+          [ "$checked" = 1 ] || warn "cannot build a sample path for the code_paths entry '$entry', so it is not checked."
+        done < <(printf '%s' "$cp_json" | j '.[]')
+        # The reverse is a warning: a pattern that none of the entries' samples matches.
+        while IFS= read -r line; do
+          [[ "$line" =~ ^[[:space:]]*#|^[[:space:]]*$ ]] && continue
+          pats="${line%%)*}"; pats="${pats#"${pats%%[![:space:]]*}"}"
+          IFS='|' read -ra plist <<< "$pats"
+          for p in "${plist[@]}"; do
+            [ "$p" = '.github/*' ] && continue
+            hit=false
+            # shellcheck disable=SC2053  # the glob match is the point
+            for s in ${samples[@]+"${samples[@]}"}; do [[ "$s" == $p ]] && { hit=true; break; }; done
+            [ "$hit" = true ] || warn "$gate: the CONSUMER pattern '$p' matches none of the code_paths entries in $project."
+          done
+        done <<< "$region"
+      fi
+    fi
   fi
 fi
 

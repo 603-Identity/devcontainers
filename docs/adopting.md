@@ -95,13 +95,16 @@ consuming repo needs](../README.md#what-the-consuming-repo-needs):
 1. Copy [`devcontainer-image.yml`](../template/.github/workflows/devcontainer-image.yml)
    unchanged (it is the check `verify / verify`).
 2. Copy [`architect-review-gate.yml`](../template/.github/workflows/architect-review-gate.yml)
-   and edit only its marked per-consumer values. **Choose `code_paths` knowing that anything
-   outside it is guarded only by the two secret scans.**
+   and edit only its marked per-consumer values. Derive the `case` block from this repo's
+   own `.ai/project.yml` `code_paths`, never from another adopter's gate. **Choose
+   `code_paths` knowing that anything outside it is guarded only by the two secret scans.**
 3. `secret-scan.yml` is already in place from step 1; do not add it here.
 4. Add `.devcontainer` under the `docker` ecosystem in `.github/dependabot.yml` (the
    `github-actions` ecosystem was configured in step 1).
 5. Run `tools/check-consumer-workflows.sh` from a checkout of this repo against the repo's
-   `.github/workflows`. Nothing re-runs it later, so do it now.
+   `.github/workflows`. With `.ai/project.yml` beside `.github/`, it also spot-checks each
+   `code_paths` entry against the gate's `case` block and fails on one it does not cover. Nothing re-runs it later, so do
+   it now.
 6. Private repos: apply the push ruleset that blocks secret-bearing files, and record each
    exception in the PR.
 
