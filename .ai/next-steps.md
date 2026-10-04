@@ -2,37 +2,29 @@
 
 **Now:** P1: pilot adoption (milestone 2). Implementing.
 
-**Just done** (session ran coder then architect, last_commit `cd67cf6`):
-- Both pilots repinned secret-scan to `v1.2`: terraform-cloudflare-dns#56 and
-  terraform-microsoft365-entra#41, both merged.
-- -dns#58 was the first real image bump (devcontainer-tofu 4.244 → 4.263). It passed
-  `verify / verify` after a GitHub 503 rerun, got its architect review and was merged.
-  Recorded on #10.
-- -dns moved off detect-secrets (-dns#47). The full-history adoption scan was `complete`, and
-  its only hit was the deliberate token from -dns#49. The ruleset context was dropped first,
-  then -dns#60 merged. Commits in -dns must now be made inside the devcontainer, because the
-  Betterleaks hook uses container paths.
-- #224 (#191) removed bc-detect-secrets, the #186 sync job and its smoke check from the image.
-  #188 and #189 were closed as superseded, and -dns#53 and #62 were closed.
-- No `/way-of-working:critic-gate` pass ran on #224 or -dns#60. Both went through the
-  fresh-session architect review instead.
+**Just done** (session ran coder, last_commit `7a9e126`):
+- Found the post-#224 devcontainer-tofu bumps: terraform-cloudflare-dns#66 (4.263 → 4.267) and
+  terraform-microsoft365-entra#42 (4.244 → 4.267). Each passes every required check except
+  `architect-review`, which has no review posted on the head commit.
+- Proved the `verify / verify` pin blocks a merge. Throwaway PR -entra#43 dropped the digest from
+  the `FROM` line; the check went red (`does not match the allowed pattern`), the PR was
+  `BLOCKED`, and it was closed unmerged. Evidence is on #10. The first attempt went red for the
+  wrong reason (a truncated Dockerfile) and was redone.
+- No code diff in this repo, so no `/way-of-working:critic-gate` pass applied.
 
-**Next:** task #10 — for each pilot, find the Dependabot devcontainer-tofu image bump opened
-after #224 published, and report its required checks with `/way-of-working:pr-checks`.
-Never merge. Model: **sonnet** (coder).
+**Next:** task #10 — run `/way-of-working:architect-review` on -dns#66 and -entra#42 in a fresh
+session, verify the gate with `/way-of-working:pr-checks`, and record both on #10. Never merge.
+Model: **opus** (architect). Open a new window, not `/clear`: this is a review boundary.
 
-**HITL Gate: OPEN.** Confirm the milestone 2 plan anchor (description sha `3c385bea...`,
-task #10). It was rewritten because this session's #10 comment moved the issue's
-`updated_at`. `verify --plan` matched the prior anchor, but this session's resume never ran
-`verify`.
+**HITL Gate: NONE OPEN.** Next gate is the owner's merge of the two bump PRs.
 
 **Open for the owner (non-blocking):**
-- #10 still needs a PR on -entra showing the `verify / verify` pin blocks (the -entra image bump
-  can serve), the checklist ticked, and answers on the forwarded GPG agent (personal and org
-  keys?) and a persistent `/tmp`.
+- #10 still needs answers on the forwarded GPG agent (personal and org keys?) and a persistent
+  `/tmp`.
+- Delete branch `test/verify-pin-negative-10` on terraform-microsoft365-entra (auto mode blocks
+  branch deletes).
 - -dns#57: pin `Mocked tofu test` and both Checkov checks to `integration_id` 15368 in the
-  ruleset. The `.ai/project.yml` half merged in -dns#60. -dns#59 (`code_paths` scope) and
-  -dns#65 are open.
+  ruleset. -dns#59 (`code_paths` scope) and -dns#65 are open.
 - Other repos still on detect-secrets have their own migration issues:
   checkov-ledger-action#16, infrastructure-core#560, tenant-posture-assessment#31 and
   trust-anchors#73.
