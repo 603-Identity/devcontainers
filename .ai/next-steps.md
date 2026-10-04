@@ -1,25 +1,23 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Awaiting review: PR #248 (#245) is
-open and needs a fresh-session architect review.
+**Now:** Milestone 4, Repo hardening: review gate and CI. Implementing.
 
-**Just done** (coder session on sonnet, last_commit `bfa0a38`):
-- #245 shipped as PR #248 (`bfa0a38`): rule 2b of `tools/check-consumer-workflows.sh` strips a
-  leading `./` from each `code_paths` entry before sampling, with a test for each direction.
-- Critic pass (architect, security-critic, docs-consistency): 2 rounds, converged, all on the
-  critics' own default models. The one finding acted on was a wrong comment (the gate reads the
-  GitHub files API, not `git diff`). The full green gate passed.
-- Filed #249: a bare `./` or `.` entry still fails open in rule 2b (same shape as #245); not in
-  #248, deliberately.
+**Just done** (architect review session on opus, last_commit `75ac3ea`):
+- Fresh-session architect review of PR #248 (#245) posted. It found no blocking issues, and
+  the PR's own claim reproduced in the WSL sandbox: the new tests fail with the fix mutated out.
+  The gate went green and the owner merged it (`75ac3ea`).
+- Filed #251 (non-blocking): the new test's comment still says the gate sees `git diff` paths;
+  it reads the GitHub files API. Can ride along with #249.
 
-**Next:** `/way-of-working:architect-review 248` in a **new window** (the fresh-session review
-is an integrity property, not just context hygiene). Model: **opus** (architect). File any
-non-blocking findings; never approve or merge. After it, the coder work that doesn't wait on
-items 4 and 5 is #202, #198, #240 (build order is in the milestone description).
+**Next:** task #202 — make the consumer-lint caller rules (`tools/check-consumer-workflows.sh`,
+rule 4) allowlist the `verify` job's keys, with a test for an unexpected key; run the green gate
+and `/way-of-working:critic-gate` (architect + security-critic), then `/way-of-working:ship`.
+Model: **sonnet** (coder). After it, #198 and #240 are the other coder items that don't wait on
+items 4 and 5 (build order is in the milestone description).
 
-**HITL Gate: NONE OPEN** for #248. The next gate is the owner's merge of #248 after that review.
-Also owner-owned this sprint: the #93 + #122 decision (by 2026-10-17), the #233 spike result,
-the `v1.3` tag.
+**HITL Gate: NONE OPEN.** The next gate is the owner's merge of #202's PR after a fresh-session
+architect review. Also owner-owned this sprint: the #93 + #122 decision (by 2026-10-17), the
+#233 spike result, the `v1.3` tag.
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before
