@@ -15,8 +15,10 @@ packages must stay public (DEVC-D3). Since #2 they are built on Ubuntu 26.04. Th
 
 P0: cross-org images (milestone 1) is done. Its last change merged as `6f63aec` (#174).
 
-The pilots, terraform-cloudflare-dns and terraform-microsoft365-entra, have adopted the
-template (#10 closed). The waves (#26 to #28) follow `docs/adopting.md`.
+P1: pilot adoption (milestone 2) is done. Its last change merged as `00b6a2e` (#228, the
+adoption runbook). The pilots, terraform-cloudflare-dns and terraform-microsoft365-entra, have
+adopted the template (#10 closed). The waves (#26 to #28) follow `docs/adopting.md`. Org secret
+scanning (#190) moved to milestone 4.
 
 ## Next action
 
