@@ -1,30 +1,31 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Awaiting review on PR #243.
+**Now:** Milestone 4, Repo hardening: review gate and CI. Implementing: #245 is next for a
+coder session.
 
-**Just done** (coder session on sonnet, last_commit `ac956ad`):
-- Implemented #214 on branch `ci/lint-consumer-code-paths-214` and opened PR #243.
-  `tools/check-consumer-workflows.sh` runs each `code_paths` entry from the consumer's own
-  `.ai/project.yml` through the gate's CONSUMER `case` block and fails on `touches=0`. README
-  and `docs/adopting.md` say to derive the block from the adopter's own `code_paths`.
-- Critic pass (security-critic, architect, docs-consistency): 3 rounds, converged. The
-  second-opinion round on `fable` was offered and declined. Not the review gate.
-- Not run locally: the Docker-based green-gate entries (hadolint, Trivy, zizmor, Go tests,
-  image build, `template-proof`); CI runs them. Run 37172129491 (the #238 merge push) finished
-  `success`.
+**Just done** (architect session on opus, last_commit `6660921`):
+- PR #243 (#214) merged as `6660921`.
+- #240 and #245 joined milestone 4 (owner's call). The milestone description's build order
+  gained 3a (#245, before the waves) and 10a (#240, after #198); the critic-gate line names
+  both. Re-anchored on the edited description (`aa8c259…`, verified `match` before and after
+  the edit) and on task #245.
+- Recommended order for the coder work that doesn't wait on items 4 and 5: #245, #202, #198,
+  #240. In parallel, an opus session can run the #233 spike and draft the #93 + #122 decision
+  for the owner, since items 6-8 wait on both.
 
-**Next:** `/way-of-working:architect-review 243` — post the fresh-session architect review,
-verify `architect-review` went green on the head SHA, and file non-blocking findings. Never
-approve, never merge. Model: **opus** (architect). Use a **new window**, not `/clear`: this
-crosses the review gate.
+**Next:** task #245 — In `tools/check-consumer-workflows.sh` rule 2b, strip a leading `./`
+from each `code_paths` entry before building samples and in the reverse-direction match (or
+reject a `./`-prefixed entry as its own finding naming the form), add a test for each
+direction per the issue, run the green gate, run `/way-of-working:critic-gate` (architect +
+security-critic), then `/way-of-working:ship`. Model: **sonnet** (coder).
 
-**HITL Gate: NONE OPEN.** Owner-owned this sprint: the #243 merge, the #93 + #122 decision
-(by 2026-10-17), the #233 spike result, the `v1.3` tag.
+**HITL Gate: NONE OPEN** for #245. The next gate is the owner's merge of #245's PR after a
+fresh-session architect review. Also owner-owned this sprint: the #93 + #122 decision (by
+2026-10-17), the #233 spike result, the `v1.3` tag.
 
 **Open for the owner (non-blocking):**
-- Decide whether #240 joins milestone 4 (it touches the same guard as #160).
-- Milestone 5 (Trivy renewal 2026-11) is date-bound: renew or retire the #148 Trivy exceptions
-  before 2026-11-01.
+- Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before
+  2026-11-01.
 - Delete branch `test/verify-pin-negative-10` on terraform-microsoft365-entra.
 - terraform-cloudflare-dns: its gate lists `.terraform.lock.hcl` and `.devcontainer/*` that its
   `code_paths` do not (the new lint warns); confirm during the #212 pilot follow-ups, along with
