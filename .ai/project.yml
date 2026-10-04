@@ -41,6 +41,7 @@ load_bearing_docs:
   - README.md
   - docs/roadmap.md
   - docs/threat_model.md
+  - docs/adopting.md
 
 # ── what counts as a behavior change ─────────────────────────────────────────
 # Everything that decides what goes into a published image, how it is tested and published,
