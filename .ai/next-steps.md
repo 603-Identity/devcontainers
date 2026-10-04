@@ -1,18 +1,25 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Planning.
+**Now:** Milestone 4, Repo hardening: review gate and CI. Implementing.
 
-**Just done** (last_commit `33b864b`):
-- P1 (milestone 2) archived; roadmap marks it done at `00b6a2e` (#228). #190 moved to milestone 4.
-- Deep record: nothing to compact (roadmap holds status and decisions only; backlog is GitHub issues).
+**Just done** (planning session on opus, last_commit `96c7a2e`; no code):
+- Planned milestone 4. The owner approved the build order; it is the milestone description.
+  Gate fixes land once in `tools/gate-*.sh` and ship in `v1.3` before the M3 waves.
+- Filed #233 (run this repo on the rendered template gate, spike first) and #234 (ancestor
+  check for pinned SHAs, split from #190). Closed #190 (built) and #41 (rewrap later).
+  Moved #125 to milestone 3; unmilestoned #152.
+- Triage comments on #87, #102, #92, #93, #94, #96, #122, #126, #132 record the sequencing:
+  the #93 + #122 trust-model decision is due 2026-10-17; the App ID stays a repo-level variable.
+- First anchor for milestone 4, description sha `c2598f10…aeca0f`.
 
-**Milestone close:** closed, milestone 2 "P1: pilot adoption", read back `closed` with 0 open issues.
+**Next:** task #87 — skip `bump-binaries.yml`'s job while the App is unprovisioned
+(job-level `if:` on the repo-level `BUMP_BINARIES_APP_ID`), then the green gate,
+`/way-of-working:critic-gate` (architect + security-critic) and `/way-of-working:ship`.
+Model: **sonnet** (coder). `/clear` is fine.
 
-**Next:** plan milestone 4: read its description and open issues, order them, and put the plan
-through the owner's gate. `/way-of-working:plan-sprint` can help triage. Model: **opus**
-(architect). `/clear` is fine.
-
-**HITL Gate: NONE OPEN.** Next gate is the owner's approval of the milestone 4 plan.
+**HITL Gate: OPEN.** First anchor for milestone 4: the owner confirms the milestone
+description as anchored, then says go. Also owner-owned this sprint: the #93 + #122 decision
+(by 2026-10-17).
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11) is date-bound: renew or retire the #148 Trivy exceptions
