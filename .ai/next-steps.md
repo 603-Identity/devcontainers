@@ -1,31 +1,32 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Awaiting review on PR #243.
+**Now:** Milestone 4, Repo hardening: review gate and CI. PR #243 is reviewed and waiting for
+the owner's merge.
 
-**Just done** (coder session on sonnet, last_commit `ac956ad`):
-- Implemented #214 on branch `ci/lint-consumer-code-paths-214` and opened PR #243.
-  `tools/check-consumer-workflows.sh` runs each `code_paths` entry from the consumer's own
-  `.ai/project.yml` through the gate's CONSUMER `case` block and fails on `touches=0`. README
-  and `docs/adopting.md` say to derive the block from the adopter's own `code_paths`.
-- Critic pass (security-critic, architect, docs-consistency): 3 rounds, converged. The
-  second-opinion round on `fable` was offered and declined. Not the review gate.
-- Not run locally: the Docker-based green-gate entries (hadolint, Trivy, zizmor, Go tests,
-  image build, `template-proof`); CI runs them. Run 37172129491 (the #238 merge push) finished
-  `success`.
+**Just done** (architect session on opus, last_commit `d87f89e`):
+- Posted the fresh-session architect review on PR #243 (#214) against head `ac956ad`.
+  `architect-review` is green on that SHA (commit status) and the PR reads `CLEAN`. Verdict:
+  sound. Executed in an isolated sandbox in WSL: the suite, shellcheck, two planted mutations,
+  and a lint of terraform-microsoft365-entra and terraform-cloudflare-dns at their `main`.
+- Filed #245 (non-blocking): a `./`-prefixed `code_paths` entry gets a false finding whose
+  obvious fix makes the gate fail open. Not milestoned.
+- Plan anchor for milestone 4 re-verified at this handoff: `match`, description unchanged.
+  (Resume did not verify it, because the status was `awaiting_review`.)
 
-**Next:** `/way-of-working:architect-review 243` — post the fresh-session architect review,
-verify `architect-review` went green on the head SHA, and file non-blocking findings. Never
-approve, never merge. Model: **opus** (architect). Use a **new window**, not `/clear`: this
-crosses the review gate.
+**Next:** once the owner has merged #243, pick the next milestone-4 task with the owner and
+hand it off to a coder session. #245 is a candidate if the owner milestones it. Model:
+**opus** (architect) for the pick.
 
-**HITL Gate: NONE OPEN.** Owner-owned this sprint: the #243 merge, the #93 + #122 decision
-(by 2026-10-17), the #233 spike result, the `v1.3` tag.
+**HITL Gate: OPEN.** The #243 merge (owner) and the owner's pick of the next M4 task. Also
+owner-owned this sprint: the #93 + #122 decision (by 2026-10-17), the #233 spike result, the
+`v1.3` tag.
 
 **Open for the owner (non-blocking):**
-- Decide whether #240 joins milestone 4 (it touches the same guard as #160).
+- Decide whether #240 and #245 join milestone 4.
 - Milestone 5 (Trivy renewal 2026-11) is date-bound: renew or retire the #148 Trivy exceptions
   before 2026-11-01.
-- Delete branch `test/verify-pin-negative-10` on terraform-microsoft365-entra.
+- Delete branch `test/verify-pin-negative-10` on terraform-microsoft365-entra, and the merged
+  local branch `docs/sync-cursor-243-review` here (auto mode refused the delete).
 - terraform-cloudflare-dns: its gate lists `.terraform.lock.hcl` and `.devcontainer/*` that its
   `code_paths` do not (the new lint warns); confirm during the #212 pilot follow-ups, along with
   whether it should cover `.claude/` (from #214).
