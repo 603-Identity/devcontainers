@@ -16,8 +16,9 @@ binaries and [`images/base/tools/uv.lock`](images/base/tools/uv.lock) for the Py
 The images are **linux/amd64 only**: every downloaded binary is amd64, so the base
 image's first build step fails with a clear message on any other architecture.
 
-No repo has adopted the images yet. Adoption is tracked in #10 (pilots) and the wave
-issues #26 to #28.
+The pilots (terraform-cloudflare-dns and terraform-microsoft365-entra, #10) have adopted
+them. To adopt them in another repo, follow [`docs/adopting.md`](docs/adopting.md). The
+waves are tracked in #26 to #28.
 
 Local sizes measured on 2026-09-28: base 445 MB, tofu 664 MB, node 752 MB. Shared layers
 are stored only once, so all three together take about 0.95 GB.
@@ -34,6 +35,9 @@ org profile, archived and demo repos) are listed under
 
 ## Using an image in a repo
 
+The ordered adoption procedure, with its rollback, is [`docs/adopting.md`](docs/adopting.md).
+This section and the ones after it hold the detail it links to.
+
 Open the repo with VS Code and its Dev Containers extension. Commit signing depends on its
 GPG agent forwarding, and no other editor is supported. On a Linux host your uid must be
 1000, or the container can't write `/workspace` (DEVC-D5). macOS and Windows hosts are
@@ -44,7 +48,7 @@ unaffected.
    latest *Build images* run summary. CI verifies every digest on every pull request (step 3),
    so a bad one fails the PR. To check one by hand first:
    ```sh
-   gh attestation verify oci://ghcr.io/603-identity/devcontainer-tofu@sha256:<digest> \
+   gh attestation verify oci://ghcr.io/603-identity/devcontainer-<image>@sha256:<digest> \
      --repo 603-Identity/devcontainers \
      --cert-identity https://github.com/603-Identity/devcontainers/.github/workflows/build.yml@refs/heads/main \
      --cert-oidc-issuer https://token.actions.githubusercontent.com \
@@ -144,8 +148,8 @@ settings the adoption PR records, and review.
   once the repo has adopted [secret scanning](#secret-scanning-190), `secrets / scan`,
   each with `integration_id: 15368` (GitHub Actions). Unpinned, a status posted by a user
   with push access satisfies the requirement. Read the ruleset back through the API after
-  creating it, and attach the result to the adoption PR. The pin on `verify / verify` is
-  untested until the first pilot (#10).
+  creating it, and attach the result to the adoption PR. The pin on `verify / verify` blocked
+  a merge on the pilots (#10): a PR that dropped the digest went red and was `BLOCKED`.
 - **What `verify / verify` rejects.** It fails the PR unless `.devcontainer/Dockerfile` is the template's shape (the
   header comment in the template Dockerfile lists the rules: one plain `FROM`, ASCII with LF endings, the
   `# syntax=` line, no `COPY --from` or `ONBUILD`) and `devcontainer.json` has no top-level `image`,
@@ -236,7 +240,7 @@ Do these in order, so the repo is never covered by neither scanner:
    betterleaks git . -c <path to org.toml> --ignore-file /dev/null --no-allow-signatures \
      --redact --jsonl --log-opts="-m --text --all" > scan.jsonl
    jq -c 'select(.scan).scan.state' scan.jsonl     # must print "complete"
-   jq -c 'select(.finding).finding | {rule_id, path: .location.path, line: .location.start_line}' scan.jsonl
+   jq -c 'select(.finding).finding | {rule_id, path: .location.path, line: .location.start_line, fp: .match.fingerprint}' scan.jsonl
    ```
    Rotate anything real. A scan that does not say `"complete"` proves nothing: run it again.
    A made-up token in a test PR stays in `refs/pull/<n>/head`, and `--all` scans it, so run
@@ -254,10 +258,12 @@ Do these in order, so the repo is never covered by neither scanner:
    unchanged into `.github/workflows/`, and make sure Dependabot's `github-actions` ecosystem
    is configured so the pin is bumped as a reviewed PR. Run `tools/check-consumer-workflows.sh`
    against the repo's `.github/workflows` before opening the PR.
-4. **Require the new check, then drop the old one.** Once `secrets / scan` has reported on a
-   PR, add it to the ruleset's required checks with `integration_id: 15368`, and read the
-   ruleset back through the API to confirm the pin. Then remove the old scanner's required
-   context and delete its job, in one PR.
+4. **Require the new check, then drop the old one.** Once the caller is merged to the default
+   branch and `secrets / scan` has reported on a PR opened after that merge, add it to the ruleset's required checks
+   with `integration_id: 15368`, and read the ruleset back through the API to confirm the
+   pin. (Required earlier, it blocks every PR whose base lacks the caller.) Then, if the
+   repo has an old scanner, drop its required context from the ruleset and only then merge
+   the PR that deletes its job.
 
 **The cost to know about.** The config is read from the base commit, so a PR that adds its own
 false positive is red until the ignore entry (or rule change) is merged first. Merge that as
@@ -298,10 +304,15 @@ To test that the hook catches something, stage a file holding a made-up GitHub t
 36 random characters), not an AWS `…EXAMPLE` key: the rules treat those as documentation and skip them.
 
 Hooks can be skipped, and edits made on github.com or outside the container are not scanned
-until CI, so CI is what you rely on. To stop an agent skipping the hook to get a commit
-through, add `Bash(git commit --no-verify:*)`, `Bash(git commit -n:*)` and
+until CI, so CI is what you rely on. To make the obvious skip a denied command for an
+agent, add `Bash(git commit --no-verify:*)`, `Bash(git commit -n:*)` and
 `Bash(git push --no-verify:*)` (and the `PowerShell(...)` forms) to the repo's
-`.claude/settings.json` `permissions.deny`, as this repo does for force-push.
+`.claude/settings.json` `permissions.deny`, as this repo does for force-push. These are
+prefix matches: they only catch the flag right after the subcommand. For example
+`git commit -m msg -n`, `git commit -am msg --no-verify`, `git push origin HEAD --no-verify`,
+`SKIP=betterleaks git commit ...` and `git -c core.hooksPath=/dev/null commit ...` all get
+past them, and so does a force-push with the flag last or as `+refspec`. They stop a
+careless skip, not a determined one; `secrets / scan` is the control.
 
 ### Toolchain versions must match CI
 
@@ -395,10 +406,9 @@ image (`tests/smoke.sh` asserts it), because Docker copies the image path's owne
 an empty volume and a missing path comes up root-owned and unwritable as uid 1000.
 
 **Migrating from the old layout.** Needed only by a container that already holds the
-template's earlier `<repo>-gh` and `<repo>-claude` volumes; no repo has adopted the images
-yet (adoption starts with milestone 2), so this is the procedure for the first ones that
-have. With the container stopped and before rebuilding it, copy the credential and sessions
-once into the new home volume (substitute the old volumes' actual names):
+template's earlier `<repo>-gh` and `<repo>-claude` volumes. With the container stopped
+and before rebuilding it, copy the credential and sessions once into the new home volume
+(substitute the old volumes' actual names):
 
 ```sh
 docker run --rm --user 0 --network none \
@@ -411,8 +421,9 @@ docker run --rm --user 0 --network none \
     && cp -a /home/app/. /to/ && chown -R 1000:1000 /to'
 ```
 
-Check `gh auth status` in the rebuilt container, then remove the old volumes with
-`docker volume rm`. The old shared `devc-cache` volume is unused on the new layout (the
+Check `gh auth status` in the rebuilt container. Keep the old volumes until the adoption
+has merged and settled (a rollback needs them), then remove them with `docker volume rm`.
+The old shared `devc-cache` volume is unused on the new layout (the
 tofu cache is now `devc-tofu-plugins`) and can be removed once no container on the host
 still runs the old template. The copy runs as root and ends with a `chown`, because a home volume
 that is not empty at first mount is not seeded from the image: its root directory would
@@ -527,17 +538,19 @@ and the container still starts.
   `HOME`, so the template's source path doubles (`C:\Users\x` + `C:\Users\x/.gitconfig.d`)
   and the same error appears. Run `unset HOME` in that shell first if you must use it.
 - Edits to the host files apply on the **next container start**.
-- Signing goes through VS Code's forwarded GPG agent. SSH signing is out of scope. See [Host signing policy](#host-signing-policy) for the host cache TTL.
+- Signing goes through VS Code's forwarded GPG agent. SSH signing is out of scope. See
+  [Host signing policy](#host-signing-policy) for the host cache TTL.
 
 ## Host signing policy
 
 Signing uses the passphrase cache of the **host's** gpg-agent, reached through VS Code's
-forwarded socket. No image component warms or extends that cache, and nothing in one can raise the host's TTL. When it expires
-mid-session, the host agent raises a pinentry prompt on the host, where nobody is watching,
-and the container's commit fails with `gpg: signing failed: Timeout`. A retry signs immediately
-once the prompt is answered. The cause is a cache shorter than the session, so set it to
-cover a working day (8 hours). In the host's `gpg-agent.conf` (Gpg4win:
-`%APPDATA%\gnupg\gpg-agent.conf`; elsewhere `~/.gnupg/gpg-agent.conf`):
+forwarded socket. No image component warms or extends that cache, and nothing in one can
+raise the host's TTL. When it expires mid-session, the host agent raises a pinentry prompt on
+the host, where nobody is watching, and the container's commit fails with
+`gpg: signing failed: Timeout`. A retry signs immediately once the prompt is answered. The
+cause is a cache shorter than the session, so set it to cover a working day (8 hours). In
+the host's `gpg-agent.conf` (Gpg4win: `%APPDATA%\gnupg\gpg-agent.conf`; elsewhere
+`~/.gnupg/gpg-agent.conf`):
 
 ```
 default-cache-ttl 28800
@@ -547,8 +560,13 @@ max-cache-ttl 28800
 Apply it with `gpgconf --reload gpg-agent`, which also clears the cache, so the next
 signature prompts once. The cost of fewer prompts: any container attached to the host agent
 can sign without a prompt for up to 8 hours (see the identity-selection gap in the
-[threat model](docs/threat_model.md)). Re-prompting as a deliberate presence check was considered and declined
-(#5).
+[threat model](docs/threat_model.md#known-gaps)). Re-prompting as a deliberate presence check
+was considered and declined (#5).
+
+**The forwarded agent exposes both the personal and the org keys, on purpose.** It is one
+host agent, so a container for either org can ask it to sign with any key it holds. The
+owner accepted that in #10: the agent is the signing boundary, and identity files only choose
+which key a repo uses.
 
 ## Repairing Claude Code plugin state
 
