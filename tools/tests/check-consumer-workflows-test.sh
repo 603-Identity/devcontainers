@@ -420,6 +420,18 @@ new_repo "$TEMPLATE_PATHS"$'\n  - "src/**/*.tf"'; set_block '                  i
                   .trivyignore.yaml|.gitattributes|.ai/project.yml) touches=1 ;;'
 lint; expect "a glob entry the block covers" 0; rm -rf "$SCRATCH"
 
+# A leading ./ on an entry is dropped (#245): the gate sees `git diff` paths, never `./tools/a`.
+new_repo "${TEMPLATE_PATHS/  - tools\//  - .\/tools\/}"
+lint; expect "a ./tools/ entry against a block with tools/*" 0
+if [[ "$ERR" == *warning* ]]; then fail "a ./ entry covered by tools/* has nothing to warn about" "$ERR"; else pass; fi
+rm -rf "$SCRATCH"
+
+new_repo "${TEMPLATE_PATHS/  - tools\//  - .\/tools\/}"; set_block '                  images/*|template/*|tests/*|./tools/*|.claude/*) touches=1 ;;
+                  .trivyignore.yaml|.gitattributes|.ai/project.yml) touches=1 ;;'
+lint; expect "a ./tools/ entry against a block with only ./tools/*" 1 "code_paths entry './tools/' in"
+if [[ "$ERR" == *"(tools/a reads touches=0"* ]]; then pass; else fail "the finding samples the entry without its ./" "$ERR"; fi
+rm -rf "$SCRATCH"
+
 # A directory entry with no trailing slash is a directory when it exists next to .github/.
 new_repo "$TEMPLATE_PATHS"$'\n  - docs'; mkdir "$REPO/docs"
 lint; expect "an existing directory entry without a trailing slash" 1 "code_paths entry 'docs'"; rm -rf "$SCRATCH"

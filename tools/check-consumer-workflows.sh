@@ -45,6 +45,9 @@
 #   * a `code_paths` entry reads `touches=0` through the gate's `case`, one finding per entry. It
 #     is a spot check: a dir `x/` is tried as a few paths under it, a glob as a few paths that
 #     match it (`**/` also with zero directories). A block copied from another adopter fails here.
+#     A leading `./` on an entry is dropped first (#245): the gate reads PR file paths from the
+#     GitHub files API (`filename`, `previous_filename`), which never start with `./`, so a block
+#     arm written `./tools/*` does not cover `tools/`.
 # and warns when a block pattern matches no entry's sample, or when a glob entry (a bracket
 # class, say) gets no sample that matches it, so that entry is not checked.
 set -euo pipefail
@@ -246,22 +249,29 @@ $arms
         samples=()
         while IFS= read -r entry; do
           [ -n "$entry" ] || continue
+          # The gate's `case` sees PR file paths from the GitHub files API (`tools/a`), never
+          # `./tools/a`, so sample the entry without a leading `./` (#245). A block arm written
+          # `./tools/*` then reads touches=0, as the real gate would. A bare `./` (or `.`) is left
+          # as it was, so it is still sampled as `./a` and is not checked correctly.
+          path="$entry"
+          while [[ "$path" == ./* ]]; do path="${path#./}"; done
+          [ -n "$path" ] || path="$entry"
           # Several samples per entry, so one lucky shape (`images/a)` for `images/`) cannot pass.
-          cands=(); match="$entry"
+          cands=(); match="$path"
           # `**/` also covers zero directories, so a base without it too; a glob in a dir entry
           # (`modules/*/`) is filled in the same way.
-          if [[ "$entry" == */ ]] || [ -d "$root/$entry" ]; then
-            base="${entry%/}/"; match="${base}*"
+          if [[ "$path" == */ ]] || [ -d "$root/$path" ]; then
+            base="${path%/}/"; match="${base}*"
             bases=("${base//[*?]/a}" "${base//\*/Z9_-.}" "${base//\*\*\//}")
             bases[1]="${bases[1]//\?/Z}"; bases[2]="${bases[2]//[*?]/a}"
             for b in "${bases[@]}"; do cands+=("${b}a" "${b}A" "${b}.a" "${b}a/b" "${b}Z9_-."); done
           else
-            cands=("${entry//[*?]/a}" "${entry//\*/Z9_-.}" "${entry//\*\*\//}")
+            cands=("${path//[*?]/a}" "${path//\*/Z9_-.}" "${path//\*\*\//}")
             cands[1]="${cands[1]//\?/Z}"; cands[2]="${cands[2]//[*?]/a}"
           fi
           checked=0
           hint=""
-          [[ "$entry" == *[/*?\[]* ]] || hint=" (A directory entry needs a trailing slash, or to exist next to .github/.)"
+          [[ "$path" == *[/*?\[]* ]] || hint=" (A directory entry needs a trailing slash, or to exist next to .github/.)"
           zero="${match//\*\*\//}"
           for sample in "${cands[@]}"; do
             # A sample built from a glob must itself match it, or it proves nothing.
