@@ -1,25 +1,24 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Implementing.
+**Now:** Milestone 4, Repo hardening: review gate and CI. Awaiting review on PR #243.
 
-**Just done** (architect session on opus, last_commit `9d38b76`):
-- Posted the fresh-session `/way-of-working:architect-review` on PR #238 (#160). It was
-  correct as scoped, with no blocking findings. `architect-review` went green on `d3e6872`, and
-  the owner merged it as `9d38b76`.
-- On the merge push, run 37172129491's `Build, test, push and attest` job ran rather than
-  skipping. That confirms the new guard lets main publish. The run was still in progress at
-  handoff, so check its conclusion.
-- Filed #240 (not blocking, unmilestoned): the scope/publish event guard is a denylist.
-  `pull_request_target`, `workflow_run` and `issue_comment` get past both clauses. It
-  proposes an allowlist. `merge_group` is already caught by the ref clause.
+**Just done** (coder session on sonnet, last_commit `ac956ad`):
+- Implemented #214 on branch `ci/lint-consumer-code-paths-214` and opened PR #243.
+  `tools/check-consumer-workflows.sh` runs each `code_paths` entry from the consumer's own
+  `.ai/project.yml` through the gate's CONSUMER `case` block and fails on `touches=0`. README
+  and `docs/adopting.md` say to derive the block from the adopter's own `code_paths`.
+- Critic pass (security-critic, architect, docs-consistency): 3 rounds, converged. The
+  second-opinion round on `fable` was offered and declined. Not the review gate.
+- Not run locally: the Docker-based green-gate entries (hadolint, Trivy, zizmor, Go tests,
+  image build, `template-proof`); CI runs them. Run 37172129491 (the #238 merge push) finished
+  `success`.
 
-**Next:** task #214 — make `tools/check-consumer-workflows.sh` run each `code_paths` entry from
-the consumer's own `.ai/project.yml` through the gate's CONSUMER `case` block and fail on
-`touches=0`, plus the README guidance, per the issue body's proposed fix. Then the green gate,
-`/way-of-working:critic-gate` (architect + security-critic) and `/way-of-working:ship`.
-Model: **sonnet** (coder). `/clear` is fine.
+**Next:** `/way-of-working:architect-review 243` — post the fresh-session architect review,
+verify `architect-review` went green on the head SHA, and file non-blocking findings. Never
+approve, never merge. Model: **opus** (architect). Use a **new window**, not `/clear`: this
+crosses the review gate.
 
-**HITL Gate: NONE OPEN.** Owner-owned this sprint: the #214 PR merge, the #93 + #122 decision
+**HITL Gate: NONE OPEN.** Owner-owned this sprint: the #243 merge, the #93 + #122 decision
 (by 2026-10-17), the #233 spike result, the `v1.3` tag.
 
 **Open for the owner (non-blocking):**
@@ -27,6 +26,9 @@ Model: **sonnet** (coder). `/clear` is fine.
 - Milestone 5 (Trivy renewal 2026-11) is date-bound: renew or retire the #148 Trivy exceptions
   before 2026-11-01.
 - Delete branch `test/verify-pin-negative-10` on terraform-microsoft365-entra.
+- terraform-cloudflare-dns: its gate lists `.terraform.lock.hcl` and `.devcontainer/*` that its
+  `code_paths` do not (the new lint warns); confirm during the #212 pilot follow-ups, along with
+  whether it should cover `.claude/` (from #214).
 - -dns#57, -dns#59 and -dns#65 are open. Other detect-secrets repos have migration issues:
   checkov-ledger-action#16, infrastructure-core#560, tenant-posture-assessment#31,
   trust-anchors#73. #220 is open.
