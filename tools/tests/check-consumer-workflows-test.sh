@@ -375,6 +375,124 @@ lint; expect "a missing scan caller" 1 "secret-scan.yml is missing"; rm -rf "$SC
 scan_sha="$(grep -oE 'workflows/secret-scan\.yml@[0-9a-f]{40}' "$TEMPLATE_DIR/$SCAN" | cut -d@ -f2)"
 if [[ "$scan_sha" =~ ^[0-9a-f]{40}$ ]]; then pass; else fail "the template scan caller carries a 40-hex pin"; fi
 
+# --- the CONSUMER code_paths block against the repo's own .ai/project.yml (#214) ----------------
+# new_repo CODE_PATHS_YAML: a scratch repo ($REPO) whose .github/workflows holds the template and
+# whose .ai/project.yml carries the given `code_paths:` body. $WF points at its workflows.
+new_repo() {
+  SCRATCH="$(mktemp -d)"
+  REPO="$SCRATCH/repo"
+  WF="$REPO/.github/workflows"
+  mkdir -p "$WF" "$REPO/.ai"
+  cp "$TEMPLATE_DIR/$CALLER" "$TEMPLATE_DIR/$GATE" "$TEMPLATE_DIR/$SCAN" "$WF/"
+  printf 'code_paths:\n%s\n' "$1" > "$REPO/.ai/project.yml"
+}
+# set_block 'arms': replaces the gate's CONSUMER code_paths arms in $WF with the given lines.
+set_block() {
+  awk -v arms="$1" '
+    /# >>> CONSUMER: code_paths/ { print; print arms; skip = 1; next }
+    /# <<< CONSUMER: code_paths/ { skip = 0 }
+    !skip { print }' "$WF/$GATE" > "$WF/g.tmp" && mv "$WF/g.tmp" "$WF/$GATE"
+}
+TEMPLATE_PATHS=$'  - images/\n  - template/\n  - tests/\n  - tools/\n  - .github/\n  - .claude/\n  - .trivyignore.yaml\n  - .gitattributes\n  - .ai/project.yml'
+
+new_repo "$TEMPLATE_PATHS"; lint; expect "a block that covers the repo's code_paths" 0
+if [[ "$ERR" == *warning* ]]; then fail "a matching block has nothing to warn about" "$ERR"; else pass; fi
+rm -rf "$SCRATCH"
+
+# The #214 repro: a code_paths entry the copied block does not list.
+new_repo "$TEMPLATE_PATHS"; set_block '                  images/*|template/*|tests/*|tools/*) touches=1 ;;
+                  .trivyignore.yaml|.gitattributes|.ai/project.yml) touches=1 ;;'
+lint; expect "a block that drops .claude/" 1 "code_paths entry '.claude/' in"
+if [[ "$ERR" == *"touches=0"* ]]; then pass; else fail "the finding names the touches=0 reading" "$ERR"; fi
+assert_eq "only the dropped entry is a finding" 1 "$(grep -c "does not cover" <<< "$ERR")"
+rm -rf "$SCRATCH"
+
+new_repo "$TEMPLATE_PATHS"$'\n  - docs/'
+lint; expect "a dir entry the block does not list" 1 "code_paths entry 'docs/'"; rm -rf "$SCRATCH"
+
+new_repo "$TEMPLATE_PATHS"$'\n  - Makefile'
+lint; expect "a file entry the block does not list" 1 "code_paths entry 'Makefile'"; rm -rf "$SCRATCH"
+
+new_repo "$TEMPLATE_PATHS"$'\n  - "src/**/*.tf"'
+lint; expect "a glob entry the block does not list" 1 "code_paths entry 'src/**/*.tf'"; rm -rf "$SCRATCH"
+
+new_repo "$TEMPLATE_PATHS"$'\n  - "src/**/*.tf"'; set_block '                  images/*|template/*|tests/*|tools/*|.claude/*|src/*) touches=1 ;;
+                  .trivyignore.yaml|.gitattributes|.ai/project.yml) touches=1 ;;'
+lint; expect "a glob entry the block covers" 0; rm -rf "$SCRATCH"
+
+# A directory entry with no trailing slash is a directory when it exists next to .github/.
+new_repo "$TEMPLATE_PATHS"$'\n  - docs'; mkdir "$REPO/docs"
+lint; expect "an existing directory entry without a trailing slash" 1 "code_paths entry 'docs'"; rm -rf "$SCRATCH"
+
+# The same finding when the lint is run from inside .github/workflows with `.`, or with a
+# trailing `/.` (the root is resolved, not trimmed from the text).
+new_repo "$TEMPLATE_PATHS"$'\n  - docs'; mkdir "$REPO/docs"; set_block '                  docs) touches=1 ;;'
+RC=0; ERR="$(cd "$WF" && bash "$LINT" . 2>&1 > /dev/null)" || RC=$?
+expect "a directory entry, run with . from .github/workflows" 1 "code_paths entry 'docs'"
+lint "$WF/."; expect "a directory entry, run with a trailing /." 1 "code_paths entry 'docs'"; rm -rf "$SCRATCH"
+
+# The -d branch: an existing directory entry with no slash is sampled as x/a, so docs/* covers it.
+new_repo "$TEMPLATE_PATHS"$'\n  - docs'; mkdir "$REPO/docs"; set_block '                  images/*|template/*|tests/*|tools/*|.claude/*|docs/*|.trivyignore.yaml|.gitattributes|.ai/project.yml) touches=1 ;;'
+lint; expect "an existing directory entry covered by docs/*" 0; rm -rf "$SCRATCH"
+
+# `**/*.tf` also means a .tf file at the root.
+new_repo "$TEMPLATE_PATHS"$'\n  - "**/*.tf"'; set_block '                  images/*|template/*|tests/*|tools/*|.claude/*|*/*.tf|.trivyignore.yaml|.gitattributes|.ai/project.yml) touches=1 ;;'
+lint; expect "an arm */*.tf for **/*.tf misses a root file" 1 "code_paths entry '**/*.tf'"; rm -rf "$SCRATCH"
+
+# A glob with no matching sample (a bracket class) is skipped with a warning, and a comment inside the block is fine.
+new_repo "$TEMPLATE_PATHS"$'\n  - "foo[ab].txt"'; set_block '                  # a comment
+                  images/*|template/*|tests/*|tools/*|.claude/*|.trivyignore.yaml|.gitattributes|.ai/project.yml) touches=1 ;;'
+lint; expect "a bracket-class entry and a comment line" 0 "cannot build a sample path for the code_paths entry 'foo[ab].txt'"; rm -rf "$SCRATCH"
+
+# An exported CDPATH must not switch the check off (cd would print the directory it found).
+new_repo "$TEMPLATE_PATHS"$'\n  - docs/'
+RC=0; ERR="$(cd "$REPO" && CDPATH=".:/tmp" bash "$LINT" 2>&1 > /dev/null)" || RC=$?
+expect "an uncovered entry with CDPATH exported" 1 "code_paths entry 'docs/'"; rm -rf "$SCRATCH"
+
+# A glob inside a directory entry is filled in, not skipped.
+new_repo "$TEMPLATE_PATHS"$'\n  - "modules/*/"'
+lint; expect "an uncovered directory glob entry" 1 "code_paths entry 'modules/*/'"; rm -rf "$SCRATCH"
+
+new_repo "$TEMPLATE_PATHS"$'\n  - "modules/*/"'; set_block '                  images/*|template/*|tests/*|tools/*|.claude/*|modules/*|.trivyignore.yaml|.gitattributes|.ai/project.yml) touches=1 ;;'
+lint; expect "a covered directory glob entry" 0; rm -rf "$SCRATCH"
+
+# One lucky sample shape per entry is not enough.
+new_repo "$TEMPLATE_PATHS"; set_block '                  images/a|template/*|tests/*|tools/*|.claude/*|.trivyignore.yaml|.gitattributes|.ai/project.yml) touches=1 ;;'
+lint; expect "an arm that covers only images/a" 1 "code_paths entry 'images/'"; rm -rf "$SCRATCH"
+
+new_repo "$TEMPLATE_PATHS"; set_block '                  images/[a-z]*|template/*|tests/*|tools/*|.claude/*|.trivyignore.yaml|.gitattributes|.ai/project.yml) touches=1 ;;'
+lint; expect "an arm that misses an upper-case name under images/" 1 "code_paths entry 'images/'"; rm -rf "$SCRATCH"
+
+# A reserved word as a pattern is a finding, not an abort before the other rules run.
+new_repo "$TEMPLATE_PATHS"; set_block '                  esac) touches=1 ;;'
+lint; expect "esac as a case pattern" 1 "does not parse as case arms"
+if [[ "$ERR" == *"finding(s)."* ]]; then pass; else fail "esac still ends in the summary line" "$ERR"; fi
+rm -rf "$SCRATCH"
+
+# The reverse is only a warning.
+new_repo $'  - images/\n  - .github/'
+lint; expect "a block pattern no code_paths entry matches" 0 "pattern 'template/*' matches none"; rm -rf "$SCRATCH"
+
+# The block is evaluated to read it, so only literal case arms may reach that.
+new_repo "$TEMPLATE_PATHS"; set_block '                  images/*) touches=1 ;;
+                  $(touch pwned)) touches=1 ;;'
+lint; expect "a command substitution in the block" 1 "is not '<glob>|<glob>) touches=1 ;;'"
+if [ -e pwned ] || [ -e "$REPO/pwned" ]; then fail "the block was evaluated"; rm -f pwned; else pass; fi
+rm -rf "$SCRATCH"
+
+new_repo "$TEMPLATE_PATHS"; set_block '                  images/*) touches=1; touch pwned ;;'
+lint; expect "a second command on an arm" 1 "is not '<glob>|<glob>) touches=1 ;;'"; rm -rf "$SCRATCH"
+
+new_repo "$TEMPLATE_PATHS"; sed -i '/# >>> CONSUMER: code_paths/d; /# <<< CONSUMER: code_paths/d' "$WF/$GATE"
+lint; expect "a gate with no CONSUMER code_paths region" 1 "region is missing"; rm -rf "$SCRATCH"
+
+new_repo '  images/: x'
+lint; expect "code_paths that is not a list of strings" 1 "code_paths must be a list of strings"; rm -rf "$SCRATCH"
+
+# No .ai/project.yml next to .github/: nothing to check against (the cases above all run without one).
+new_repo "$TEMPLATE_PATHS"; rm "$REPO/.ai/project.yml"
+lint; expect "no .ai/project.yml" 0; rm -rf "$SCRATCH"
+
 # --- input handling ------------------------------------------------------------------------
 new_wf; printf 'a: [unclosed\n' > "$WF/bad.yml"
 lint; expect "a workflow that is not valid YAML" 1 "not parseable"; rm -rf "$SCRATCH"

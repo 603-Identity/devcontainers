@@ -60,6 +60,9 @@ unaffected.
      into `.github/workflows/`. The first runs this repo's verifier as the check
      `verify / verify` on every pull request. Copy it unchanged.
    - Edit only the marked per-consumer values in the gate.
+     **Derive the `case` block from the adopting repo's own `.ai/project.yml` `code_paths`,
+     never from another adopter's gate.** A glob the copy lacks fails silently the unsafe way:
+     a PR touching only that path posts "No code_paths touched" instead of a red check.
      **Choose `code_paths` knowing what it leaves unguarded.** A change outside it passes
      `architect-review` ("No code_paths touched"), so it is guarded only by the two secret
      scans and whatever else the repo requires.
@@ -140,7 +143,14 @@ What a healthy container looks like (from the terraform-cloudflare-dns pilot):
 [`devcontainer-image.yml`](template/.github/workflows/devcontainer-image.yml) and the
 [gate](template/.github/workflows/architect-review-gate.yml) only mean something with these
 in place. `tools/check-consumer-workflows.sh` lints the workflow shapes named below (the caller, write
-permissions, `uses:` in the gate's `resolve` and `post`, the `.github/` rule, the pin shapes). It runs
+permissions, `uses:` in the gate's `resolve` and `post`, the `.github/` rule, the pin shapes). When
+`.ai/project.yml` sits next to `.github/`, it also runs each `code_paths` entry through the gate's
+CONSUMER `case` block (a dir `x/` as a few sample paths under it, a glob as a few paths that match
+it: a spot check, not a proof of full coverage) and fails
+on any that reads `touches=0` (a glob it cannot build a matching sample for, a `[...]` class say,
+is skipped with a warning). It only warns on the reverse, a `case` pattern that matches none of
+the entries, and it rejects any line in the block other than a blank, a `#` comment or a literal
+`<glob>[|<glob>...]) touches=1 ;;` arm. It runs
 when you run it, at adoption and from the pilots; nothing re-runs it in the repo's CI. The rest is
 settings the adoption PR records, and review.
 
