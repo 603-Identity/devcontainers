@@ -84,7 +84,10 @@
   // the git identity from the host's identity files, and check that VS Code's forwarded GPG
   // agent is answering in THIS session.
   "postStartCommand": "sh /usr/local/share/devc/owner-check.sh; sh /usr/local/share/devc/git-identity.sh; sh /usr/local/share/devc/gpg-check.sh",
-  "postCreateCommand": "if [ -f .pre-commit-config.yaml ]; then pre-commit install; fi",
+  // Python repos (uv-native layout): sync the committed lock into the per-repo .venv
+  // volume mounted above, hashes verified, before pre-commit hooks are installed.
+  // Non-Python repos have no uv.lock and skip this untouched.
+  "postCreateCommand": "if [ -f uv.lock ]; then uv sync --locked; fi; if [ -f .pre-commit-config.yaml ]; then pre-commit install; fi",
 
   "customizations": {
     "vscode": {
