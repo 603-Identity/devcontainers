@@ -1,23 +1,22 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Implementing.
+**Now:** Milestone 4, Repo hardening: review gate and CI. Awaiting review on PR #238.
 
-**Just done** (coder session on sonnet, last_commit `2c0efa4`):
-- Built #87 as PR #236, merged: job-level `if: vars.BUMP_BINARIES_APP_ID != ''` on
-  `bump-binaries.yml`. README and the threat model's Known gaps now describe the skip and the
-  repo-level-variable rule (set the variable last, after the key secret).
-- Critic pass on #236: architect + security-critic, 2 rounds, converged. Subagent pre-review
-  only, not the attested review. Accepted: deleting the variable later skips the job silently.
-- Checks: zizmor clean in WSL. The image-build and Trivy gate entries were not run (workflow
-  and docs diff only).
+**Just done** (coder session on sonnet, last_commit `d3e6872`):
+- Built #160 as PR #238 (open, not merged): `publish` in `.github/workflows/build.yml` now carries
+  its own event/ref guard alongside `needs.scope`, with a comment saying the repeat is deliberate.
+- Critic pass: architect + security-critic, 1 round, converged; no fixes were needed. The
+  one worthwhile finding (the why-comment) was applied afterwards and the critics were not
+  re-run on that comment-only delta. Subagent pre-review only, not the attested review.
+- Checks: zizmor clean in WSL. Image build and Trivy gate entries not run (workflow-only diff).
+- Accepted: the event check is a denylist, so a future `pull_request_target` or `merge_group`
+  trigger would need its own look (`scope` has the same gap). No test pins the guard text.
 
-**Next:** task #160 — restore `publish`'s own event/ref guard in `.github/workflows/build.yml`
-alongside `needs.scope` (the issue body has the exact `if:`), then the green gate,
-`/way-of-working:critic-gate` (architect + security-critic) and `/way-of-working:ship`.
-Model: **sonnet** (coder). `/clear` is fine.
+**Next:** `/way-of-working:architect-review 238` in a **new window** (the fresh-session review is
+an integrity property; `/clear` does not satisfy it). Model: **opus** (architect).
 
-**HITL Gate: NONE OPEN.** Owner-owned this sprint: the #93 + #122 decision (by 2026-10-17),
-merges, the #233 spike result, the `v1.3` tag.
+**HITL Gate: NONE OPEN.** Owner-owned this sprint: the PR #238 merge, the #93 + #122 decision
+(by 2026-10-17), the #233 spike result, the `v1.3` tag.
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11) is date-bound: renew or retire the #148 Trivy exceptions
