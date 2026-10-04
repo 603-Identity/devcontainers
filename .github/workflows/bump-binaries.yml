@@ -13,6 +13,11 @@ name: Bump pinned binaries
 # contents: write + pull-requests: write. Record the app in docs/threat_model.md's
 # credential table if its scopes ever change.
 #
+# Until the App is provisioned (#87, #102) the job is skipped, not failed: the job-level
+# `if:` keys on the BUMP_BINARIES_APP_ID variable. It must stay a repo-level (not Environment) variable --
+# a job-level `if:` is evaluated before the job's Environment is attached and cannot see
+# Environment variables, so moving it there would skip the job forever.
+#
 # zizmor-clean: top-level permissions: {}, every action pinned by SHA, no event data
 # reaches the shell (schedule and workflow_dispatch carry none).
 on:
@@ -25,6 +30,7 @@ permissions: {}
 jobs:
   bump:
     name: bump (${{ matrix.tool }})
+    if: vars.BUMP_BINARIES_APP_ID != ''
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
