@@ -4,6 +4,12 @@
 #   tools/render-gate.sh                  write the rendered workflow to stdout
 #   tools/render-gate.sh --check [FILE]   exit 1, with a diff, unless FILE (default: the
 #                                         template in this repo) is byte-equal to the render
+#   tools/render-gate.sh --check-masked FILE
+#                                         the same, with every `>>> CONSUMER: <name>` ...
+#                                         `<<< CONSUMER: <name>` region's body dropped from both
+#                                         sides. For a repo's own copy, which may differ there
+#                                         (this repo's decide pin). Exit 1 on an unpaired,
+#                                         nested or misnamed marker, in either side.
 #
 # The skeleton is tools/gate-template.yml.in. A line that holds only `@@<name>@@` is replaced
 # by tools/<name>, minus its shebang line, indented to match the marker. The scripts carry
@@ -17,7 +23,27 @@ root="$(cd "$here/.." && pwd)"
 skeleton="$here/gate-template.yml.in"
 default_target="$root/template/.github/workflows/architect-review-gate.yml"
 
-has_cr() { grep -q "$(printf '\r')" "$1"; }
+# mask_consumer FILE: prints FILE with each CONSUMER region's body dropped and its two marker
+# lines kept. Fails (exit 1, message on stderr) when a marker is unpaired, nested or misnamed.
+mask_consumer() {
+  awk -v f="$1" '
+    function bad(msg) { print "render-gate: " f ":" NR ": " msg > "/dev/stderr"; failed = 1; exit 1 }
+    /^[[:space:]]*# >>> CONSUMER: / {
+      if (open != "") bad("nested CONSUMER region (" open ")")
+      open = $0; sub(/^[[:space:]]*# >>> CONSUMER: /, "", open); print; next
+    }
+    /^[[:space:]]*# <<< CONSUMER: / {
+      name = $0; sub(/^[[:space:]]*# <<< CONSUMER: /, "", name)
+      if (open == "") bad("closing marker with no opening: " name)
+      if (name != open) bad("closing marker " name " does not match opening " open)
+      open = ""; print; next
+    }
+    open == "" { print }
+    END { if (!failed && open != "") { print "render-gate: " f ": unclosed CONSUMER region: " open > "/dev/stderr"; exit 1 } }
+  ' "$1"
+}
+
+has_cr() { ! cmp -s <(tr -d '\r' < "$1") "$1"; }
 
 render() {
   local line indent name script
@@ -55,8 +81,30 @@ case "${1:-}" in
       exit 1
     fi
     ;;
+  --check-masked)
+    file="${2:-}"
+    [ -n "$file" ] || { echo "usage: render-gate.sh --check-masked FILE" >&2; exit 2; }
+    [ -f "$file" ] || { echo "render-gate: no such file: $file" >&2; exit 1; }
+    has_cr "$file" && { echo "render-gate: CR in $file" >&2; exit 1; }
+    # awk and grep split lines on LF only, but a YAML parser also splits on NEL and U+2028, so a
+    # region body could hide a line from every check here. Both files are plain ASCII.
+    LC_ALL=C grep -aq '[^ -~]' "$file" && { echo "render-gate: $file holds a byte outside printable ASCII" >&2; exit 1; }
+    [ -z "$(tail -c 1 "$file")" ] || { echo "render-gate: $file lacks a final newline" >&2; exit 1; }
+    tmp="$(mktemp)"; mtmp="$(mktemp)"; ftmp="$(mktemp)"
+    trap 'rm -f "$tmp" "$mtmp" "$ftmp"' EXIT
+    render > "$tmp"
+    mask_consumer "$tmp" > "$mtmp"
+    mask_consumer "$file" > "$ftmp"
+    if cmp -s "$mtmp" "$ftmp"; then
+      echo "render-gate: $file matches the rendered output outside its CONSUMER regions (the regions themselves are not checked here)."
+    else
+      echo "render-gate: $file differs from the rendered output outside its CONSUMER regions. Regenerate it with tools/render-gate.sh and re-apply only the CONSUMER regions." >&2
+      diff -u "$ftmp" "$mtmp" >&2 || true
+      exit 1
+    fi
+    ;;
   *)
-    echo "usage: render-gate.sh [--check [FILE]]" >&2
+    echo "usage: render-gate.sh [--check [FILE] | --check-masked FILE]" >&2
     exit 2
     ;;
 esac
