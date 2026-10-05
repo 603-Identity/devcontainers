@@ -150,6 +150,13 @@ lint; expect "a decoy post with write-all" 1 "job 'post' has write-all"; rm -rf 
 new_wf; printf '    secrets: inherit\n' >> "$WF/$CALLER"
 lint; expect "secrets: inherit on the verify job" 1 "with: or secrets:"; rm -rf "$SCRATCH"
 
+# An unexpected job key (#202); the secrets job's tests below say why.
+new_wf; sed -i 's|^    permissions:$|    strategy:\n      matrix:\n        x: [a]\n    permissions:|' "$WF/$CALLER"
+lint; expect "strategy: on the verify job" 1 "devcontainer-image.yml: job 'verify' must have only permissions: and uses:"; rm -rf "$SCRATCH"
+
+new_wf; sed -i 's|^    permissions:$|    concurrency:\n      group: x\n      cancel-in-progress: true\n    permissions:|' "$WF/$CALLER"
+lint; expect "concurrency: on the verify job" 1 "devcontainer-image.yml: job 'verify' must have only permissions: and uses:"; rm -rf "$SCRATCH"
+
 new_wf; printf 'a: [unclosed\n' > "$WF/$CALLER"
 lint; expect "a caller that is not valid YAML" 1 "not parseable"
 if [[ "$ERR" == *"finding(s)."* ]]; then pass; else fail "an unparseable caller still ends in the summary line" "$ERR"; fi
@@ -352,6 +359,15 @@ lint; expect "with: on the secrets job" 1 "secret-scan.yml: job 'secrets' takes 
 
 new_wf; sed -i 's|^    permissions:$|    secrets: inherit\n    permissions:|' "$WF/$SCAN"
 lint; expect "secrets: inherit on the secrets job" 1 "secret-scan.yml: job 'secrets' takes no with:"; rm -rf "$SCRATCH"
+
+# An unexpected job key (#202): strategy: renames the check to `secrets (a) / scan`, so the
+# required context never reports, and concurrency: can cancel it. Neither is a
+# with:/secrets:/name:/if: the rules above catch.
+new_wf; sed -i 's|^    permissions:$|    strategy:\n      matrix:\n        x: [a]\n    permissions:|' "$WF/$SCAN"
+lint; expect "strategy: on the secrets job" 1 "secret-scan.yml: job 'secrets' must have only permissions: and uses:"; rm -rf "$SCRATCH"
+
+new_wf; sed -i 's|^    permissions:$|    concurrency:\n      group: x\n      cancel-in-progress: true\n    permissions:|' "$WF/$SCAN"
+lint; expect "concurrency: on the secrets job" 1 "secret-scan.yml: job 'secrets' must have only permissions: and uses:"; rm -rf "$SCRATCH"
 
 new_wf; sed -i -E 's|(secret-scan\.yml)@[0-9a-f]{40} # v[0-9.]+|\1@v1.1|' "$WF/$SCAN"
 lint; expect "a bare-tag secrets pin" 1 "the secrets pin"; rm -rf "$SCRATCH"

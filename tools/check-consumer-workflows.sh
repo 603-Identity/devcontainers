@@ -27,11 +27,11 @@
 #     that rule is what makes it always need review);
 #   * devcontainer-image.yml is not the caller the template ships: one job `verify`, no `name:`
 #     and no `if:`, `pull_request` with no filter, `contents: read` only, a verify workflow
-#     pinned `@<40-hex sha> # vX.Y`;
+#     pinned `@<40-hex sha> # vX.Y`, and no job key besides `permissions` and `uses` (#202);
 #   * secret-scan.yml is not the caller the template ships (#190): one job `secrets`, no `name:`
 #     and no `if:`, `pull_request` with no filter, `contents: read` only, no `with:` or
-#     `secrets:`, a secret-scan workflow pinned `@<40-hex sha> # vX.Y`. Its pin is independent
-#     of the verify and decide pins.
+#     `secrets:`, a secret-scan workflow pinned `@<40-hex sha> # vX.Y`, and no job key besides
+#     `permissions` and `uses` (#202). Its pin is independent of the verify and decide pins.
 # It also checks the gate's `decide` pin has that same shape, and warns when the two pins
 # name different commits.
 #
@@ -326,6 +326,9 @@ else
     || finding "$caller: job 'verify' must have exactly 'permissions: { contents: read }'."
   [ "$(c '.jobs.verify | has("with") or has("secrets")')" = "false" ] \
     || finding "$caller: job 'verify' takes no with: or secrets:."
+  # Skipped when the job is absent: the "only job must be" finding above already says so.
+  [ "$(c '.jobs.verify == null or (.jobs.verify | keys | join(",")) == "permissions,uses"')" = "true" ] \
+    || finding "$caller: job 'verify' must have only permissions: and uses: (found: $(c '.jobs.verify | keys | tojson')). The template's caller has no other key: strategy: renames the check so it never reports, and concurrency: can cancel it."
   verify_uses="$(c '.jobs.verify.uses // ""')"
   verify_comment="$(yq '.jobs.verify.uses | line_comment' "$caller" 2> /dev/null | tr -d '\r' || true)"
   verify_sha=""
@@ -352,6 +355,8 @@ else
   [ "$(s '(.on | if type == "object" then (.pull_request // {}) else {} end) | (type == "object") and (keys | length == 0)')" = "true" ]     || finding "$scan_caller: pull_request must have no paths:, paths-ignore:, branches: or branches-ignore: filter (a filtered required check never reports)."
   [ "$(s '.jobs.secrets.permissions | . == {"contents":"read"}')" = "true" ]     || finding "$scan_caller: job 'secrets' must have exactly 'permissions: { contents: read }'."
   [ "$(s '.jobs.secrets | has("with") or has("secrets")')" = "false" ]     || finding "$scan_caller: job 'secrets' takes no with: or secrets:."
+  # Skipped when the job is absent: the "only job must be" finding above already says so.
+  [ "$(s '.jobs.secrets == null or (.jobs.secrets | keys | join(",")) == "permissions,uses"')" = "true" ]     || finding "$scan_caller: job 'secrets' must have only permissions: and uses: (found: $(s '.jobs.secrets | keys | tojson')). The template's caller has no other key: strategy: renames the check so it never reports, and concurrency: can cancel it."
   scan_uses="$(s '.jobs.secrets.uses // ""')"
   scan_comment="$(yq '.jobs.secrets.uses | line_comment' "$scan_caller" 2> /dev/null | tr -d '\r' || true)"
   if ! { [[ "$scan_uses" == "$SCAN_WF@"* ]] && [[ "${scan_uses#"$SCAN_WF"@}" =~ ^[0-9a-f]{40}$ ]] && [[ "$scan_comment" =~ $VERSION_COMMENT ]]; }; then
