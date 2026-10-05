@@ -77,7 +77,7 @@ jobs:
   # This job is not a required check, so skipping the publish job below leaves PRs alone.
   scope:
     name: Did the push change an image?
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: contains(fromJSON('["push","schedule","workflow_dispatch"]'), github.event_name) && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -95,13 +95,14 @@ jobs:
           BASE_SHA: ${{ github.event.before }}
         run: bash .github/scripts/image-scope.sh
 
-  # The event/ref clauses repeat scope's guard on purpose: this job holds the packages,
-  # id-token and attestations write tokens, so it must not rely on another job's `if:` alone
-  # to stay off pull requests and non-main refs (#160). Do not drop them as redundant.
+  # The event/ref clauses (an event allowlist, so a new trigger fails closed) repeat scope's
+  # guard on purpose: this job holds the packages, id-token and attestations write tokens, so it
+  # must not rely on another job's `if:` alone to stay off pull requests and non-main refs
+  # (#160). Do not drop them as redundant.
   publish:
     name: Build, test, push and attest
     needs: scope
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.scope.outputs.build == '1'
+    if: contains(fromJSON('["push","schedule","workflow_dispatch"]'), github.event_name) && github.ref == 'refs/heads/main' && needs.scope.outputs.build == '1'
     runs-on: ubuntu-latest
     permissions:
       contents: read
