@@ -99,16 +99,18 @@ ruleset:
     - "selftest"   # verify-selftest.yml's final job; the owner adds it to the live ruleset.
 
 # ── the fresh-session review gate ────────────────────────────────────────────
-# architect-review-gate.yml, adapted from terraform-cloudflare-dns's copy. Event values reach
-# its shell through env, not inline expressions, so the workflow passes this repo's zizmor
-# lint.
+# architect-review-gate.yml, rendered from tools/ (see the triggers_on note). Event values
+# reach its shell through env, not inline expressions, so the workflow passes this repo's
+# zizmor lint.
 review:
   ci_gate:
     check: architect-review
     header: "**Opus/Architect HITL review (automated)**"
     attestation: "*Fresh-session review: this session did not author the diff.*"
     triggers_on: null   # the gate fires on code_paths. architect-review-gate.yml mirrors that
-                        # list in its `case` block by hand; keep the two in sync.
+                        # list by hand in its `>>> CONSUMER: code_paths` region (the rest of the
+                        # file is rendered from tools/, checked by `render-gate.sh --check-masked`);
+                        # keep the two in sync.
 
 # ── agents ───────────────────────────────────────────────────────────────────
 agents:
