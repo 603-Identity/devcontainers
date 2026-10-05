@@ -1,16 +1,4 @@
 {
-  "extraKnownMarketplaces": {
-    "claude-workbench": {
-      "source": {
-        "source": "github",
-        "repo": "glunk-works/claude-workbench",
-        "ref": "v0.15.0"
-      }
-    }
-  },
-  "enabledPlugins": {
-    "way-of-working@claude-workbench": true
-  },
   "permissions": {
     "deny": [
       "Bash(git push --force:*)",
@@ -32,9 +20,24 @@
       {
         "matcher": "Bash|PowerShell",
         "hooks": [
-          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/merge-guard.sh\"" }
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/merge-guard.sh\""
+          }
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "way-of-working@claude-workbench": true
+  },
+  "extraKnownMarketplaces": {
+    "claude-workbench": {
+      "source": {
+        "source": "github",
+        "repo": "glunk-works/claude-workbench",
+        "ref": "v0.16.0"
+      }
+    }
   }
 }
