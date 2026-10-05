@@ -2,35 +2,34 @@
 
 **Now:** Milestone 4, Repo hardening: review gate and CI. Implementing.
 
-**Just done** (coder session on sonnet, last_commit `44bf291`, the head of PR #258):
-- Task #198 shipped as PR #258: restored `\\` in both boundary classes of the
-  `org-azure-ad-client-secret` rule in `images/base/files/secret-scan/org.toml`, and added a
-  smoke check in `tests/smoke.sh` that plants a derived Entra-shaped secret between backslashes
-  in a one-commit range and expects the rule to fire.
-- Green gate: shellcheck, `tools/tests/run-gate-tests.sh` and `build-and-test.sh local` pass,
-  both new checks ok in all three images. The check fails on the old regex (rc 0) and passes on
-  the new (rc 1), run by the architect critic.
-- Critic pass (`architect` + `security-critic`): 2 rounds, converged (round 2 tightenings-only).
-  Round 1 found that the exit-code check scanned all history and passed on either regex; fixed by
-  scanning `$bl_leak..$bl_entra`. All critics ran on their default models. This is not the
-  fresh-session review the CI gate requires.
-- Known gap, not caused by this change: a secret right after a JSON escape such as `\n` is still
-  missed (also true upstream).
+**Just done** (architect session on opus, last_commit `3816de1`):
+- Fresh-session architect review of PR #258 (#198) posted. No blocking findings; the
+  `architect-review` check went green on head `44bf291`. The owner merged it as `3816de1`.
+- Reproduced in a WSL sandbox with the published image's betterleaks: the new smoke check
+  passes on the PR. Reverting the old regex on both sides, the leading side only, or the
+  trailing side only each turns both new checks red.
+- Filed #263 (pre-existing, also upstream): a secret right after an escape such as `\n` is
+  still missed by the Entra rule. Reproduced: rc 1 after `\`, rc 0 after `\n`.
+- Plan anchor: milestone 4 description unchanged since the last anchor (`plan-anchor.sh verify
+  --plan` printed match at handoff), but this session's resume never verified it, so there is
+  no verified baseline. Gate opened below.
 
-**Next:** `/way-of-working:architect-review 258`. Model: **opus** (architect), in a **new
-session**, not `/clear`: post the fresh-session review, verify the `architect-review` check on the
-head SHA, file non-blocking findings. Never approve, never merge. After the merge: #240 (item
-10a), then the `v1.3` release (item 11). #255 and #256 are unmilestoned until the owner places
-them.
+**Next:** task #240 — in `.github/workflows/build.yml`, replace the event denylist on both the
+`scope` and `publish` jobs with an allowlist (`push`, `schedule`, `workflow_dispatch`), keeping
+the `refs/heads/main` clause, so a new trigger fails closed; pin the `publish.if` text with a
+test. Model: **sonnet** (coder). Then `/way-of-working:critic-gate` (architect +
+security-critic) and `/way-of-working:ship`. After it, the `v1.3` release (item 11).
 
-**HITL Gate: NONE OPEN.** The next gate is the owner's merge of #258 after that review. Also
-owner-owned this sprint: the #93 + #122 decision (by 2026-10-17), the #233 spike result, the
-`v1.3` tag.
+**HITL Gate: OPEN.** No verified plan-anchor baseline this session: confirm milestone 4 is still
+the approved plan, then say go. Next gate: the owner's merge of the #240 PR after its
+fresh-session architect review. Also owner-owned this sprint: the #93 + #122 decision (by
+2026-10-17), the #233 spike result, the `v1.3` tag.
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before
   2026-11-01.
-- Place #255 and #256 in a milestone (or leave them for a `/way-of-working:plan-sprint` pass).
+- Place #255, #256 and #263 in a milestone (or leave them for a `/way-of-working:plan-sprint`
+  pass).
 - Delete branch `test/verify-pin-negative-10` on terraform-microsoft365-entra.
 - terraform-cloudflare-dns: its gate lists `.terraform.lock.hcl` and `.devcontainer/*` that its
   `code_paths` do not (the new lint warns); confirm during the #212 pilot follow-ups, along with
