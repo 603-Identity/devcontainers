@@ -183,14 +183,19 @@ What each piece trusts, and what it leaves open:
   and from the pilots; nothing re-runs it in the consuming repo's CI, so a later edit that
   breaks a rule is caught by review alone. The gate defends against Dependabot-shaped
   forgeries, outsiders and wrong images, and against forks only to the extent that auto-merge
-  never acts on a fork PR. Whether to move the gate to a reusable or *required* workflow is a
-  precondition for turning auto-merge on, tracked as the F9b issue.
+  never acts on a fork PR. DEVC-D7 records this split: human writers are trusted, while the
+  bump-binaries App is not and is bounded by its permissions plus the head-SHA binding (#92,
+  #94). Before auto-merge goes on, the gate's result must come from a reviewer App's check run
+  that a PR's own workflows cannot post (#267); a ruleset-required workflow was rejected
+  because it needs GitHub Team.
 - **Forks and same-named checks.** A fork PR from a returning contributor needs no approval to
   run. It can add a job named `architect-review`, or a `verify`/`verify` pair, whose check runs
   come from integration 15368 and so satisfy the pin: the fork PR can look fully green.
   Auto-merge never acts on it (only the candidate PR is armed), so the exposure is a human
   merging it. A fork can also block a bump by landing a *failing* same-named check at the
-  Dependabot SHA (liveness only).
+  Dependabot SHA (liveness only). This repo and the orgs' other public repos narrow the path:
+  only collaborators can open a PR, and every outside contributor's run needs approval (set
+  2026-10-05). A consumer that has not set both keeps the gap.
 - **No soak.** A bad attested image can reach every opted-in consumer within minutes of
   Dependabot's run. The limits are the fail-closed kill switch, same-MAJOR only, the exact
   signer, issuer and repository-id pins, and attempt-1-only provenance.
@@ -198,8 +203,9 @@ What each piece trusts, and what it leaves open:
   switch makes "not created yet" the off state. When it is on, this repo's `main`, then the
   publish, then a consumer merge becomes an unattended chain whose only human control is this
   repo's own `architect-review`, an existence gate with known gaps (#92, #93, #94). The owner
-  creates `devc-automerge-on` only after the review-gate trust model is decided and a pilot
-  has taken real bumps through the review path. Docs-only pushes no longer publish: a push
+  creates `devc-automerge-on` only when #139's preconditions are met: among them a pilot that
+  has taken real bumps through the review path, the reviewer App check (#267), and `disarm()`
+  in every row (#126, #132). Docs-only pushes no longer publish: a push
   to `main` publishes only when it changed an image-affecting path (#124), so a docs-only
   merge ships no new tag set.
 - **The kill-switch window.** Removing the tag stops later *arming*; `decide` still runs. It
@@ -434,11 +440,14 @@ These are stated plainly so nobody trusts the setup for more than it does:
   comment triggers the default-branch workflow, which does. Binding a review to the head
   SHA would close it, but only formal reviews carry a `commit_id`: comments would have to
   stop counting or have to quote the SHA. A human still reads the PR and merges (#92).
+  DEVC-D7 takes the formal-review route for `v1.3`, which also closes #94.
 - **A same-repo PR runs its own copy of the gate.** `pull_request` and
   `pull_request_review` runs execute the PR's version of `architect-review-gate.yml`
   (only `issue_comment` uses `main`'s), so a branch that edits the gate, or its
   `REVIEWER_IDS`, is checked by the edited gate. Pushing a branch already takes write
-  access, and the edit shows in the diff the human reads before merging (#93).
+  access, and the edit shows in the diff the human reads before merging (#93). Accepted under
+  DEVC-D7: the gate does not defend against human writers. The reviewer App check (#267) closes
+  it before auto-merge goes on.
 - **`bump-binaries.yml` is skipped until the App exists**: the App it needs has not been created,
   and `BUMP_BINARIES_APP_ID`/`BUMP_BINARIES_APP_PRIVATE_KEY` are not set on this repo (the job's
   `if:` on the variable skips it, #87). `BUMP_BINARIES_APP_ID` must stay a repo-level variable,
