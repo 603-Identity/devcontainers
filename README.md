@@ -170,7 +170,7 @@ settings the adoption PR records, and review.
   template as it stands. An image built by a re-run of `build.yml` (attempt 2) fails too: use a digest from
   a first-attempt run.
 - **The caller stays unfiltered.** `pull_request` with no `paths:` or `branches:` filter, one
-  job `verify` with no `name:` or `if:`. A filtered required check never reports and blocks
+  job `verify` with no `name:` or `if:` and no key besides `permissions:` and `uses:`. A filtered required check never reports and blocks
   every other PR.
 - **Both pins are `@<sha> # vX.Y`.** A full commit SHA plus a version comment, never a bare tag:
   the verifier fails unless its own pin is a SHA. The caller's pin and the gate's `decide` pin

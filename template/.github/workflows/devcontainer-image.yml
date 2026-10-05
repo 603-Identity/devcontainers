@@ -16,7 +16,8 @@ name: Devcontainer image
 #     the called workflow's own SHA check, because job.workflow_ref would end in the tag.
 #     Dependabot's github-actions ecosystem bumps it as a reviewed PR. Keep it equal to the
 #     `decide` pin in architect-review-gate.yml.
-#   * No write permission, and no other job in this file. `tools/check-consumer-workflows.sh`
+#   * No write permission, no other job in this file, and no job key besides `permissions:`
+#     and `uses:`. `tools/check-consumer-workflows.sh`
 #     in that repo lints it.
 on:
   pull_request:
