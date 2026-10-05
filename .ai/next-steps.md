@@ -1,33 +1,33 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Awaiting review.
+**Now:** Milestone 4, Repo hardening: review gate and CI. Implementing.
 
-**Just done** (coder session on sonnet, last_commit `5cfc65e`):
-- #233 dogfood built and shipped as PR #274 (head `d3b9ec8`, branch `ci/dogfood-rendered-gate-233`):
-  this repo's gate is the rendered template (only the `decide` pin, v1.2, differs),
-  `render-gate.sh --check-masked` is new and runs on it from `render-gate-test.sh`, and
-  `docs/threat_model.md` states the `post` job's write scopes. Green gate run in WSL
-  (shellcheck, gate tests, zizmor).
-- Critic pass (architect, security-critic, docs-consistency): 4 fix-and-re-run rounds, cap
-  reached, no second-opinion round. The architect converged. The security-critic kept finding
-  smaller parser differentials (decoy marker, NEL, NUL). **The last two fixes (`grep -a`, and
-  `^ {18}#` comment indent in the `code_paths` region test) got no critic re-run**; the PR body
-  says so. Accepted, not fixed: `code_paths` arms not compared to `project.yml`, pin SHA not
-  tied to a tag.
+**Just done** (architect session on opus, last_commit `d334c02`):
+- Posted the fresh-session architect review on #274 (#233 dogfood); the `architect-review`
+  gate went green on `d3b9ec8` and the owner merged it as `d334c02`. No blocking findings.
+  Both unreviewed critic fixes hold: `grep -a` is witnessed by the NUL test (a mutation
+  turns it red); the `^ {18}#` pin is correct but has no test of its own and disagrees with
+  the `own_arms` check, filed as #276 (low, test coverage).
+- #233 is still open: #274 did not close it. Close it by hand.
 
-**Next:** `/way-of-working:architect-review 274`, in a NEW session, on **opus** (architect).
-Look first at the two unreviewed fixes. Then the owner merges #274. After that: #92 + #94,
-#96, and the `v1.3` tag (owner-owned, after items 4-7).
+**Next:** task #92 — fix #92 and #94 together, as DEVC-D7 decides: in `tools/gate-post.sh`,
+count only formal PR reviews whose `commit_id` is the head SHA (comments stop counting).
+Re-render `template/` and this repo's gate with `tools/render-gate.sh`, add tests, run the
+green gate in WSL, then `/way-of-working:critic-gate` and `/way-of-working:ship`. Model
+**sonnet** (coder). #276 can ride along.
 
-**HITL Gate: NONE OPEN.** Next gate: the owner's merge of #274 after its architect review.
-The plan anchor was re-written for milestone 4 with no task issue (the next action is a
-review, not one issue's build), so `/way-of-working:resume` waits for a "go".
+**HITL Gate: OPEN.** First anchor for milestone 4, description sha `8bc5e03e`. This
+session's resume did not verify the prior anchor; the handoff's `verify --plan` printed
+`match`. Confirm the milestone 4 description is still the approved plan and that #92 + #94
+comes next, then say "go". Later gates: the owner's merge of the #92/#94 PR after its
+architect review; the `v1.3` tag (owner-owned, after #92 + #94 and #96).
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before
   2026-11-01.
-- Place #255, #256 and #263 in a milestone (or leave them for a `/way-of-working:plan-sprint`
-  pass). #267 is unmilestoned on purpose: it is an auto-merge (#139) precondition.
+- Place #255, #256, #263 and #276 in a milestone (or leave them for a
+  `/way-of-working:plan-sprint` pass). #267 is unmilestoned on purpose: it is an auto-merge
+  (#139) precondition.
 - Delete branch `test/verify-pin-negative-10` on terraform-microsoft365-entra.
 - terraform-cloudflare-dns: its gate lists `.terraform.lock.hcl` and `.devcontainer/*` that its
   `code_paths` do not (the new lint warns); confirm during the #212 pilot follow-ups, along with
