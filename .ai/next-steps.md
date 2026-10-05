@@ -1,30 +1,27 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Implementing.
+**Now:** Milestone 4, Repo hardening: review gate and CI. Awaiting review.
 
-**Just done** (architect session on opus, last_commit `978df75`; no code):
-- #233 spike done, by reading and tracing only: result posted at
-  https://github.com/603-Identity/devcontainers/issues/233#issuecomment-6004449672. No
-  blocker: every PR here takes the plain-review row (no `.devcontainer/`, so never a bump
-  candidate), the self-pin costs one gated bump per release (Dependabot's actions group), and
-  the ruleset needs no edit (`architect-review` has no source binding).
-- The owner approved the spike result on 2026-10-05, so the dogfood build goes ahead.
-- Resume found git drift past `last_commit` (#268, #270 merged after the last handoff); the
-  owner said go. Re-anchored milestone 4 on #233 and the spike comment.
+**Just done** (coder session on sonnet, last_commit `5cfc65e`):
+- #233 dogfood built and shipped as PR #274 (head `d3b9ec8`, branch `ci/dogfood-rendered-gate-233`):
+  this repo's gate is the rendered template (only the `decide` pin, v1.2, differs),
+  `render-gate.sh --check-masked` is new and runs on it from `render-gate-test.sh`, and
+  `docs/threat_model.md` states the `post` job's write scopes. Green gate run in WSL
+  (shellcheck, gate tests, zizmor).
+- Critic pass (architect, security-critic, docs-consistency): 4 fix-and-re-run rounds, cap
+  reached, no second-opinion round. The architect converged. The security-critic kept finding
+  smaller parser differentials (decoy marker, NEL, NUL). **The last two fixes (`grep -a`, and
+  `^ {18}#` comment indent in the `code_paths` region test) got no critic re-run**; the PR body
+  says so. Accepted, not fixed: `code_paths` arms not compared to `project.yml`, pin SHA not
+  tied to a tag.
 
-**Next:** task #233 — build the dogfood per the issue body and the approved spike comment
-(link above): replace this repo's gate with the rendered template, editing only the
-`>>> CONSUMER` regions (`decide` pinned at `v1.2`, `d83d655…`); add CONSUMER-region masking to
-`tools/render-gate.sh --check` and run it on this repo's copy from `render-gate-test.sh`; state
-the `post` job's write scopes in `docs/threat_model.md`; update the `triggers_on` comment in
-`.ai/project.yml`. Green gate in WSL, then `/way-of-working:critic-gate` (architect,
-security-critic) and `/way-of-working:ship`. Model **sonnet** (coder).
+**Next:** `/way-of-working:architect-review 274`, in a NEW session, on **opus** (architect).
+Look first at the two unreviewed fixes. Then the owner merges #274. After that: #92 + #94,
+#96, and the `v1.3` tag (owner-owned, after items 4-7).
 
-**HITL Gate: OPEN.** Milestone 4 was re-anchored without a baseline the resume itself
-verified (it waited on git drift and never ran `plan-anchor.sh verify`). The handoff's own
-`verify --plan` printed match, description sha `8bc5e03e…`. The owner confirms with a "go" at
-the next resume. After that: the owner's merge of the #233 PR after its architect review.
-Owner-owned this sprint: the `v1.3` tag after items 4-7.
+**HITL Gate: NONE OPEN.** Next gate: the owner's merge of #274 after its architect review.
+The plan anchor was re-written for milestone 4 with no task issue (the next action is a
+review, not one issue's build), so `/way-of-working:resume` waits for a "go".
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before
