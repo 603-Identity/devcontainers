@@ -1,29 +1,27 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Implementing.
+**Now:** Milestone 4, Repo hardening: review gate and CI. Awaiting review.
 
-**Just done** (architect session on opus, last_commit `3816de1`):
-- Fresh-session architect review of PR #258 (#198) posted. No blocking findings; the
-  `architect-review` check went green on head `44bf291`. The owner merged it as `3816de1`.
-- Reproduced in a WSL sandbox with the published image's betterleaks: the new smoke check
-  passes on the PR. Reverting the old regex on both sides, the leading side only, or the
-  trailing side only each turns both new checks red.
-- Filed #263 (pre-existing, also upstream): a secret right after an escape such as `\n` is
-  still missed by the Entra rule. Reproduced: rc 1 after `\`, rc 0 after `\n`.
-- Plan anchor: milestone 4 description unchanged since the last anchor (`plan-anchor.sh verify
-  --plan` printed match at handoff), but this session's resume never verified it, so there is
-  no verified baseline. Gate opened below.
+**Just done** (coder session on sonnet, last_commit `c6827cf`):
+- #240 shipped as PR #265 (branch `ci/build-event-allowlist`): `scope` and `publish` in
+  `build.yml` now guard on an event allowlist (`push`, `schedule`, `workflow_dispatch`) plus
+  `refs/heads/main`. New `tools/tests/build-workflow-test.sh` pins both `if:` texts; the
+  `image-scope.sh` comment no longer says a new trigger fails toward publishing.
+- Local checks in WSL: gate-test suites, zizmor and shellcheck pass. The Docker steps of the
+  green gate were not run locally (CI runs the build and smoke test).
+- Critic pass (architect, security-critic, docs-consistency): 2 rounds, converged, all on the
+  critics' default models; no second-opinion round (declined). Round 1 fixed a stale
+  `image-scope.sh` comment and two test nits; round 2 was tightenings only. Not the review gate.
+- Plan anchor: `plan-anchor.sh verify` printed match at resume and again at handoff, so
+  milestone 4 is the approved plan and the gate from the last handoff is closed.
 
-**Next:** task #240 — in `.github/workflows/build.yml`, replace the event denylist on both the
-`scope` and `publish` jobs with an allowlist (`push`, `schedule`, `workflow_dispatch`), keeping
-the `refs/heads/main` clause, so a new trigger fails closed; pin the `publish.if` text with a
-test. Model: **sonnet** (coder). Then `/way-of-working:critic-gate` (architect +
-security-critic) and `/way-of-working:ship`. After it, the `v1.3` release (item 11).
+**Next:** `/way-of-working:architect-review 265` in a **new session**, model **opus**
+(architect). The `architect-review` check stays red until it is posted on the head SHA.
+After the owner merges #265, the `v1.3` release (item 11).
 
-**HITL Gate: OPEN.** No verified plan-anchor baseline this session: confirm milestone 4 is still
-the approved plan, then say go. Next gate: the owner's merge of the #240 PR after its
-fresh-session architect review. Also owner-owned this sprint: the #93 + #122 decision (by
-2026-10-17), the #233 spike result, the `v1.3` tag.
+**HITL Gate: NONE OPEN.** Next gate: the owner's merge of #265 after the review. Also
+owner-owned this sprint: the #93 + #122 decision (by 2026-10-17), the #233 spike result, the
+`v1.3` tag.
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before
