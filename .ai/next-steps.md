@@ -2,24 +2,30 @@
 
 **Now:** Milestone 4, Repo hardening: review gate and CI. Implementing.
 
-**Just done** (architect session on opus, last_commit `b16dc49`):
-- Fresh-session architect review of PR #253 (#202) posted. No blocking findings; the
-  `architect-review` check went green on head `bf2734a`. The owner merged it as `b16dc49`.
-- Reproduced in a WSL sandbox: the suite, #202's own repro, extra job keys rejected, key
-  order not mattering, `tojson` escaping, and a mutation that turned the new tests red.
-- Filed the critic-pass leftovers as issues: #255 (a YAML merge key `<<:` gets past every
-  caller rule, confirmed on #253's head) and #256 (the "only job must be" findings echo job
-  names raw; a newline in a job name reaches the log as a `::` line, reproduced on `main`).
+**Just done** (coder session on sonnet, last_commit `44bf291`, the head of PR #258):
+- Task #198 shipped as PR #258: restored `\\` in both boundary classes of the
+  `org-azure-ad-client-secret` rule in `images/base/files/secret-scan/org.toml`, and added a
+  smoke check in `tests/smoke.sh` that plants a derived Entra-shaped secret between backslashes
+  in a one-commit range and expects the rule to fire.
+- Green gate: shellcheck, `tools/tests/run-gate-tests.sh` and `build-and-test.sh local` pass,
+  both new checks ok in all three images. The check fails on the old regex (rc 0) and passes on
+  the new (rc 1), run by the architect critic.
+- Critic pass (`architect` + `security-critic`): 2 rounds, converged (round 2 tightenings-only).
+  Round 1 found that the exit-code check scanned all history and passed on either regex; fixed by
+  scanning `$bl_leak..$bl_entra`. All critics ran on their default models. This is not the
+  fresh-session review the CI gate requires.
+- Known gap, not caused by this change: a secret right after a JSON escape such as `\n` is still
+  missed (also true upstream).
 
-**Next:** task #198 — restore the backslash boundary in the Entra client-secret rule in
-`images/base/files/secret-scan/org.toml` so it matches the tested draft, with a regression
-test. Model: **sonnet** (coder). Then `/way-of-working:critic-gate` (architect +
-security-critic) and `/way-of-working:ship`. After it, #240 (item 10a), then the `v1.3`
-release (item 11). #255 and #256 are unmilestoned until the owner places them.
+**Next:** `/way-of-working:architect-review 258`. Model: **opus** (architect), in a **new
+session**, not `/clear`: post the fresh-session review, verify the `architect-review` check on the
+head SHA, file non-blocking findings. Never approve, never merge. After the merge: #240 (item
+10a), then the `v1.3` release (item 11). #255 and #256 are unmilestoned until the owner places
+them.
 
-**HITL Gate: NONE OPEN.** The next gate is the owner's merge of the #198 PR after its
-fresh-session architect review. Also owner-owned this sprint: the #93 + #122 decision (by
-2026-10-17), the #233 spike result, the `v1.3` tag.
+**HITL Gate: NONE OPEN.** The next gate is the owner's merge of #258 after that review. Also
+owner-owned this sprint: the #93 + #122 decision (by 2026-10-17), the #233 spike result, the
+`v1.3` tag.
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before
