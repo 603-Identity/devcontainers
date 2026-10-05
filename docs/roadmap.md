@@ -252,6 +252,47 @@ rule are unchanged: this check backs them up and doesn't replace them.
 fact. A hostile `.devcontainer/` can mount any volume and skip the check (threat model
 boundary 5). The threat model's Known gap now reads "detected at start, not prevented".
 
+#### DEVC-D7: The review gate trusts human writers; the bump App is not trusted
+
+**Resolved** 2026-10-05 by the repo owner, on #93 and #122 (milestone 4, build-order item 4).
+
+**Context.** `architect-review` is the only review control on `main`. Any writer can turn it
+green without a review: a PR runs its own copy of the gate (#93), and a PR's own workflow can
+post the status itself, because every `GITHUB_TOKEN` run posts as the same integration (F9b,
+#122). Auto-merge is off, so a human reads and merges every PR. The writers are the owner's
+two accounts, Dependabot, and, once #102 creates it, the bump-binaries App.
+
+**Decision.**
+- **Human writers are trusted by construction.** The gate does not defend against them. #93
+  is accepted, not fixed, and stays a Known gap in the threat model.
+- **The bump-binaries App is not a trusted writer.** It is an automated identity that parses
+  untrusted upstream release data. Its permissions (`contents` and `pull-requests: write`,
+  no `workflows` or `statuses`) already keep it from editing the gate or posting the status.
+  Its remaining routes are #92 (a backdated commit passes against an older review) and #94
+  (editing an owner's comment into a qualifying one). Both close by counting only formal
+  reviews whose `commit_id` is the head SHA; comments stop counting. That fix ships in `v1.3`.
+- **Auto-merge needs a reviewer App first.** Before `devc-automerge-on` is created (#139), the
+  gate's result must come from a dedicated App's check run that the ruleset requires by
+  integration id, with the key in a `main`-only Environment (#267). #126 and #132 (`disarm()`)
+  move out of milestone 4 and stay #139 preconditions: that change re-copies the gate to every
+  consumer anyway, so they ride along at no extra cost.
+- Rejected:
+  - *Moving the gate to `pull_request_target` now (#93's fix):* a writer can still post the
+    status from another workflow (F9b), so it adds a dangerous trigger without closing the gap.
+  - *A ruleset-required workflow (#122 option b):* needs GitHub Team, which glunk-works is not
+    on, so the shared template could not use it.
+  - *Trusting the App too:* #94's scenario is exactly an App with write access, and #92 lets it
+    push a backdated commit after a review.
+
+**Why DEVC-D and not IAC-D.** It decides what this repo's gate, and the template gate it
+publishes, defends against. Consumers take the #92/#94 fix by re-copying the gate in `v1.3`,
+as they take any gate fix.
+
+**Consequences.** Fork PRs on this repo and the orgs' other public repos need a collaborator
+to open them and approval to run (set 2026-10-05), which narrows the fork gap #122 also
+named. The threat model records the trust split, and #139 lists #267 among its
+preconditions.
+
 ### Org-wide IAC-D decisions that bind this repo
 
 Each of these is recorded in full in infrastructure-core's log. They are cited here only.
