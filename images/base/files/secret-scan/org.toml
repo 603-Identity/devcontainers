@@ -45,7 +45,7 @@ finding.secret matches "^AAAA[BC]3NzaC"
 [[rules]]
 id = "org-azure-ad-client-secret"
 description = "Entra ID / Azure AD client secret (standalone, no component gate)"
-regex = '''(?:^|[\'"\x60\s>=:(,)])([a-zA-Z0-9_~.]{3}\dQ~[a-zA-Z0-9_~.-]{31,34})(?:$|[\'"\x60\s<),])'''
+regex = '''(?:^|[\\'"\x60\s>=:(,)])([a-zA-Z0-9_~.]{3}\dQ~[a-zA-Z0-9_~.-]{31,34})(?:$|[\\'"\x60\s<),])'''
 keywords = ["0q~", "1q~", "2q~", "3q~", "4q~", "5q~", "6q~", "7q~", "8q~", "9q~"]
 confidence = "high"
 filter = '''entropy(finding.secret) <= 3.0'''

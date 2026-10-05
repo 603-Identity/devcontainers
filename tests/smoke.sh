@@ -42,7 +42,8 @@ check "uv" "$EXPECT_UV" "$(uv --version | awk '{print $2}')"
 check "zizmor" "$EXPECT_ZIZMOR" "$(zizmor --version | awk '{print $2}')"
 check "pre-commit" "$EXPECT_PRE_COMMIT" "$(pre-commit --version | awk '{print $2}')"
 # Betterleaks (#190): the pinned release, the org config at the path a repo config extends,
-# and a scan that passes a clean history and fails one holding a planted token. Offline. The
+# and a scan that passes a clean history and fails one holding a planted token, or an Entra
+# client secret bounded by backslashes (#198). Offline. The
 # token is derived from a fixed string, so the run is deterministic and the file holds no
 # literal that a scanner would flag.
 check "betterleaks" "$EXPECT_BETTERLEAKS" "$(/usr/local/bin/betterleaks version)"
@@ -76,6 +77,17 @@ bl_out=$(bl_scan "$bl_leak") || bl_rc=$?
 check "betterleaks planted token exit" 1 "$bl_rc"
 check "betterleaks planted token rule" org-high-entropy-quoted \
     "$(printf '%s\n' "$bl_out" | jq -rs '[.[] | select(has("finding")) | .finding.rule_id] | first')"
+# #198: a backslash is a boundary on both sides of an Entra client secret (as in upstream
+# gitleaks), so one inside an escaped string is still found. Derived from the same fixed string.
+printf 'x\\%s%s\\y\n' 'xyz7Q~' "$(printf %s "$bl_tok" | cut -c1-34)" > "$bl/b.txt"
+git -C "$bl" add -A
+git -C "$bl" commit -qm 'entra leak'
+bl_entra=$(git -C "$bl" rev-parse HEAD)
+bl_rc=0
+bl_out=$(bl_scan "$bl_leak..$bl_entra") || bl_rc=$?
+check "betterleaks backslash-bounded Entra secret exit" 1 "$bl_rc"
+check "betterleaks backslash-bounded Entra secret rule" 1 \
+    "$(printf '%s\n' "$bl_out" | jq -rs '[.[] | select(has("finding")) | select(.finding.rule_id == "org-azure-ad-client-secret")] | length | if . > 0 then 1 else 0 end')"
 rm -rf "$bl"
 check "PATH has ~/.local/bin" 1 "$(printf '%s' ":$PATH:" | grep -c ':/home/app/.local/bin:')"
 check "python3" 3.14 "$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
