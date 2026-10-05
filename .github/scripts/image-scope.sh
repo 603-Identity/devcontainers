@@ -10,7 +10,9 @@
 #
 # The weekly schedule and manual dispatch always give build=1: they exist to rebuild
 # unchanged sources (apt packages float, see images/base/Dockerfile). An event this
-# script does not know also gives build=1, so a new trigger fails toward publishing.
+# script does not know also gives build=1 (it falls back to building, not skipping). Whether
+# anything publishes is gated separately by build.yml's event allowlist, so a new trigger
+# publishes nothing.
 #
 # Only what decides an image's or the template's behaviour counts: images/, template/,
 # tests/, the build scripts, build.yml, and the two root files that shape images. A new
