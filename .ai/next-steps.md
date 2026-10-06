@@ -1,29 +1,24 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI, re-scoped 2026-10-06 to what the adoption waves copy,
-pin or run, ending in `v1.4`. Build-order steps 1-4 are merged; step 5 (PR #346) is reviewed and waiting on the
-owner's merge.
+**Now:** Milestone 4, Repo hardening: review gate and CI, ending in `v1.4`. Build-order steps 1-5 are merged;
+step 6 (the secret-scan follow-ups) is ready to implement.
 
-**Just done** (architect session on opus, last_commit `ef5f90f`):
-- Posted the fresh-session architect review of https://github.com/603-Identity/devcontainers/pull/346 at head
-  `b94ea24`: no blocking findings. Reproduced in a WSL sandbox (gate tests, five mutations each turning a test
-  red, the #263 rule against pinned Betterleaks 2.0.0-rc.1); the image smoke check was taken from CI. The
-  `architect-review` gate went green on that head; `/way-of-working:pr-checks` verdict: READY (admin merge).
-- Filed the PR's four non-blocking findings: #348 (a second secret straight after another is not reported),
-  #349 (the guard's SHA-pin check accepts a branch named `x@<40hex>`), #350 (unfiltered `err.log` tail on the
-  did-not-complete path), #351 ("incomplete scan" text inside a finding record).
-- `/way-of-working:plan-sprint`: placed every unmilestoned issue (#334, #335, #341, #348-#351) in milestone 4,
-  with a triage comment on each. Rewrote milestone 4's build order (owner-approved): new step 6 is the
-  secret-scan follow-ups before `v1.4`, the release moves to step 7, the #341 + #334 + #335 lint PR is step 8,
-  and #234 is step 9. Re-anchored to the new description.
+**Just done** (architect session on opus, last_commit `0f909f7`):
+- The owner merged step 5, PR #346, and its cursor-sync PR #352.
+- The owner decided to fix #348, not record it: drop the trailing boundary group from
+  `org-azure-ad-client-secret`. Recorded at
+  https://github.com/603-Identity/devcontainers/issues/348#issuecomment-6025865438.
+- First anchor for milestone 4 in this cursor, description sha `3387dd9c…`. This session's resume did not
+  verify the prior anchor; `plan-anchor.sh verify --plan` printed `match` at handoff. The anchor now names
+  #348 and the decision comment.
 
-**Next:** once the owner has merged #346, on **opus** (architect): take the #348 fix-or-record decision to the
-owner (M4 step 6, as #263 was decided) and record it on the issue, then hand step 6 (#349 + #350 + #351 + #348,
-one PR) to a sonnet coder session. `v1.4` (step 7) waits for step 6.
+**Next:** task #348 — on **sonnet** (coder), build M4 step 6 as one PR from `main`: #348 per the owner
+decision above (remove the trailing boundary group, add two smoke checks, update the rule comment), plus
+#349, #350 and #351 per their issue bodies. Then run the green gate, `/way-of-working:critic-gate` and
+`/way-of-working:ship`. `v1.4` (step 7) waits for step 6; never tag or release without the owner.
 
-**HITL Gate: OPEN.** The owner's merge of #346:
-`gh pr merge 346 --repo 603-Identity/devcontainers --squash --admin --match-head-commit b94ea2481e4f8bc0d016383c14f7b3cb541c014c`.
-Then the owner's #348 decision; the `v1.4` tag is itself an owner gate.
+**HITL Gate: OPEN.** First anchor for milestone 4 in this cursor (see Just done): the owner confirms with a
+"go" in the next session. Then the architect review of the step 6 PR; the `v1.4` tag is itself an owner gate.
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01; #329 rides
