@@ -650,7 +650,8 @@ The workflow resolves each tool's newest release (node: the current LTS line; np
 the newest release the current node pin supports), takes the sha256 from that release's
 own published checksum file (npm: the registry's `integrity` field) -- never from
 hashing the download -- and opens one PR per tool that is behind, with the release page
-linked in the body (not a diff -- see step 1 below). **betterleaks is the exception on
+linked in the body (not a diff -- see step 1 below). To decline a version, close its PR and leave the `bump/<tool>-<version>` branch: the
+next run skips that tool with a warning (#86), and deleting the branch proposes the version again. **betterleaks is the exception on
 both counts** (#190): it takes the highest-versioned release *including release candidates*
 (it is on 2.0.0-rc.1), and it takes the sha256 only after `cosign verify-blob` accepts the
 release's sigstore bundle for `checksums.txt` against the signer identity for that exact tag
