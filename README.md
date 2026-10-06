@@ -381,6 +381,12 @@ the known gaps. In short:
   [What the consuming repo needs](#what-the-consuming-repo-needs)).
 - The container runs as non-root, with no Linux capabilities and no way to gain privileges.
 
+## License
+
+This repository is licensed under the [Apache License 2.0](LICENSE), copyright 2026 Jared Groves. It covers
+this repo's Dockerfiles, scripts, templates and tools. The third-party binaries baked into the images
+(`tofu`, `tflint`, Trivy, betterleaks and the rest) are not covered by it and keep their own licenses.
+
 ## Disk, speed and volumes
 
 Code stays in the Windows checkout, bind-mounted at `/workspace`. **Nothing grows in the
