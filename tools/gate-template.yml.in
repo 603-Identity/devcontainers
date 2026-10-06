@@ -14,14 +14,15 @@ name: Architect Review Gate
 #   * the `decide` pin, as `@<sha> # vX.Y` (a bare tag fails the reusable workflow's SHA check).
 #
 # review.ci_gate (.ai/project.yml): stays red on a PR that touches code_paths until a
-# fresh-session review is posted, as a PR comment or a formal PR review, against the PR's
-# CURRENT head commit. HEADER and ATTESTATION must match review.ci_gate.header/.attestation
-# in .ai/project.yml byte for byte. This is a literal substring match, not an intent match: a
+# fresh-session review is posted as a formal PR review made against the PR's CURRENT head
+# commit (its `commit_id` is the head SHA; a PR comment never counts).
+# HEADER and ATTESTATION must match review.ci_gate.header/.attestation in .ai/project.yml
+# byte for byte. This is a literal substring match, not an intent match: a
 # paraphrase turns the check red, and the failure looks like a review problem.
 #
 # This is an EXISTENCE gate, not a verdict gate. It checks that a fresh-session review was
-# posted, not what the review concluded; the human still reads it before merging. A comment
-# or review counts only when its author's numeric user ID is in REVIEWER_IDS, since anyone
+# posted, not what the review concluded; the human still reads it before merging. A review
+# counts only when its author's numeric user ID is in REVIEWER_IDS, since anyone
 # can paste the two strings. Not author_association: org membership can be private, and this
 # job's token then reads it as CONTRIBUTOR. IDs, not logins, because a released login can be
 # claimed by someone else.
@@ -40,7 +41,9 @@ name: Architect Review Gate
 #
 # issue_comment runs use the workflow file on the DEFAULT branch; pull_request and
 # pull_request_review runs use the PR's own copy. So a comment re-evaluates a PR with main's
-# gate, and a formal review with the PR's.
+# gate, and a formal review with the PR's. A comment never counts toward the status; it only
+# re-runs the gate. So on a fork PR, whose pull_request_review token is read-only, the reviewer
+# posts the formal review and then an allowlisted comment, and main's gate finds the review.
 
 on:
   pull_request:
@@ -54,7 +57,7 @@ permissions: {}
 
 # >>> CONSUMER: review values
 env:
-  # Space-separated numeric GitHub user IDs whose comment or review counts.
+  # Space-separated numeric GitHub user IDs whose formal review counts.
   # 281693088 = JaredGroves-603. A PR changing this list is checked by its own edited copy on
   # pull_request and pull_request_review runs, so the human's merge is the real control on it.
   REVIEWER_IDS: "281693088"
@@ -118,7 +121,7 @@ jobs:
       statuses: write       # post the `architect-review` commit status
       contents: write       # arm and disarm auto-merge
       pull-requests: write  # arm and disarm auto-merge
-      issues: read          # PR comments, which the API serves as issue comments
+      issues: read          # PR comments (unused by post now; dropping the scope is a follow-up)
     # One run at a time per (workflow, head SHA), so the status for a SHA comes from one
     # function run serially. GitHub keeps the last-queued run and cancels older PENDING ones
     # while a running one finishes (cancel-in-progress is false so a running post is never

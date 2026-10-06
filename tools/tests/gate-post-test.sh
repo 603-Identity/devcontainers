@@ -19,8 +19,8 @@ post_scenario() {
   POST_SCRIPT="$(with_case_block "$CONSUMER_CASE")"
   export POST_SCRIPT
 }
-add_review() { # [PR number]  -> a qualifying comment from a reviewer on that PR
-  put "issues__${1:-2}__comments" post-reviews/comment-qualifying.json
+add_review() { # [PR number]  -> a qualifying formal review, on the head SHA, from a reviewer on that PR
+  put "pulls__${1:-2}__reviews" post-reviews/formal-review-qualifying.json
 }
 all_statuses_on_head() {
   if [ -n "$(status_calls)" ] && ! status_calls | grep -qv "repos/$REPO_NAME/statuses/$SHA "; then pass; else fail "$1: every status goes to the head SHA" "$(status_calls)"; fi
@@ -48,34 +48,65 @@ all_statuses_on_head "no review"
 if status_calls | grep -qF -- '-f context=architect-review'; then pass; else fail "status context"; fi
 end_scenario
 
-# A qualifying PR comment, then a qualifying formal review.
+# A qualifying formal review, made against the head SHA.
 post_scenario
 add_review
-run_post
-assert_states "qualifying comment" "pending success"
-end_scenario
-post_scenario
-put pulls__2__reviews post-reviews/formal-review-qualifying.json
 run_post
 assert_states "qualifying formal review" "pending success"
 end_scenario
 
-# Reviews that must not count.
-for c in comment-stranger comment-quoted comment-stale comment-id-prefix comment-header-only; do
-  post_scenario
-  put issues__2__comments "post-reviews/$c.json"
-  run_post
-  assert_rc "$c" 0 "$RC"
-  assert_states "$c does not qualify" "pending failure"
-  end_scenario
-done
+# A comment never counts, even a perfect one from a reviewer (#94: a body can be edited).
+post_scenario
+put issues__2__comments post-reviews/comment-qualifying.json
+run_post
+assert_rc "qualifying comment" 0 "$RC"
+assert_states "a comment does not qualify" "pending failure"
+assert_log_lacks "a comment is never read" "issues/2/comments"
+end_scenario
 
-# A review exactly at the head commit's date counts (>=), and REVIEWER_IDS is a list.
+# Reviews that must not count: each is the qualifying review with one thing wrong.
+while IFS='|' read -r name filter; do
+  post_scenario
+  add_review
+  mut pulls__2__reviews "$filter"
+  run_post
+  assert_rc "$name" 0 "$RC"
+  assert_states "$name does not qualify" "pending failure"
+  end_scenario
+done <<'CASES'
+stranger|.[0].user.id = 999
+quoted|.[0].body = "> " + (.[0].body | gsub("\n"; "\n> "))
+id-prefix|.[0].user.id = 2816930
+header-only|.[0].body = "**Opus/Architect HITL review (automated)** only"
+other-sha (an earlier head)|.[0].commit_id = "0000000000000000000000000000000000000001"
+no commit_id|del(.[0].commit_id)
+null commit_id|.[0].commit_id = null
+dismissed|.[0].state = "DISMISSED"
+pending|.[0].state = "PENDING"
+CASES
+
+# #92: the review's date no longer matters. A review made against the head SHA counts even when
+# it predates the head commit's committer date (backdated commit); a newer one on another SHA does not.
 post_scenario
 add_review
-mut issues__2__comments '.[0].created_at = "2026-10-01T10:00:00Z"'
+mut pulls__2__reviews '.[0].submitted_at = "2020-01-01T00:00:00Z"'
+run_post
+assert_states "head-SHA review older than the commit date" "pending success"
+end_scenario
+post_scenario
+add_review
+mut pulls__2__reviews '.[0].commit_id = "0000000000000000000000000000000000000001" | .[0].submitted_at = "2099-01-01T00:00:00Z"'
+run_post
+assert_states "newer review on another SHA" "pending failure"
+if grep -qF "not the head" "$SCRATCH/stdout"; then pass; else fail "other-SHA review: named in the output"; fi
+end_scenario
+
+# One stale review does not hide a later qualifying one, and REVIEWER_IDS is a list.
+post_scenario
+add_review
+mut pulls__2__reviews '. + [.[0] | .commit_id = "0000000000000000000000000000000000000001"] | reverse'
 run_post REVIEWER_IDS="1 $REVIEWER 3"
-assert_states "review at the head commit's date, id in a list" "pending success"
+assert_states "stale review first, qualifying second, id in a list" "pending success"
 end_scenario
 
 # Out of scope: success, with pending first.
@@ -84,7 +115,7 @@ put pulls__2__files post-base/pulls__7__files.json
 run_post
 assert_states "out of scope" "pending success"
 assert_log_has "out of scope: description" "No code_paths touched -- no review required."
-assert_log_lacks "out of scope: review not looked up" "issues/2/comments"
+assert_log_lacks "out of scope: review not looked up" "pulls/2/reviews"
 end_scenario
 
 # A rename out of scope checks the OLD path.
@@ -154,7 +185,7 @@ assert_states "arm: success only, never pending" "success"
 assert_log_has "arm: kill switch read" "gh api -i $KS_PATH"
 assert_log_has "arm: exact merge call" "$MERGE_CALL"
 assert_log_lacks "arm: not disarmed" "--disable-auto"
-assert_log_lacks "arm: no review lookup" "issues/2/comments"
+assert_log_lacks "arm: no review lookup" "pulls/2/reviews"
 assert_log_has "arm: description" "Verified image bump -- exempt from review."
 all_statuses_on_head "arm"
 end_scenario
@@ -317,13 +348,12 @@ end_scenario
 # Target selection (security MEDIUM-1): everything acts on candidate_pr when candidate=true
 # =====================================================================================
 
-# A reviewer's comment on fork PR #7 at a candidate SHA, candidate PR #2 (kill switch off).
+# A reviewer's review on fork PR #7 at a candidate SHA, candidate PR #2 (kill switch off).
 post_scenario
 add_review 2
 run_post PR=7 CANDIDATE=true CANDIDATE_PR=2 DECIDE_RESULT=success EXEMPT=false
 assert_states "target = candidate PR: review on the candidate PR counts" "pending success"
 assert_log_has "target: files of the candidate PR" "pulls/2/files"
-assert_log_has "target: comments of the candidate PR" "issues/2/comments"
 assert_log_has "target: reviews of the candidate PR" "pulls/2/reviews"
 assert_log_lacks "target: nothing read from the fork PR" "pulls/7"
 assert_log_lacks "target: nothing read from the fork PR (comments)" "issues/7"

@@ -271,6 +271,11 @@ two accounts, Dependabot, and, once #102 creates it, the bump-binaries App.
   Its remaining routes are #92 (a backdated commit passes against an older review) and #94
   (editing an owner's comment into a qualifying one). Both close by counting only formal
   reviews whose `commit_id` is the head SHA; comments stop counting. That fix ships in `v1.3`.
+  *Amended 2026-10-05, when the fix was built:* #92 closes. #94 narrows rather than closes:
+  a writer may be able to edit another user's formal review body into a qualifying one (needs
+  an owner review already on the current head; unverified), so #94 stays open. A second gap,
+  the review being bound to the head at the moment it is posted rather than the one the
+  reviewer read, is tracked as #278. The threat model's Known gaps carry both.
 - **Auto-merge needs a reviewer App first.** Before `devc-automerge-on` is created (#139), the
   gate's result must come from a dedicated App's check run that the ruleset requires by
   integration id, with the key in a `main`-only Environment (#267). #126 and #132 (`disarm()`)
