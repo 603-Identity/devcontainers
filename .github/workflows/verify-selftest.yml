@@ -28,7 +28,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.3"
+          go-version: "1.26.8"
           cache: false
       # go.mod must declare the version setup-go installs: GOTOOLCHAIN=local refuses a mismatch.
       - name: go.mod and every workflow agree on the Go version
@@ -61,7 +61,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.3"
+          go-version: "1.26.8"
           cache: false
       # `go mod verify` checks the module cache, not vendor/, and fails under GOPROXY=off,
       # so re-derive vendor/ from go.mod and diff it. The one CI step that uses the network.
@@ -110,7 +110,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.3"
+          go-version: "1.26.8"
           cache: false
       - name: Build devc-verify
         working-directory: tools/devc-verify

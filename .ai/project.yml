@@ -62,7 +62,7 @@ code_paths:
 
 # ── the local green gate ─────────────────────────────────────────────────────
 # A local pre-check, not the gate of record; CI on the PR is. Mirrors lint.yml's four jobs, verify-selftest.yml
-# and build.yml's test job, with the same digest-pinned linter images. Needs Docker, git, jq, Go 1.26.3, node
+# and build.yml's test job, with the same digest-pinned linter images. Needs Docker, git, jq, Go 1.26.8, node
 # with npm, and a POSIX shell. The second-to-last step builds all three images and runs the smoke test and
 # Trivy gate, so it takes several minutes; the last brings up the template against the tofu
 # image it just built, with the pinned devcontainer CLI (about a minute).
