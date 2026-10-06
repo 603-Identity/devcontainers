@@ -12,9 +12,14 @@
 # everything else -- the surrounding comments, consumer CI pins, .trivyignore.yaml --
 # for the human review the PR goes through.
 #
-# betterleaks (#190) is the exception to "stable only": it is on a release candidate, so it takes
-# the highest-versioned release including prereleases, and only after cosign verifies the
-# release's sigstore bundle for its checksums.txt against the pinned signer identity.
+# betterleaks (#190) is the exception to "stable only", but only while its pin is itself a release
+# candidate (X.Y.Z-rc.N): then it takes the highest-versioned release including prereleases (so
+# it can reach 2.0.0 GA). Once the pin is on a GA release it takes stable releases only, like every
+# other tool (#208). Either way it takes the checksum only after cosign verifies the release's
+# sigstore bundle for its checksums.txt against the pinned signer identity.
+#
+# Every resolver sets CHECKSUM_URL, the URL its checksum was actually read from, next to
+# RELEASE_URL; the bump PR body cites both (#85).
 #
 # Usage: bump-binaries.sh <gh|yq|uv|tofu|tflint|node|npm|betterleaks>
 # Env:   REPO (owner/repo), GH_TOKEN (gh, authenticated for push+PR), APP_SLUG,
@@ -28,6 +33,7 @@ repo="${REPO:?REPO must be set, e.g. 603-Identity/devcontainers}"
 NEW_VERSION=""
 NEW_CHECKSUM=""
 RELEASE_URL=""
+CHECKSUM_URL=""
 
 # sha256_line <url> <asset-filename> -> the sha256 field of a "sha256  filename" line.
 # gh, tflint, tofu and uv all publish this exact format (verified against gh, tflint,
@@ -47,13 +53,12 @@ resolve_gh() {
   local tag
   IFS=$'\t' read -r tag RELEASE_URL <<< "$(latest_release cli/cli)"
   NEW_VERSION="${tag#v}"
-  NEW_CHECKSUM="$(sha256_line \
-    "https://github.com/cli/cli/releases/download/${tag}/gh_${NEW_VERSION}_checksums.txt" \
-    "gh_${NEW_VERSION}_linux_amd64.tar.gz")"
+  CHECKSUM_URL="https://github.com/cli/cli/releases/download/${tag}/gh_${NEW_VERSION}_checksums.txt"
+  NEW_CHECKSUM="$(sha256_line "$CHECKSUM_URL" "gh_${NEW_VERSION}_linux_amd64.tar.gz")"
 }
 
 resolve_yq() {
-  local tag order_url field
+  local tag order_url sums_url field
   IFS=$'\t' read -r tag RELEASE_URL <<< "$(latest_release mikefarah/yq)"
   NEW_VERSION="${tag#v}"
   # The checksums file lists one hash per algorithm, in the order this sidecar file
@@ -65,33 +70,33 @@ resolve_yq() {
   field="$(curl -fsSL "$order_url" | grep -n '^SHA-256$' | cut -d: -f1)"
   [ -n "$field" ] || { echo "::error::yq: SHA-256 not found in $order_url" >&2; exit 1; }
   field=$((field + 1))
-  NEW_CHECKSUM="$(curl -fsSL "https://github.com/mikefarah/yq/releases/download/${tag}/checksums" \
+  sums_url="https://github.com/mikefarah/yq/releases/download/${tag}/checksums"
+  NEW_CHECKSUM="$(curl -fsSL "$sums_url" \
     | awk -v f="yq_linux_amd64" -v col="$field" '$1 == f { print $col; exit }')"
+  # Two files decide the hash: the column comes from the order file, the value from this one.
+  CHECKSUM_URL="$sums_url (SHA-256 column per $order_url)"
 }
 
 resolve_uv() {
   IFS=$'\t' read -r NEW_VERSION RELEASE_URL <<< "$(latest_release astral-sh/uv)"
-  NEW_CHECKSUM="$(sha256_line \
-    "https://github.com/astral-sh/uv/releases/download/${NEW_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz.sha256" \
-    "uv-x86_64-unknown-linux-gnu.tar.gz")"
+  CHECKSUM_URL="https://github.com/astral-sh/uv/releases/download/${NEW_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz.sha256"
+  NEW_CHECKSUM="$(sha256_line "$CHECKSUM_URL" "uv-x86_64-unknown-linux-gnu.tar.gz")"
 }
 
 resolve_tofu() {
   local tag
   IFS=$'\t' read -r tag RELEASE_URL <<< "$(latest_release opentofu/opentofu)"
   NEW_VERSION="${tag#v}"
-  NEW_CHECKSUM="$(sha256_line \
-    "https://github.com/opentofu/opentofu/releases/download/${tag}/tofu_${NEW_VERSION}_SHA256SUMS" \
-    "tofu_${NEW_VERSION}_linux_amd64.zip")"
+  CHECKSUM_URL="https://github.com/opentofu/opentofu/releases/download/${tag}/tofu_${NEW_VERSION}_SHA256SUMS"
+  NEW_CHECKSUM="$(sha256_line "$CHECKSUM_URL" "tofu_${NEW_VERSION}_linux_amd64.zip")"
 }
 
 resolve_tflint() {
   local tag
   IFS=$'\t' read -r tag RELEASE_URL <<< "$(latest_release terraform-linters/tflint)"
   NEW_VERSION="${tag#v}"
-  NEW_CHECKSUM="$(sha256_line \
-    "https://github.com/terraform-linters/tflint/releases/download/${tag}/checksums.txt" \
-    "tflint_linux_amd64.zip")"
+  CHECKSUM_URL="https://github.com/terraform-linters/tflint/releases/download/${tag}/checksums.txt"
+  NEW_CHECKSUM="$(sha256_line "$CHECKSUM_URL" "tflint_linux_amd64.zip")"
 }
 
 resolve_node() {
@@ -111,9 +116,8 @@ resolve_node() {
     '[.[] | select(.lts != false) | .version | ltrimstr("v")
         | select(split(".")[0] | tonumber == $maj)]
      | sort_by(split(".") | map(tonumber)) | last')"
-  NEW_CHECKSUM="$(sha256_line \
-    "https://nodejs.org/dist/v${NEW_VERSION}/SHASUMS256.txt" \
-    "node-v${NEW_VERSION}-linux-x64.tar.xz")"
+  CHECKSUM_URL="https://nodejs.org/dist/v${NEW_VERSION}/SHASUMS256.txt"
+  NEW_CHECKSUM="$(sha256_line "$CHECKSUM_URL" "node-v${NEW_VERSION}-linux-x64.tar.xz")"
   RELEASE_URL="$(gh api "repos/nodejs/node/releases/tags/v${NEW_VERSION}" --jq '.html_url' 2>/dev/null \
     || echo "https://github.com/nodejs/node/blob/main/doc/changelogs/CHANGELOG_V${major}.md")"
 }
@@ -129,27 +133,36 @@ ver_key() {
   printf '%06d.%06d.%06d.%06d' "$((10#$a))" "$((10#$b))" "$((10#$c))" "$((10#$rc))"
 }
 
-# Betterleaks is on a 2.0 release candidate, so /releases/latest (which skips prereleases)
-# is the wrong question. Take the highest-versioned non-draft release instead, and never a
-# tag that is not exactly vX.Y.Z or vX.Y.Z-rc.N. Its checksums.txt is taken ONLY after the
-# release's sigstore bundle verifies with the pinned signer identity for that exact tag
+# While Betterleaks is pinned to a release candidate, /releases/latest (which skips
+# prereleases) is the wrong question: take the highest-versioned non-draft release instead,
+# prereleases included, and never a tag that is not exactly vX.Y.Z or vX.Y.Z-rc.N. Once the pin
+# is a GA release, consider only exactly-vX.Y.Z tags, so the job never proposes the next rc (#208).
+# The pin is read from the Dockerfile here, ahead of the generic read further down.
+# Its checksums.txt is taken ONLY after the release's sigstore bundle verifies with the pinned signer identity for that exact tag
 # (the release workflow, run at that tag, via GitHub Actions OIDC); a failed or missing
 # verification is an error, never a fallback to the unsigned file. Needs `cosign` on PATH.
 BETTERLEAKS_ISSUER="https://token.actions.githubusercontent.com"
 resolve_betterleaks() {
-  local best="" best_key="" best_url="" tag url key dir identity
+  local best="" best_key="" best_url="" tag url key dir identity pin tag_re
+  pin="$(sed -n 's/^ARG BETTERLEAKS_VERSION=//p' "$root/images/base/Dockerfile")"
+  [ -n "$pin" ] || { echo "::error::betterleaks: could not read BETTERLEAKS_VERSION from $root/images/base/Dockerfile" >&2; exit 1; }
+  tag_re='^v[0-9]+\.[0-9]+\.[0-9]+$'
+  if [[ "$pin" =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+    tag_re='^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$'
+  fi
   while IFS=$'\t' read -r tag url; do
-    [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]] || continue
+    [[ "$tag" =~ $tag_re ]] || continue
     key="$(ver_key "${tag#v}")"
     if [ -z "$best" ] || [[ "$key" > "$best_key" ]]; then best="$tag"; best_key="$key"; best_url="$url"; fi
-  done < <(gh api "repos/betterleaks/betterleaks/releases" --jq '.[] | select(.draft | not) | [.tag_name, .html_url] | @tsv')
-  [ -n "$best" ] || { echo "::error::betterleaks: no release with a vX.Y.Z[-rc.N] tag" >&2; exit 1; }
+  done < <(gh api "repos/betterleaks/betterleaks/releases" --paginate --jq '.[] | select(.draft | not) | [.tag_name, .html_url] | @tsv')
+  [ -n "$best" ] || { echo "::error::betterleaks: no release matching ${tag_re} (pin $pin)" >&2; exit 1; }
   command -v cosign > /dev/null || { echo "::error::betterleaks: cosign is required to verify the release signature" >&2; exit 1; }
 
   NEW_VERSION="${best#v}"
   RELEASE_URL="$best_url"
   dir="$(mktemp -d)"
-  curl -fsSL "https://github.com/betterleaks/betterleaks/releases/download/${best}/checksums.txt" -o "$dir/checksums.txt"
+  CHECKSUM_URL="https://github.com/betterleaks/betterleaks/releases/download/${best}/checksums.txt"
+  curl -fsSL "$CHECKSUM_URL" -o "$dir/checksums.txt"
   curl -fsSL "https://github.com/betterleaks/betterleaks/releases/download/${best}/checksums.txt.sigstore.json" -o "$dir/checksums.txt.sigstore.json"
   identity="https://github.com/betterleaks/betterleaks/.github/workflows/release.yml@refs/tags/${best}"
   if ! cosign verify-blob --bundle "$dir/checksums.txt.sigstore.json" \
@@ -219,6 +232,7 @@ resolve_npm() {
       NEW_VERSION="$v"
       NEW_CHECKSUM="$(printf '%s' "$doc" | jq -r --arg v "$v" '.versions[$v].dist.integrity // ""')"
       RELEASE_URL="https://www.npmjs.com/package/npm/v/${v}"
+      CHECKSUM_URL="https://registry.npmjs.org/npm"
       return 0
     fi
   done <<< "$(printf '%s' "$doc" | jq -r '.versions | keys[]' | grep -vE -- '-' | sort -t. -k1,1nr -k2,2nr -k3,3nr)"
@@ -348,6 +362,7 @@ The checksum above was taken from that release's own published checksum file (or
 npm, the registry's \`integrity\` field) -- never from hashing the download.
 
 Release notes: $RELEASE_URL
+Checksum source: $CHECKSUM_URL
 
 This still needs a human review before merge: read the release notes above (and the
 diff since $current_version yourself -- this PR links the release, not a compare). For
