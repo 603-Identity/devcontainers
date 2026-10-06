@@ -6,6 +6,7 @@
 #               code, or `neterr` for a network failure.
 #   FAKE_LOG    every call is appended as one line: `gh <args>`
 #   FAKE_STATE  per-run call counters
+#   `gh api graphql -f id=<node>` is served from `graphql__<node>.json`.
 #   FAKE_MERGE_RC / FAKE_DISARM_RC   exit codes for `gh pr merge --auto` / `--disable-auto`
 #   FAKE_PR_OPEN  what `gh pr list ... --jq length` prints (open PRs on that head; default 0)
 set -euo pipefail
@@ -34,11 +35,14 @@ case "${1:-}" in
   *) echo "fake gh: unsupported: $*" >&2; exit 2 ;;
 esac
 
-method=GET path="" jqf="" include=0
+method=GET path="" jqf="" include=0 gqlid=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --method) method="$2"; shift 2 ;;
-    -f | -F | --field | --raw-field | -H) shift 2 ;;
+    -f | -F | --field | --raw-field | -H)
+      case "$2" in id=*) gqlid="${2#id=}" ;; esac
+      shift 2
+      ;;
     --jq) jqf="$2"; shift 2 ;;
     -i | --include) include=1; shift ;;
     --paginate | --silent) shift ;;
@@ -53,10 +57,16 @@ if [ "$method" = POST ]; then
 fi
 
 path="${path%%\?*}"
-IFS=/ read -r first owner repo rest <<< "$path"
-[ "$first" = repos ] || { echo "fake gh: unexpected path $path" >&2; exit 2; }
-: "$owner" "$repo"
-if [ -z "${rest:-}" ]; then name=_repo; else name="${rest//\//__}"; fi
+if [ "$path" = graphql ]; then
+  # A GraphQL node lookup (`-f id=<node id>`) is served from `graphql__<node id>.json`, the
+  # whole response document, so the caller's own --jq runs over it.
+  name="graphql__$gqlid"
+else
+  IFS=/ read -r first owner repo rest <<< "$path"
+  [ "$first" = repos ] || { echo "fake gh: unexpected path $path" >&2; exit 2; }
+  : "$owner" "$repo"
+  if [ -z "${rest:-}" ]; then name=_repo; else name="${rest//\//__}"; fi
+fi
 
 n=0
 [ -f "$FAKE_STATE/$name" ] && n="$(cat "$FAKE_STATE/$name")"

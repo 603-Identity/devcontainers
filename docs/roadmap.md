@@ -276,6 +276,12 @@ two accounts, Dependabot, and, once #102 creates it, the bump-binaries App.
   an owner review already on the current head; unverified), so #94 stays open. A second gap,
   the review being bound to the head at the moment it is posted rather than the one the
   reviewer read, is tracked as #278. The threat model's Known gaps carry both.
+  *Amended 2026-10-06, when #94 was verified and fixed:* a write-access account can edit another
+  user's formal review body, leaving its author, state and `commit_id` unchanged (probed on a
+  throwaway PR). The gate now also requires every editor in a matching review's edit history
+  (GraphQL `userContentEdits`) to be an ID in `REVIEWER_IDS`; #94 closes. This ships in the next
+  release, not `v1.3` (DEVC-D8: immutable). The App token's own ability to make the edit stays
+  untested until the App exists, and the gate does not re-run when a review is edited.
 - **Auto-merge needs a reviewer App first.** Before `devc-automerge-on` is created (#139), the
   gate's result must come from a dedicated App's check run that the ruleset requires by
   integration id, with the key in a `main`-only Environment (#267). #126 and #132 (`disarm()`)
@@ -290,8 +296,8 @@ two accounts, Dependabot, and, once #102 creates it, the bump-binaries App.
     push a backdated commit after a review.
 
 **Why DEVC-D and not IAC-D.** It decides what this repo's gate, and the template gate it
-publishes, defends against. Consumers take the #92/#94 fix by re-copying the gate in `v1.3`,
-as they take any gate fix.
+publishes, defends against. Consumers take the #92 fix in `v1.3` and the #94 fix in the next release, by re-copying
+the gate, as they take any gate fix.
 
 **Consequences.** Fork PRs on this repo and the orgs' other public repos need a collaborator
 to open them and approval to run (set 2026-10-05), which narrows the fork gap #122 also

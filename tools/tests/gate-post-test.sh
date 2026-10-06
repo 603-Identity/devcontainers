@@ -109,6 +109,127 @@ assert_states "newer review on another SHA" "pending failure"
 if grep -qF "not the head" "$SCRATCH/stdout"; then pass; else fail "other-SHA review: named in the output"; fi
 end_scenario
 
+# #94: a review whose body was edited counts only when EVERY editor in its history is in
+# REVIEWER_IDS. The history comes from a GraphQL node lookup (REST has no edit metadata on
+# reviews). Each case replaces the served GraphQL document for the qualifying review.
+edits() { # editor-json... -> a userContentEdits document with one node per argument
+  local nodes
+  nodes="$(printf '%s,' "$@")"
+  printf '{"data":{"node":{"userContentEdits":{"totalCount":%s,"nodes":[%s]}}}}\n' "$#" "${nodes%,}"
+}
+set_edit() { # json -> the GraphQL response served for the qualifying review
+  printf '%s\n' "$1" > "$FAKE_FIX/graphql__PRR_qualifying.json"
+}
+ED() { printf '{"editor":{"login":"x","databaseId":%s}}' "$1"; } # an edit by this user id
+post_scenario
+add_review
+run_post
+assert_states "unedited review" "pending success"
+assert_log_has "the review's node id is looked up" "id=PRR_qualifying"
+end_scenario
+post_scenario
+add_review
+set_edit "$(edits "$(ED "$REVIEWER")" "$(ED 999)")"
+run_post
+assert_rc "edited by a stranger" 0 "$RC"
+assert_states "edited by a non-reviewer does not qualify" "pending failure"
+if grep -qF "999" "$SCRATCH/stdout"; then pass; else fail "edited review: the editor is named in the output"; fi
+end_scenario
+post_scenario
+add_review
+set_edit "$(edits "$(ED 999)" "$(ED "$REVIEWER")")"
+run_post
+assert_states "a stranger's edit followed by a reviewer's does not qualify" "pending failure"
+end_scenario
+post_scenario
+add_review
+set_edit "$(edits "$(ED "$REVIEWER")" "$(ED "$REVIEWER")")"
+run_post
+assert_states "edited only by reviewers still qualifies" "pending success"
+end_scenario
+post_scenario
+add_review
+set_edit "$(edits "$(ED 3)" "$(ED "$REVIEWER")")"
+run_post REVIEWER_IDS="1 $REVIEWER 3"
+assert_states "edited by two different reviewers in a list qualifies" "pending success"
+end_scenario
+post_scenario
+add_review
+set_edit "$(edits "$(ED "${REVIEWER:0:7}")")"
+run_post
+assert_states "an editor id that is a prefix of a reviewer's id does not qualify" "pending failure"
+end_scenario
+post_scenario
+add_review
+set_edit "$(edits '{"editor":null}')"
+run_post
+assert_states "edited by an unreadable account fails closed" "pending failure"
+end_scenario
+post_scenario
+add_review
+set_edit "$(edits '{"editor":{"login":"ghost"}}')"
+run_post
+assert_states "edited by an account with no id fails closed" "pending failure"
+end_scenario
+post_scenario
+add_review
+set_edit '{"data":{"node":{"userContentEdits":{"totalCount":101,"nodes":[{"editor":{"databaseId":'"$REVIEWER"'}}]}}}}'
+run_post
+assert_states "a history longer than one page fails closed" "pending failure"
+end_scenario
+post_scenario
+add_review
+set_edit '{"data":{"node":{"userContentEdits":{"totalCount":1,"nodes":[{"deletedAt":"2026-10-06T15:00:00Z","editor":{"databaseId":'"$REVIEWER"'}}]}}}}'
+run_post
+assert_states "a deleted revision in the history fails closed" "pending failure"
+end_scenario
+post_scenario
+add_review
+set_edit '{"data":{"node":{}}}'
+run_post
+assert_states "a node that is not a review fails closed" "pending failure"
+end_scenario
+post_scenario
+add_review
+set_edit '{"data":{"node":null}}'
+run_post
+assert_states "a null node fails closed" "pending failure"
+end_scenario
+post_scenario
+add_review
+mut pulls__2__reviews 'del(.[0].node_id)'
+run_post
+assert_states "a review with no node id cannot be checked and does not qualify" "pending failure"
+end_scenario
+post_scenario
+add_review
+drop graphql__PRR_qualifying
+run_post
+assert_rc "failed edit lookup" 1 "$RC"
+assert_states "a failed edit lookup fails the job, never reads as unedited" "pending"
+end_scenario
+post_scenario
+add_review
+mut pulls__2__reviews '.[0].commit_id = "0000000000000000000000000000000000000001"'
+run_post
+assert_log_lacks "no edit lookup for a review already ruled out by its SHA" "graphql"
+end_scenario
+post_scenario
+add_review
+mut pulls__2__reviews '.[0].user.id = 999'
+run_post
+assert_log_lacks "no edit lookup for a review by a stranger" "graphql"
+end_scenario
+# A later, unedited qualifying review is still found past an edited one.
+post_scenario
+add_review
+set_edit "$(edits "$(ED 999)")"
+mut pulls__2__reviews '. + [.[0] | .node_id = "PRR_second"]'
+echo '{"data":{"node":{"userContentEdits":{"totalCount":0,"nodes":[]}}}}' > "$FAKE_FIX/graphql__PRR_second.json"
+run_post
+assert_states "an edited review does not hide a later unedited one" "pending success"
+end_scenario
+
 # One stale review does not hide a later qualifying one, and REVIEWER_IDS is a list.
 post_scenario
 add_review

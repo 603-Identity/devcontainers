@@ -184,8 +184,7 @@ What each piece trusts, and what it leaves open:
   breaks a rule is caught by review alone. The gate defends against Dependabot-shaped
   forgeries, outsiders and wrong images, and against forks only to the extent that auto-merge
   never acts on a fork PR. DEVC-D7 records this split: human writers are trusted, while the
-  bump-binaries App is not and is bounded by its permissions plus the head-SHA binding (#92;
-  #94 narrowed, see Known gaps). Before auto-merge goes on, the gate's result must come from a reviewer App's check run
+  bump-binaries App is not and is bounded by its permissions plus the head-SHA binding (#92) plus the review-editor check (#94, see Known gaps). Before auto-merge goes on, the gate's result must come from a reviewer App's check run
   that a PR's own workflows cannot post (#267); a ruleset-required workflow was rejected
   because it needs GitHub Team.
 - **Forks and same-named checks.** A fork PR from a returning contributor needs no approval to
@@ -202,7 +201,7 @@ What each piece trusts, and what it leaves open:
 - **Auto-merge is off and stays off until its preconditions are met.** The fail-closed kill
   switch makes "not created yet" the off state. When it is on, this repo's `main`, then the
   publish, then a consumer merge becomes an unattended chain whose only human control is this
-  repo's own `architect-review`, an existence gate with known gaps (#93, #94, #278). The owner
+  repo's own `architect-review`, an existence gate with known gaps (#93, #278). The owner
   creates `devc-automerge-on` only when #139's preconditions are met: among them a pilot that
   has taken real bumps through the review path, the reviewer App check (#267), and `disarm()`
   in every row (#126, #132). Docs-only pushes no longer publish: a push
@@ -429,25 +428,35 @@ These are stated plainly so nobody trusts the setup for more than it does:
   because a released login can be re-registered. The bump-binaries App token (above)
   is not on the list, so a review it posts doesn't count. It can still merge a PR once the
   gate is green. Comments no longer count, so editing an owner comment into a qualifying one
-  (#94) does nothing. Whether a writer can edit someone else's formal review body is
-  unverified; if so, #94 survives in a narrower form (see below).
+  (#94) does nothing. A writer can edit someone else's formal review body (verified on #94),
+  so a review with any editor not in `REVIEWER_IDS` does not count either (see below).
   Quoted lines (`> ...`) are ignored, so quote-replying someone else's pasted strings
   doesn't qualify. A second reviewer means a PR adding their ID, which that PR's own edited
   gate checks (see below), so the human's merge is the control on it. The owner's
   login staying "the only identity that merges PRs" is still a practice, not something
   this ruleset enforces.
-- **A review is bound to the head SHA, not a date (#92 closed, #94 narrowed).** The gate used to
+- **A review is bound to the head SHA, not a date (#92 and #94 closed).** The gate used to
   date a review against the head commit's committer date, which whoever creates the commit
   controls, so a backdated commit passed against an older review. It now counts only a formal PR
   review (not dismissed) whose `commit_id` equals the head SHA and whose author is in
   `REVIEWER_IDS`; a comment never counts, whatever it says. A push moves the head SHA, so every
-  earlier review stops counting until the reviewer posts a new one. Two residuals remain, both
-  open: (1) the review is bound to the head at the moment it is posted, not the one the reviewer
-  read, so a push during the review stamps the review onto the new head (the posting skill does
-  not pin `commit_id`; #278); (2) a writer may be able to edit another user's formal review body into a
-  qualifying one, which needs an owner review already on the current head and is unverified. A
-  human still reads the PR and merges. Consumers take the fix by re-copying the gate in `v1.3`
-  (DEVC-D7).
+  earlier review stops counting until the reviewer posts a new one. Any writer can edit another
+  user's formal review body (`PUT /pulls/{n}/reviews/{id}`; verified on #94 with a non-admin
+  write account, which leaves author, state, `commit_id` and `submitted_at` unchanged), so a
+  matching review also has to be unedited, or have only editors in `REVIEWER_IDS`. The gate
+  reads the whole edit history from GraphQL (`userContentEdits`) for each otherwise-qualifying
+  review; an unreadable editor, a history longer than one page, a deleted revision or a failed lookup fails closed. Residuals, open: (1) the review is
+  bound to the head at the moment it is posted, not the one the reviewer read, so a push during
+  the review stamps the review onto the new head (the posting skill does not pin `commit_id`;
+  #278); (2) nothing re-runs the gate when a review is edited (`pull_request_review` is not triggered
+  on `edited`), so an edit made after the status went green changes the text a human reads
+  without changing the status, and a trusted reviewer's own later edit is not told apart from a
+  typo fix. A history with a deleted revision (a web-UI action; the public API cannot delete
+  one, so this was not exercised live) fails closed, since the revision's text is hidden. The
+  bump-binaries App's own ability to make the edit is the same call and was not tested (no App
+  yet); the fix does not depend on it. A human still reads the PR and merges. Consumers take the
+  head-SHA binding (#92) in `v1.3` and the review-editor check (#94) in the next release
+  (DEVC-D7, DEVC-D8).
 - **A same-repo PR runs its own copy of the gate.** `pull_request` and
   `pull_request_review` runs execute the PR's version of `architect-review-gate.yml`
   (only `issue_comment` uses `main`'s), so a branch that edits the gate, or its

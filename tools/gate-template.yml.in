@@ -16,6 +16,7 @@ name: Architect Review Gate
 # review.ci_gate (.ai/project.yml): stays red on a PR that touches code_paths until a
 # fresh-session review is posted as a formal PR review made against the PR's CURRENT head
 # commit (its `commit_id` is the head SHA; a PR comment never counts).
+# An edited review counts only if every editor in its edit history is in REVIEWER_IDS too (#94).
 # HEADER and ATTESTATION must match review.ci_gate.header/.attestation in .ai/project.yml
 # byte for byte. This is a literal substring match, not an intent match: a
 # paraphrase turns the check red, and the failure looks like a review problem.
