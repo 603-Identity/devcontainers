@@ -186,7 +186,7 @@ settings the adoption PR records, and review.
   filter is not `tags:` alone or a list of literal branch names; no `branches-ignore:` counts, because Dependabot's branch name is configurable (`pull-request-branch-name.separator`)). A job on such a trigger with no
   `permissions:` block (the repo default token applies) or `write-all` counts too, so give every job
   on those triggers an explicit block. `resolve` and `post` contain no `uses:`, `container:` or
-  `services:`, run on a GitHub-hosted runner, and `post` holds only `statuses`, `contents` and `pull-requests: write` and `issues: read`. That keeps upstream action code, which
+  `services:`, run on a GitHub-hosted runner, and `post` holds only `statuses`, `contents` and `pull-requests: write` (the lint still tolerates `issues: read`, for a consumer on an older gate pin). That keeps upstream action code, which
   Dependabot bumps, off the runner that holds the status token.
 - **Settings.** "Allow auto-merge" on, and an approval count of 0 in the ruleset. The `docker`
   and `github-actions` Dependabot ecosystems both configured. **Private repos:** "Send write

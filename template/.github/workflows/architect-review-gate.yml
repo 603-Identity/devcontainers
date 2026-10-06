@@ -17,6 +17,12 @@ name: Architect Review Gate
 # fresh-session review is posted as a formal PR review made against the PR's CURRENT head
 # commit (its `commit_id` is the head SHA; a PR comment never counts).
 # An edited review counts only if every editor in its edit history is in REVIEWER_IDS too (#94).
+# An edit or a dismissal re-runs the gate (#315, #281), so on a same-repo PR the status follows the
+# review as it is now, not as it was when the status went green. The early stop keys on the review's
+# AUTHOR (github.event.review.user.id), not on whoever edited or dismissed it: an edit by a stranger
+# to a reviewer's review still re-runs the gate, which then disqualifies that review (the status
+# fails unless another qualifying review exists). A fork PR's run has a read-only token, so there
+# the status moves only on the reviewer's allowlisted re-run comment (see below).
 # HEADER and ATTESTATION must match review.ci_gate.header/.attestation in .ai/project.yml
 # byte for byte. This is a literal substring match, not an intent match: a
 # paraphrase turns the check red, and the failure looks like a review problem.
@@ -52,7 +58,7 @@ on:
   issue_comment:
     types: [created]
   pull_request_review:
-    types: [submitted]
+    types: [submitted, edited, dismissed]
 
 permissions: {}
 
@@ -256,7 +262,6 @@ jobs:
       statuses: write       # post the `architect-review` commit status
       contents: write       # arm and disarm auto-merge
       pull-requests: write  # arm and disarm auto-merge
-      issues: read          # PR comments (unused by post now; dropping the scope is a follow-up)
     # One run at a time per (workflow, head SHA), so the status for a SHA comes from one
     # function run serially. GitHub keeps the last-queued run and cancels older PENDING ones
     # while a running one finishes (cancel-in-progress is false so a running post is never
