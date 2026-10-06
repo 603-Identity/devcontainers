@@ -43,7 +43,7 @@ check "zizmor" "$EXPECT_ZIZMOR" "$(zizmor --version | awk '{print $2}')"
 check "pre-commit" "$EXPECT_PRE_COMMIT" "$(pre-commit --version | awk '{print $2}')"
 # Betterleaks (#190): the pinned release, the org config at the path a repo config extends,
 # and a scan that passes a clean history and fails one holding a planted token, or an Entra
-# client secret bounded by backslashes (#198). Offline. The
+# client secret bounded by backslashes (#198) or following an escape (#263). Offline. The
 # token is derived from a fixed string, so the run is deterministic and the file holds no
 # literal that a scanner would flag.
 check "betterleaks" "$EXPECT_BETTERLEAKS" "$(/usr/local/bin/betterleaks version)"
@@ -87,6 +87,16 @@ bl_rc=0
 bl_out=$(bl_scan "$bl_leak..$bl_entra") || bl_rc=$?
 check "betterleaks backslash-bounded Entra secret exit" 1 "$bl_rc"
 check "betterleaks backslash-bounded Entra secret rule" 1 \
+    "$(printf '%s\n' "$bl_out" | jq -rs '[.[] | select(has("finding")) | select(.finding.rule_id == "org-azure-ad-client-secret")] | length | if . > 0 then 1 else 0 end')"
+# #263: a literal backslash-n (two characters) before the secret is a boundary too.
+printf 'x\\n%s%s\\y\n' 'xyz7Q~' "$(printf %s "$bl_tok" | cut -c1-34)" > "$bl/c.txt"
+git -C "$bl" add -A
+git -C "$bl" commit -qm 'entra leak after an escape'
+bl_esc=$(git -C "$bl" rev-parse HEAD)
+bl_rc=0
+bl_out=$(bl_scan "$bl_entra..$bl_esc") || bl_rc=$?
+check "betterleaks escape-bounded Entra secret exit" 1 "$bl_rc"
+check "betterleaks escape-bounded Entra secret rule" 1 \
     "$(printf '%s\n' "$bl_out" | jq -rs '[.[] | select(has("finding")) | select(.finding.rule_id == "org-azure-ad-client-secret")] | length | if . > 0 then 1 else 0 end')"
 rm -rf "$bl"
 check "PATH has ~/.local/bin" 1 "$(printf '%s' ":$PATH:" | grep -c ':/home/app/.local/bin:')"

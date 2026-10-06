@@ -42,10 +42,16 @@ finding.secret matches "^AAAA[BC]3NzaC"
 # azure-ad-client-secret reports only when a tenant id AND client id are within 8 lines; the
 # default aws-access-token only with a secret key nearby). A lone secret is the common leak.
 # No validate/components: detection only.
+#
+# org-azure-ad-client-secret departs from upstream gitleaks on purpose twice: it has no component
+# gate (above), and (#263) a literal \n, \r or \t counts as a boundary before the secret, so one
+# pasted straight after an escape inside a JSON or shell string is found. Upstream needs a
+# boundary character and the escape's letter is not one. The rule exists for how Entra secrets
+# actually leak.
 [[rules]]
 id = "org-azure-ad-client-secret"
 description = "Entra ID / Azure AD client secret (standalone, no component gate)"
-regex = '''(?:^|[\\'"\x60\s>=:(,)])([a-zA-Z0-9_~.]{3}\dQ~[a-zA-Z0-9_~.-]{31,34})(?:$|[\\'"\x60\s<),])'''
+regex = '''(?:^|[\\'"\x60\s>=:(,)]|\\[nrt])([a-zA-Z0-9_~.]{3}\dQ~[a-zA-Z0-9_~.-]{31,34})(?:$|[\\'"\x60\s<),])'''
 keywords = ["0q~", "1q~", "2q~", "3q~", "4q~", "5q~", "6q~", "7q~", "8q~", "9q~"]
 confidence = "high"
 filter = '''entropy(finding.secret) <= 3.0'''
