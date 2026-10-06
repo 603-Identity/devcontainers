@@ -85,6 +85,14 @@ dismissed|.[0].state = "DISMISSED"
 pending|.[0].state = "PENDING"
 CASES
 
+# #96: a missing id must not match a doubled space in REVIEWER_IDS; the numeric test alone stops it.
+post_scenario
+add_review
+mut pulls__2__reviews '.[0].user.id = null'
+run_post REVIEWER_IDS="1  $REVIEWER"
+assert_states "null id with a doubled-space REVIEWER_IDS does not qualify" "pending failure"
+end_scenario
+
 # #92: the review's date no longer matters. A review made against the head SHA counts even when
 # it predates the head commit's committer date (backdated commit); a newer one on another SHA does not.
 post_scenario

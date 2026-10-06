@@ -434,7 +434,9 @@ jobs:
               login="$(printf '%s' "$item" | jq -r '.login // ""')"
               # Who posted it counts: anyone can paste the two strings. Only an ID in REVIEWER_IDS
               # qualifies; a missing or non-numeric ID fails closed. Padding both sides with spaces
-              # makes this a whole-word match.
+              # makes this a whole-word match. The numeric test is load-bearing: it alone stops a
+              # missing ID from matching a doubled, leading or trailing space in REVIEWER_IDS
+              # (padding turns either into a double space). Keep it.
               if ! [[ "$uid" =~ ^[0-9]+$ && " ${REVIEWER_IDS} " == *" ${uid} "* ]]; then
                 # Name the cause in the log, so a skipped review doesn't look like a missing one.
                 if [[ "$body" == *"$HEADER"* && "$body" == *"$ATTESTATION"* ]]; then
