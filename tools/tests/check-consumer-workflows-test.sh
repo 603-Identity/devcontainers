@@ -127,9 +127,13 @@ lint; expect "a container: on post" 1 "job 'post' has container: or services:"; 
 new_wf; sed -i 's|^  resolve:$|  resolve:\n    services: { x: { image: evil/image } }|' "$WF/$GATE"
 lint; expect "services: on resolve" 1 "job 'resolve' has container: or services:"; rm -rf "$SCRATCH"
 
-# post holds statuses, contents and pull-requests: write and issues: read, and nothing else.
-new_wf; sed -i 's|^      issues: read  .*$|&\n      actions: write|' "$WF/$GATE"
+# post holds statuses, contents and pull-requests: write, and nothing else (the lint still tolerates
+# issues: read, so a consumer on an older gate pin passes).
+new_wf; sed -i 's|^      pull-requests: write .*$|&\n      actions: write|' "$WF/$GATE"
 lint; expect "actions: write on post" 1 "job 'post' may hold only"; rm -rf "$SCRATCH"
+
+new_wf; sed -i 's|^      pull-requests: write .*$|&\n      issues: read|' "$WF/$GATE"
+lint; expect "issues: read on post is tolerated (an older gate pin)" 0; rm -rf "$SCRATCH"
 
 new_wf; sed -i 's|^      statuses: write .*$|&\n      checks: write|' "$WF/$GATE"
 lint; expect "checks: write on post" 1 "job 'post' may hold only"; rm -rf "$SCRATCH"
@@ -267,7 +271,7 @@ done
 new_wf; sed -i 's|^  resolve:$|  resolvex:|' "$WF/$GATE"
 lint; expect "a gate with a job renamed" 1 "must define the gate's three jobs"; rm -rf "$SCRATCH"
 
-new_wf; sed -i 's|^      issues: read          # PR comments.*$|      issues: write|' "$WF/$GATE"
+new_wf; sed -i 's|^      pull-requests: write .*$|&\n      issues: write|' "$WF/$GATE"
 lint; expect "issues: write on post" 1 "job 'post' may hold only"; rm -rf "$SCRATCH"
 
 new_wf; sed -i -E 's|(devcontainer-bump-decision\.yml)@[0-9a-f]{40} # |\1@6ac20cedcd87 # |' "$WF/$GATE"

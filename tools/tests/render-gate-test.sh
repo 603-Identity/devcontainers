@@ -53,7 +53,7 @@ if grep -qE '^  (resolve|decide|post):$' "$TEMPLATE" && [ "$(grep -cE '^  [a-z-]
 if grep -q 'architect-review:' <(sed -n '/^jobs:/,$p' "$TEMPLATE"); then fail "no job is named architect-review"; else pass; fi
 if grep -qi 'workflow_run' <(grep -v '^ *#' "$TEMPLATE"); then fail "no workflow_run trigger"; else pass; fi
 if [ "$(grep -c '^permissions: {}$' "$TEMPLATE")" -eq 1 ]; then pass; else fail "workflow-level permissions: {}"; fi
-for t in 'types: \[opened, synchronize, reopened\]' 'types: \[created\]' 'types: \[submitted\]'; do
+for t in 'types: \[opened, synchronize, reopened\]' 'types: \[created\]' 'types: \[submitted, edited, dismissed\]'; do
   if grep -q "$t" "$TEMPLATE"; then pass; else fail "trigger $t"; fi
 done
 # uses: appears once, in decide, as a reusable-workflow call pinned by a 40-hex SHA with a version comment.
@@ -71,11 +71,13 @@ for want in "contents: read" "pull-requests: read" "issues: read" "timeout-minut
   "act: \${{ steps.resolve.outputs.act }}" "candidate_pr: \${{ steps.resolve.outputs.candidate_pr }}"; do
   [[ "$resolve_block" == *"$want"* ]] && pass || fail "resolve has: $want"
 done
-for want in "needs: [resolve, decide]" "statuses: write" "contents: write" "pull-requests: write" "issues: read" "timeout-minutes: 5" \
+for want in "needs: [resolve, decide]" "statuses: write" "contents: write" "pull-requests: write" "timeout-minutes: 5" \
   "if: \${{ !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.act == 'true' }}" \
   "group: architect-review-\${{ github.workflow }}-\${{ needs.resolve.outputs.head_sha }}" "cancel-in-progress: false"; do
   [[ "$post_block" == *"$want"* ]] && pass || fail "post has: $want"
 done
+# #282: post reads pulls/<n>/reviews and /files only, so it holds no issues scope.
+if [[ "$post_block" == *"issues:"* ]]; then fail "post holds no issues: scope"; else pass; fi
 if grep -qE "^ *(- )?uses:" <<< "$resolve_block"; then fail "resolve has no uses:"; else pass; fi
 if grep -qE "^ *(- )?uses:" <<< "$post_block"; then fail "post has no uses:"; else pass; fi
 # The only expressions inside run blocks' env are env values: no ${{ }} inside any run: body.

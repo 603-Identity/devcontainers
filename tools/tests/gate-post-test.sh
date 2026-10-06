@@ -112,7 +112,7 @@ end_scenario
 # #94: a review whose body was edited counts only when EVERY editor in its history is in
 # REVIEWER_IDS. The history comes from a GraphQL node lookup (REST has no edit metadata on
 # reviews). Each case replaces the served GraphQL document for the qualifying review.
-edits() { # editor-json... -> a userContentEdits document with one node per argument
+edits() { # editor-json... (NEWEST FIRST, as GitHub returns them) -> a userContentEdits document, one node each
   local nodes
   nodes="$(printf '%s,' "$@")"
   printf '{"data":{"node":{"userContentEdits":{"totalCount":%s,"nodes":[%s]}}}}\n' "$#" "${nodes%,}"
@@ -129,7 +129,7 @@ assert_log_has "the review's node id is looked up" "id=PRR_qualifying"
 end_scenario
 post_scenario
 add_review
-set_edit "$(edits "$(ED "$REVIEWER")" "$(ED 999)")"
+set_edit "$(edits "$(ED 999)" "$(ED "$REVIEWER")")"
 run_post
 assert_rc "edited by a stranger" 0 "$RC"
 assert_states "edited by a non-reviewer does not qualify" "pending failure"
@@ -137,7 +137,7 @@ if grep -qF "999" "$SCRATCH/stdout"; then pass; else fail "edited review: the ed
 end_scenario
 post_scenario
 add_review
-set_edit "$(edits "$(ED 999)" "$(ED "$REVIEWER")")"
+set_edit "$(edits "$(ED "$REVIEWER")" "$(ED 999)")"
 run_post
 assert_states "a stranger's edit followed by a reviewer's does not qualify" "pending failure"
 end_scenario

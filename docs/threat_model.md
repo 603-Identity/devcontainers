@@ -447,10 +447,12 @@ These are stated plainly so nobody trusts the setup for more than it does:
   review; an unreadable editor, a history longer than one page, a deleted revision or a failed lookup fails closed. Residuals, open: (1) the review is
   bound to the head at the moment it is posted, not the one the reviewer read, so a push during
   the review stamps the review onto the new head (the posting skill does not pin `commit_id`;
-  #278); (2) nothing re-runs the gate when a review is edited (`pull_request_review` is not triggered
-  on `edited`), so an edit made after the status went green changes the text a human reads
-  without changing the status, and a trusted reviewer's own later edit is not told apart from a
-  typo fix. A history with a deleted revision (a web-UI action; the public API cannot delete
+  #278); (2) the gate re-runs when a review is edited or dismissed (`pull_request_review` types `edited` and
+  `dismissed`; #315, #281), so a later edit by a stranger, or a dismissal, moves the status. An edit by a trusted reviewer
+  still keeps it green while changing the text a human reads, and is not told apart from a typo fix. On a fork PR the
+  `edited` and `dismissed` runs get the same read-only token as `submitted` (GitHub's rule for every
+  `pull_request_review` activity type, not exercised live here), so they cannot post: there the status moves
+  only on the reviewer's allowlisted re-run comment. A history with a deleted revision (a web-UI action; the public API cannot delete
   one, so this was not exercised live) fails closed, since the revision's text is hidden. The
   bump-binaries App's own ability to make the edit is the same call and was not tested; the fix does not depend on it. A human still reads the PR and merges. Consumers take the
   head-SHA binding (#92) in `v1.3` and the review-editor check (#94) in the next release
