@@ -2,7 +2,8 @@
 # shellcheck disable=SC1091,SC2016
 # Tests for .claude/hooks/merge-guard.sh, the PreToolUse hook that replaced the
 # `gh pr merge` deny rules (#168): every merge blocked as before, except
-# /way-of-working:resume's exact cursor-sync merge, which goes to an `ask` prompt.
+# /way-of-working:resume's exact cursor-sync merge (v0.16.0 shape, with --admin), which
+# goes to an `ask` prompt. --admin anywhere else, and the pre-0.16.0 shape, are blocked.
 # Fixtures are hand-built from the GitHub REST shapes (see fixtures/merge-guard).
 set -euo pipefail
 # shellcheck source=lib.sh
@@ -10,7 +11,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 suite merge-guard
 
 HOOK="$ROOT_DIR/.claude/hooks/merge-guard.sh"
-OK="gh pr merge 7 --repo 603-Identity/devcontainers --squash --match-head-commit $SHA"
+OK="gh pr merge 7 --repo 603-Identity/devcontainers --squash --admin --match-head-commit $SHA"
+OLD="gh pr merge 7 --repo 603-Identity/devcontainers --squash --match-head-commit $SHA"
 
 # guard <command> [tool]  -> sets RC; stdout and stderr land in SCRATCH.
 guard() {
@@ -90,7 +92,16 @@ end_scenario
 # --- every other merge shape is blocked before GitHub is asked -------------------------
 for c in \
   "gh pr merge 7 --squash" \
+  "$OLD" \
+  "gh pr merge 7 --admin" \
+  "gh pr merge 7 --squash --admin" \
+  "gh pr merge 7 --repo 603-Identity/devcontainers --squash --admin" \
+  "gh pr merge 7 --repo 603-Identity/devcontainers --admin --squash --match-head-commit $SHA" \
   "gh pr merge 7 --repo 603-Identity/devcontainers --squash --match-head-commit $SHA --admin" \
+  "$OK --admin" \
+  "gh pr merge 7 --repo 603-Identity/devcontainers --merge --admin --match-head-commit $SHA" \
+  "gh pr merge 7 --repo 603-Identity/devcontainers --squash --admin --auto --match-head-commit $SHA" \
+  "gh pr merge 7 --repo other/fork --squash --admin --match-head-commit $SHA" \
   "gh pr merge 7 --repo 603-Identity/devcontainers --squash --match-head-commit $SHA --auto" \
   "gh pr merge 7 --repo 603-Identity/devcontainers --merge --match-head-commit $SHA" \
   "gh pr merge 7 --repo 603-Identity/devcontainers --squash --match-head-commit ${SHA:0:12}" \
@@ -144,7 +155,7 @@ github_block() { # description jq-filter-on-pulls__7 [jq-filter-on-files]
   new_scenario merge-guard
   mut pulls__7 "$2"
   [ -z "${3:-}" ] || mut pulls__7__files "$3"
-  expect_block "$1" "$OK"
+  expect_block "--admin shape, $1" "$OK"
   end_scenario
 }
 github_block "closed PR" '.state = "closed"'
