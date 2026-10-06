@@ -1,25 +1,27 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Implementing; next task not yet picked.
+**Now:** Milestone 4, Repo hardening: review gate and CI. Awaiting the review of #295.
 
-**Just done** (architect session on opus, last_commit `2f3bacc`):
-- Posted the fresh-session architect review on PR #292 (#164) against head `a1fe4f7`.
-  `architect-review` went green on that SHA (commit status). Verdict: no blocking findings.
-  The owner merged it as `2f3bacc`, closing #164.
-- Executed in a WSL review sandbox: shellcheck clean, gate suite green, and four planted mutations
-  (resolver back to the tarball, Dockerfile switched to the tarball, a tool missing from `TOOLS`,
-  gh pointed at a decoy) each turned the new test red. The PR's awk filter on the real yq v4.53.6
-  `checksums` returns the pinned `YQ_SHA256`.
-- No findings filed. The review body states the test's limits (one fake body for every URL, the
-  dispatch-line format the coverage check parses, offline only).
-- Milestone 4 re-anchored without a resume-verified baseline (resume ran on `awaiting_review`, so
-  it did not verify): `verify --plan` printed `match`, description sha `8bc5e03e` unchanged.
+**Just done** (architect session on opus, last_commit `e39ccdf`):
+- `v1.3` released (build-order item 11). The owner pushed the signed tag on `2f3bacc` and published
+  it as an immutable GitHub Release. Release immutability is now on for the repo. A docs-consistency
+  pass checked the notes: 2 rounds, converged (round 1 fixed the step-2 pin pairing and the #94
+  overclaim).
+- Reopened #94. It auto-closed on #279's merge, but the DEVC-D7 amendment says #279 only narrowed it.
+- Opened PR #295. It re-points the template's `decide`, `verify` and `secret-scan` pins, and this
+  repo's own `decide` pin, to `v1.3`, re-renders the template gate, and adds DEVC-D8 (signed tag +
+  immutable Release per version) with the matching threat-model edit. Render checks, the gate tests
+  in WSL and zizmor are green. Handed off without a critic-gate pass (mechanical pins + docs, owner's
+  call).
+- Milestone 4 re-anchored without a resume-verified baseline: `verify --plan` printed `match`,
+  description sha `8bc5e03e` unchanged.
 
-**Next:** pick the next milestone-4 task with the owner and hand it off to a coder session.
-Model: **opus** (architect) for the pick.
+**Next:** `/way-of-working:architect-review 295` in a **new window** (this session wrote the diff).
+Model: **opus** (architect). Never approve or merge. After the merge, pick the next milestone-4 task
+with the owner (#86 is next in the build order).
 
-**HITL Gate: OPEN.** The owner's pick of the next M4 task, and the `v1.3` tag (build-order
-item 11, owner-owned).
+**HITL Gate: OPEN.** The re-anchor above, the human merge of #295 once `architect-review` is green,
+then the owner's pick of the next M4 task.
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01.
