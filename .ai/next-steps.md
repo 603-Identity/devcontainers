@@ -1,11 +1,11 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. PR #284 is reviewed and waiting for
-the owner's merge.
+**Now:** Milestone 4, Repo hardening: review gate and CI. Implementing; next task not yet picked.
 
-**Just done** (architect session on opus, last_commit `d2040ea`):
+**Just done** (architect session on opus, last_commit `e3869b4`):
 - Posted the fresh-session architect review on PR #284 (#96) against head `a31eb24`.
   `architect-review` is green on that SHA (commit status). Verdict: sound, no blocking findings.
+  The owner merged it as `e3869b4`, closing #96.
   Executed in an isolated sandbox in WSL: the gate suites, both render checks and shellcheck
   passed. With the numeric uid test removed, the new test goes red. With the numeric test
   removed and a single space in `REVIEWER_IDS`, it passes.
@@ -15,11 +15,11 @@ the owner's merge.
 - Plan anchor for milestone 4 re-verified at this handoff: `match`, description unchanged
   (sha `8bc5e03e`). Resume did not verify it, because the status was `awaiting_review`.
 
-**Next:** once the owner has merged #284, pick the next milestone-4 task with the owner and
-hand it off to a coder session. Model: **opus** (architect) for the pick.
+**Next:** pick the next milestone-4 task with the owner and hand it off to a coder session.
+Model: **opus** (architect) for the pick.
 
-**HITL Gate: OPEN.** The owner's merge of #284, then the `v1.3` tag (owner-owned, now that
-#92 and #96 are done), then the owner's pick of the next M4 task.
+**HITL Gate: OPEN.** The `v1.3` tag (owner-owned, now that #92 and #96 are merged) and the
+owner's pick of the next M4 task.
 
 **Open for the owner (non-blocking):**
 - Close #233 by hand (#274 did not close it).
