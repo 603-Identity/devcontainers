@@ -105,6 +105,28 @@ review_editor() { # node_id
     --jq '.data.node as $n | if ($n | type) != "object" or ($n | has("userContentEdits") | not) or ($n.userContentEdits | type) != "object" or ($n.userContentEdits.nodes | type) != "array" then "unknown" elif ($n.userContentEdits.totalCount // 0) > ($n.userContentEdits.nodes | length) then "unknown" elif any($n.userContentEdits.nodes[]; .deletedAt != null) then "unknown" elif ($n.userContentEdits.nodes | length) == 0 then "ok" else ([$n.userContentEdits.nodes[] | (.editor.databaseId // "none" | tostring)] | join(" ")) end'
 }
 
+# Whether the quote-stripped review body in $1 carries, as a line of its own, the literal
+# `Reviewed against head <HEAD_SHA>` (#278). `commit_id` is the head when the review is posted,
+# not the commit the reviewer read, so a push during the review stamps it onto the new head;
+# this line is the reviewer's own statement of the SHA they pinned, and a moved head fails
+# closed. Leading and trailing whitespace (and a CR) on the line are ignored; backticks around
+# the SHA and one trailing period are accepted (the posting skill's real output, #339, is
+# ``Reviewed against head `<sha>`.``), since the line is markdown prose. Any other
+# text on the line, or a different SHA, does not match.
+reviewed_against_head() { # body
+  local line
+  while IFS= read -r line; do
+    line="${line%$'\r'}"
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    case "$line" in
+      "Reviewed against head ${HEAD_SHA}" | "Reviewed against head \`${HEAD_SHA}\`" \
+        | "Reviewed against head ${HEAD_SHA}." | "Reviewed against head \`${HEAD_SHA}\`.") return 0 ;;
+    esac
+  done <<< "$1"
+  return 1
+}
+
 # The existing review logic. $1 = 1 forces "in scope" (the error row never reads a file list
 # to decide that no review is needed). Plain call, never inside `if`/`||`, so `set -e` stays
 # in force: a failed `gh api` must fail closed, never read as "nothing in scope".
@@ -187,6 +209,10 @@ review_logic() {
         echo "Skipped a matching review by ${login:-<none>}: made against ${sha:-<no commit>}, not the head ${HEAD_SHA}."
         continue
       fi
+      if ! reviewed_against_head "$body"; then
+        echo "Skipped a matching review by ${login:-<none>}: no \"Reviewed against head ${HEAD_SHA}\" line, so it may have been read against another commit."
+        continue
+      fi
       # A missing node id cannot be looked up, so it fails closed like an unknown editor.
       editor=unknown
       if [ -n "$node" ]; then
@@ -216,7 +242,7 @@ review_logic() {
     # `gh api` prints no trailing newline, and the runner reads a workflow command
     # only at the start of a line, so this `echo` is what makes the ::error:: render.
     echo
-    echo "::error::No fresh-session review posted against head commit ${HEAD_SHA} yet. A formal PR review by a user in REVIEWER_IDS, made against that commit and containing both \"${HEADER}\" and \"${ATTESTATION}\", is required."
+    echo "::error::No fresh-session review posted against head commit ${HEAD_SHA} yet. A formal PR review by a user in REVIEWER_IDS, made against that commit and containing both \"${HEADER}\" and \"${ATTESTATION}\" and the line \"Reviewed against head ${HEAD_SHA}\", is required."
     # Exit 0 on purpose: the status above is the enforcement.
   fi
   return 0

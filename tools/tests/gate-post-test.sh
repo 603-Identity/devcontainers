@@ -78,12 +78,50 @@ stranger|.[0].user.id = 999
 quoted|.[0].body = "> " + (.[0].body | gsub("\n"; "\n> "))
 id-prefix|.[0].user.id = 2816930
 header-only|.[0].body = "**Opus/Architect HITL review (automated)** only"
+no reviewed-against line (#278)|.[0].body |= sub("\nReviewed against head [0-9a-f]+"; "")
+line names another head, commit_id is the head (#278)|.[0].body |= sub("head [0-9a-f]+"; "head 0000000000000000000000000000000000000001")
+line names an abbreviated sha (#278)|.[0].body |= sub("head [0-9a-f]+"; "head 3865d58")
+two trailing periods (#278)|.[0].body |= sub("(?<s>head [0-9a-f]+)"; "\(.s)..")
+text after the sha (#278)|.[0].body |= sub("(?<l>Reviewed against head [0-9a-f]+)"; "\(.l) and more")
+text before the line (#278)|.[0].body |= sub("Reviewed against head"; "Not Reviewed against head")
+line only inside a quote (#278)|.[0].body |= sub("\nReviewed against head"; "\n> Reviewed against head")
+line in a sentence (#278)|.[0].body |= sub("\nReviewed against head [0-9a-f]+"; "\nI Reviewed against head 3865d58e1f2a4b7c9d0e1f2a3b4c5d6e7f8091a2 ok")
 other-sha (an earlier head)|.[0].commit_id = "0000000000000000000000000000000000000001"
 no commit_id|del(.[0].commit_id)
 null commit_id|.[0].commit_id = null
 dismissed|.[0].state = "DISMISSED"
 pending|.[0].state = "PENDING"
 CASES
+
+# #278: shapes of the line that still count: backticks around the sha (decided: accepted), leading
+# or trailing whitespace, a CR, and the line anywhere in the body, not only after the attestation.
+while IFS='|' read -r name filter; do
+  post_scenario
+  add_review
+  mut pulls__2__reviews "$filter"
+  run_post
+  assert_states "$name qualifies" "pending success"
+  end_scenario
+done <<'CASES'
+backticks around the sha|.[0].body |= sub("head (?<s>[0-9a-f]+)"; "head `\(.s)`")
+trailing period|.[0].body |= sub("(?<s>head [0-9a-f]+)"; "\(.s).")
+backticks and a trailing period (the skill output, #339)|.[0].body |= sub("head (?<s>[0-9a-f]+)"; "head `\(.s)`.")
+indented line|.[0].body |= sub("\nReviewed"; "\n   Reviewed")
+trailing whitespace|.[0].body |= sub("(?<s>head [0-9a-f]+)"; "\(.s)  \t")
+CRLF line endings|.[0].body |= gsub("\n"; "\r\n")
+line first in the body|.[0].body = "Reviewed against head 3865d58e1f2a4b7c9d0e1f2a3b4c5d6e7f8091a2\n" + .[0].body
+CASES
+
+# #278: a review stamped on the head by a push during it names the SHA the reviewer pinned, an
+# earlier one, so the gate fails closed and says why.
+post_scenario
+add_review
+mut pulls__2__reviews '.[0].body |= sub("head [0-9a-f]+"; "head 0000000000000000000000000000000000000001")'
+run_post
+assert_states "review of an earlier head, commit_id moved to the head" "pending failure"
+if grep -qF 'no "Reviewed against head' "$SCRATCH/stdout"; then pass; else fail "missing line: named in the output"; fi
+if grep -qF 'and the line "Reviewed against head' "$SCRATCH/stdout"; then pass; else fail "missing line: named in the error"; fi
+end_scenario
 
 # #96: a missing id must not match a doubled space in REVIEWER_IDS; the numeric test alone stops it.
 post_scenario

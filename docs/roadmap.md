@@ -285,6 +285,10 @@ two accounts, Dependabot, and, once #102 creates it, the bump-binaries App.
   *Amended 2026-10-06, #315 and #281:* the gate now also re-runs when a review is edited or dismissed
   (`pull_request_review` types `edited` and `dismissed`); the "does not re-run" clause above no longer holds
   for same-repo PRs. A fork PR's run still gets a read-only token (see the threat model's Known gaps).
+  *Amended 2026-10-06, #278 (gate side):* a matching review must also carry the line
+  `Reviewed against head <HEAD_SHA>` in its quote-stripped body, so a review stamped onto a head
+  that moved during it fails closed. The skill side (posting with `commit_id` pinned) stays with the
+  way-of-working plugin.
 - **Auto-merge needs a reviewer App first.** Before `devc-automerge-on` is created (#139), the
   gate's result must come from a dedicated App's check run that the ruleset requires by
   integration id, with the key in a `main`-only Environment (#267). #126 and #132 (`disarm()`)

@@ -15,7 +15,8 @@ name: Architect Review Gate
 #
 # review.ci_gate (.ai/project.yml): stays red on a PR that touches code_paths until a
 # fresh-session review is posted as a formal PR review made against the PR's CURRENT head
-# commit (its `commit_id` is the head SHA; a PR comment never counts).
+# commit (its `commit_id` is the head SHA; a PR comment never counts), and whose body has the line
+# `Reviewed against head <that SHA>` (#278), so a review stamped onto a head that moved during it fails.
 # An edited review counts only if every editor in its edit history is in REVIEWER_IDS too (#94).
 # An edit or a dismissal re-runs the gate (#315, #281), so on a same-repo PR the status follows the
 # review as it is now, not as it was when the status went green. The early stop keys on the review's
