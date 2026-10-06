@@ -1,20 +1,25 @@
 # Next steps
 
 **Now:** Milestone 4, Repo hardening: review gate and CI, re-scoped 2026-10-06 to what the adoption waves copy,
-pin or run, ending in `v1.4`. Build-order step 2 merged; step 3 is next, waiting on the owner's go.
+pin or run, ending in `v1.4`. Build-order step 3 is built and in review as PR #339.
 
-**Just done** (architect session on opus, last_commit `e6f753d`):
-- Posted the fresh-session review of PR #336 (no blocking findings; the suite and four guard-removal mutations
-  were reproduced in an isolated sandbox). The `architect-review` check went green; the owner merged it as
-  `e6f753d`, closing #249, #251, #255 and #256.
-- Re-anchored milestone 4 on task #315; the description is unchanged since the last anchor.
+**Just done** (coder session on sonnet, last_commit `1621702`):
+- Built step 3 as PR #339 (head `582d257`, `ci/gate-rerun-on-edit-315-281-282-317`): the gate re-runs on an
+  edited or dismissed review, `post` drops its unused `issues: read` scope, and the gate-post edit-history
+  fixtures are newest first. Closes #315, #281, #282, #317. The template and both rendered gate copies match.
+- Local gate green in WSL (gate tests, shellcheck, zizmor, `render-gate.sh --check` and `--check-masked`); the
+  Docker image build and smoke steps were not run, since no image files changed.
+- Critic pass (`architect`, `security-critic`, `docs-consistency`): 2 rounds, converged, all on the critics' own
+  default models, no second-opinion round. Round 1 caught a half-done fixture swap and a fork-PR overclaim in the
+  docs; both fixed.
+- Not verified live, stated in the PR: that `post` needs no issues scope (read from the code; tests stub `gh`), and
+  that a fork PR's edited or dismissed run has a read-only token (GitHub's documented rule).
 
-**Next:** task #315 — build M4 build-order step 3 (#315 + #281 + #282 + #317) as one PR in
-`tools/gate-template.yml.in`, re-rendered, on **sonnet** (coder). Then `/way-of-working:critic-gate`
-(`architect` + `security-critic`) and `/way-of-working:ship`. Never merge.
+**Next:** `/way-of-working:architect-review 339`, in a NEW session on **opus** (architect): post the review and
+verify `architect-review` goes green on the head. Never approve, never merge. After the owner's merge: step 4
+(#220), then step 5, which needs the owner's call on #263.
 
-**HITL Gate: OPEN.** The owner confirms the start of step 3 (announced at the step 2 handoff). After that: the
-fresh-session architect-review of the step 3 PR, then the owner's merge.
+**HITL Gate: NONE OPEN.** The next gate is that review of #339, then the owner's merge.
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01; #329 rides
