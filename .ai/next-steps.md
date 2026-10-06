@@ -1,18 +1,22 @@
 # Next steps
 
 **Now:** Milestone 4, Repo hardening: review gate and CI, re-scoped 2026-10-06 to what the adoption waves copy,
-pin or run, ending in `v1.4`. Implementing build-order step 2 (consumer-lint bundle).
+pin or run, ending in `v1.4`. Build-order step 2 (consumer-lint bundle) is built and awaiting review.
 
-**Just done** (coder session on sonnet, last_commit `77b37fb`):
-- Task #260: the owner merged PR #332, so the repo has a root Apache-2.0 `LICENSE` and a README License
-  section. #260 is closed; build-order step 1 is complete. Docs-only, so no critic pass ran.
+**Just done** (coder session on sonnet, last_commit `05ed726`, the head of PR #336):
+- Opened PR #336: the consumer lint now treats a bare `./`, `.` or `/` code_paths entry as the repo root, rejects
+  YAML merge keys, anchors, aliases and duplicated mapping keys, rejects non-canonical code_paths entries, and
+  prints job names through `tojson`. Closes #249, #251, #255, #256.
+- Critic pass (`architect` + `security-critic`): 3 rounds, converged (final round tightenings only); no
+  second-opinion round. It is not the review gate.
+- Follow-ups filed, unmilestoned: #334 (newline in a workflow file name), #335 (misleading warning on a
+  non-canonical entry).
 
-**Next:** task #249 — on **sonnet** (coder): build-order step 2 as one PR in `tools/check-consumer-workflows.sh`
-and its test, closing #249 + #251 + #255 + #256 (the bare `./` or `.` entry and YAML merge-key fail-open paths,
-raw job-name echoes, a wrong test comment), per each issue body. It touches the consumer lint, so run
-`/way-of-working:critic-gate` (`architect` + `security-critic`) before handing off. Ship it as a PR; never merge.
+**Next:** `/way-of-working:architect-review 336` â€” in a **new session** on **opus** (architect): post the
+fresh-session review of PR #336 and verify the `architect-review` check is green on its head SHA. Never approve or
+merge; the owner merges. After that merge, the next M4 build-order step in `docs/roadmap.md`.
 
-**HITL Gate: NONE OPEN.** Next gate: the owner merges the step 2 PR.
+**HITL Gate: OPEN.** PR #336 needs the fresh-session review, then the owner's merge.
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01; #329 rides
