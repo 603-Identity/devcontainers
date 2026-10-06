@@ -1,22 +1,22 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Implementing; #164 picked, coder next.
+**Now:** Milestone 4, Repo hardening: review gate and CI. Awaiting the review of #292.
 
-**Just done** (architect session on opus, last_commit `1b0716f`):
-- The owner picked #164 (build-order item 13): `resolve_yq` reads the tarball's hash, but the
-  image pins the raw binary. Author MEMBER; the issue body is the spec (no spec comment).
-- First anchor for #164 without a resume-verified baseline (resume waited on the pick before it
-  verified): `verify --plan` printed `match`, description sha `8bc5e03e` unchanged.
+**Just done** (coder session on sonnet, last_commit `a1fe4f7`):
+- #164 built and shipped as PR #292: `resolve_yq` reads the raw `yq_linux_amd64` hash, and the new
+  `tools/tests/bump-asset-names-test.sh` fails when a resolver's asset differs from its Dockerfile's.
+- Critic pass (`architect` + `security-critic`): 2 rounds, converged (round 2 tightenings only), all
+  on the critics' default models. A pre-review only; it does not satisfy the `architect-review` check.
+- The plan anchor re-verified `match` this session (description sha `8bc5e03e`), so no re-anchor gate.
+- Accepted, out of scope: the test's fake `curl` serves one body for any URL, so it checks the asset
+  name, not which checksum file is read.
 
-**Next:** task #164 — make `resolve_yq` in `.github/scripts/bump-binaries.sh` read the raw
-`yq_linux_amd64` hash (what `images/base/Dockerfile` checks against `YQ_SHA256`), and add a
-gate-test fixture that fails when any tool's resolver asset name differs from the one the
-Dockerfile downloads. Green gate in WSL, then `/way-of-working:critic-gate` (`architect` +
-`security-critic`, per the milestone) and `/way-of-working:ship`.
-Model: **sonnet** (coder).
+**Next:** `/way-of-working:architect-review 292` in a **new window** (the review must be a fresh
+session). Model: **opus** (architect). Never approve or merge; the human merges once the
+`architect-review` check is green.
 
-**HITL Gate: OPEN.** The #164 anchor needs a human "go" (first anchor, no resume-verified
-baseline). The `v1.3` tag (build-order item 11, owner-owned) is unblocked: items 4-7 are closed.
+**HITL Gate: NONE OPEN.** Next gate is the human merge of #292. The `v1.3` tag (build-order item 11,
+owner-owned) is unblocked: items 4-7 are closed.
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01.
@@ -35,6 +35,7 @@ baseline). The `v1.3` tag (build-order item 11, owner-owned) is unblocked: items
   WSL, not Git Bash. `gh issue create` and `gh pr create` hang under Git Bash; `gh api ... --input -`
   with a timeout works. Auto mode blocks ruleset edits, required-job removal and branch deletes, so
   switch to manual for those.
+
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan:
 https://github.com/603-Identity/devcontainers/milestone/4
