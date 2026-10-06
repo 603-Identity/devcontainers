@@ -53,7 +53,7 @@ at build and publish time, before any consumer pulls.
 | `GITHUB_TOKEN` with `packages: write`, `id-token: write`, `attestations: write`, `artifact-metadata: write`, `security-events: write` | `build.yml`'s publish job only | Push to this org's GHCR packages, and sign attestations for this repo. Scoped per job; every workflow sets `permissions: {}` at the top. |
 | `GITHUB_TOKEN` with `statuses`, `contents` and `pull-requests: write` for the gate's `post` job only, and reads | `architect-review-gate.yml` | Post commit statuses on this repo. The two other write scopes are unused here (see the commit-status row above). The job has no `uses:`, `container:` or `services:`. |
 | A consuming repo's `GITHUB_TOKEN`: `contents: read` for `verify`; `statuses`, `contents` and `pull-requests: write` for the gate's `post` job only | the consumer's `devcontainer-image.yml` and gate, running this repo's reusable workflows | `verify` and `decide` hold no write token and read this repo's public attestations cross-org. `post` can post statuses and arm or disarm auto-merge on that consumer's own PRs, and holds the token in a job with no `uses:`, `container:` or `services:`, so no third-party action or image shares its GitHub-hosted runner (checked by `tools/check-consumer-workflows.sh` when it is run, not continuously). |
-| GitHub App installation token, `contents: write` + `pull-requests: write`, scoped to this repo only | `bump-binaries.yml` | **Can do more than the job uses it for**: push or delete any non-`main` branch, create tags and releases, and comment on or merge a PR -- `contents: write` is also what `PUT /pulls/{n}/merge` requires (a PR's own author cannot approve it, but this ruleset needs no approval at all; see Known gaps). The job only pushes a `bump/<tool>-<version>` branch and opens its PR; the rest is this credential's reach if ever leaked or (see Known gaps) if the write step's own untrusted input were ever to reach it. Needed at all because a PR opened with the ambient `GITHUB_TOKEN` never triggers the required-check workflows (GitHub's own anti-recursion rule) -- and on this repo a job-scoped `GITHUB_TOKEN` could not even open the PR in the first place ("Allow GitHub Actions to create and approve pull requests" is off; `can_approve_pull_request_reviews: false`), so a dedicated identity is the only way to get this PR opened at all, let alone checked. Revoked at job end (the token action's default). The app's private key is meant to be a repo secret held outside any container -- **not yet provisioned**: `bump-binaries.yml` cannot run for real until a human creates the App and sets `BUMP_BINARIES_APP_ID`/`BUMP_BINARIES_APP_PRIVATE_KEY`. |
+| GitHub App installation token, `contents: write` + `pull-requests: write`, scoped to this repo only | `bump-binaries.yml` | **Can do more than the job uses it for**: push or delete any non-`main` branch, create tags and releases, and comment on or merge a PR -- `contents: write` is also what `PUT /pulls/{n}/merge` requires (a PR's own author cannot approve it, but this ruleset needs no approval at all; see Known gaps). The job only pushes a `bump/<tool>-<version>` branch and opens its PR; the rest is this credential's reach if ever leaked or (see Known gaps) if the write step's own untrusted input were ever to reach it. Needed at all because a PR opened with the ambient `GITHUB_TOKEN` never triggers the required-check workflows (GitHub's own anti-recursion rule) -- and on this repo a job-scoped `GITHUB_TOKEN` could not even open the PR in the first place ("Allow GitHub Actions to create and approve pull requests" is off; `can_approve_pull_request_reviews: false`), so a dedicated identity is the only way to get this PR opened at all, let alone checked. Revoked at job end (the token action's default). The app's private key is a secret of the `bump-binaries` Environment, restricted to deployments from `main` (the job declares `environment: bump-binaries`), so a workflow run on any other branch cannot read it; it is held outside any container. The job runs only when the repo-level variable `BUMP_BINARIES_CLIENT_ID` (the App's Client ID) is set (#87). |
 | Per-repo fine-grained PAT | a consuming repo's container, in the `<repo>-home` volume | That repo only. The hub's token also covers the repos it coordinates. It expires after 90 days at most and is recorded in the owning org's credential ledger (603-Identity: infrastructure-core's; glunk-works: none yet, see Known gaps). Admin work (rulesets, repo settings) never uses a container token. |
 | Owner's org login | the host, outside any container | Admin. It is the only identity that merges PRs or changes rulesets and package visibility, which must stay public for consumers in other orgs. |
 
@@ -215,8 +215,7 @@ What each piece trusts, and what it leaves open:
   `refs/tags/v*` and `refs/tags/devc-automerge-*`, with the Repository admin role as its only
   bypass. On 603-Identity, org owners and any admin team also bypass it. It was read back
   through the API after creation. **The negative test is outstanding:** deleting a tag with the
-  bump-binaries App token has not been tried, because the App does not exist yet (see Known
-  gaps). Releases are signed `vX.Y` tags, each published as an immutable GitHub Release from
+  bump-binaries App token has not been tried (see Known gaps). Releases are signed `vX.Y` tags, each published as an immutable GitHub Release from
   `v1.3` on (DEVC-D8), with no release automation. Once a release is published, GitHub refuses
   to move or delete its tag, admins included, which closes the admin bypass above for that tag;
   `v1.0`-`v1.2` predate it and keep only the ruleset. The owner checks
@@ -381,8 +380,8 @@ These are stated plainly so nobody trusts the setup for more than it does:
   still takes whatever digest a Dependabot image bump proposes, including a branch-built
   one, unless a human runs the verify command. Only the two pilots have adopted them (#10).
 - **The tag ruleset's App-token negative test has not been run.** Deleting a `v*` or
-  `devc-automerge-*` tag with the `bump-binaries` App's token is the test; the App does not
-  exist yet, so it is deferred until it is created. Org owners and any admin team bypass the
+  `devc-automerge-*` tag with the `bump-binaries` App's token is the test; it can now be run, and
+  nothing has run it yet. Org owners and any admin team bypass the
   ruleset by design.
 - **The shared tofu provider cache is checked at command start, not at exec.** tofu links a
   cached provider into the repo's data directory and runs it from the shared volume, so a
@@ -453,8 +452,7 @@ These are stated plainly so nobody trusts the setup for more than it does:
   without changing the status, and a trusted reviewer's own later edit is not told apart from a
   typo fix. A history with a deleted revision (a web-UI action; the public API cannot delete
   one, so this was not exercised live) fails closed, since the revision's text is hidden. The
-  bump-binaries App's own ability to make the edit is the same call and was not tested (no App
-  yet); the fix does not depend on it. A human still reads the PR and merges. Consumers take the
+  bump-binaries App's own ability to make the edit is the same call and was not tested; the fix does not depend on it. A human still reads the PR and merges. Consumers take the
   head-SHA binding (#92) in `v1.3` and the review-editor check (#94) in the next release
   (DEVC-D7, DEVC-D8).
 - **A same-repo PR runs its own copy of the gate.** `pull_request` and
@@ -464,14 +462,15 @@ These are stated plainly so nobody trusts the setup for more than it does:
   access, and the edit shows in the diff the human reads before merging (#93). Accepted under
   DEVC-D7: the gate does not defend against human writers. The reviewer App check (#267) closes
   it before auto-merge goes on.
-- **`bump-binaries.yml` is skipped until the App exists**: the App it needs has not been created,
-  and `BUMP_BINARIES_APP_ID`/`BUMP_BINARIES_APP_PRIVATE_KEY` are not set on this repo (the job's
-  `if:` on the variable skips it, #87). `BUMP_BINARIES_APP_ID` must stay a repo-level variable,
-  never an Environment one: a job-level `if:` cannot see Environment variables, so the job would
-  skip forever. When the App exists, put the private key in a GitHub Environment restricted to deploy from
-  `main` (the workflow job would then need an `environment:` key, which it has not
-  been given) -- a plain repo secret is readable by any workflow run on any branch a
-  write-access user pushes.
+- **`bump-binaries.yml` is skipped until `BUMP_BINARIES_CLIENT_ID` is set** (#87, #102): the job's
+  `if:` on that variable skips it. The variable must stay a repo-level one, never an Environment
+  one: a job-level `if:` cannot see Environment variables, so the job would skip forever. The App's
+  private key is a secret of the `bump-binaries` Environment, restricted to deployments from
+  `main`, and the job declares `environment: bump-binaries`; a plain repo secret would be readable
+  by any workflow run on any branch a write-access user pushes. Once the variable is set, a manual dispatch from another
+  branch gets past the `if:` and is then refused by the Environment's branch policy, so it fails
+  rather than skips: that failure is the protection working. Install the App on this repo only (the
+  installation's repository list is not visible to the workflow).
 - **Every container can read every account's identity file**, for example the other
   org's email and signing-key ID, because the whole `~/.gitconfig.d` is mounted
   read-only. A secret written inline in one of those files (a token in a URL, an

@@ -281,7 +281,7 @@ two accounts, Dependabot, and, once #102 creates it, the bump-binaries App.
   throwaway PR). The gate now also requires every editor in a matching review's edit history
   (GraphQL `userContentEdits`) to be an ID in `REVIEWER_IDS`; #94 closes. This ships in the next
   release, not `v1.3` (DEVC-D8: immutable). The App token's own ability to make the edit stays
-  untested until the App exists, and the gate does not re-run when a review is edited.
+  untested, and the gate does not re-run when a review is edited.
 - **Auto-merge needs a reviewer App first.** Before `devc-automerge-on` is created (#139), the
   gate's result must come from a dedicated App's check run that the ruleset requires by
   integration id, with the key in a `main`-only Environment (#267). #126 and #132 (`disarm()`)
