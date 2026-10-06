@@ -1,23 +1,25 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Awaiting review on #288 (#128).
+**Now:** Milestone 4, Repo hardening: review gate and CI. Implementing; next task not yet picked.
 
-**Just done** (coder session on sonnet, last_commit `fbe9a25`):
-- #128 built and opened as PR #288 on `chore/go-1.26.8-buildkit-0.33.1`: Go 1.26.3 -> 1.26.8 and
-  buildkit v0.33.0 -> v0.33.1 together (go.mod, go.sum, vendor/modules.txt, every setup-go pin,
-  the gate comment in `.ai/project.yml`, the `TestBuildkitMatchesFrontend` mapping).
-  `PreviousSyntax` deliberately untouched, per #128.
-- Local green gate: all steps pass in WSL. The `go test` step ran with `GOTOOLCHAIN=go1.26.8`
-  because WSL's Go is 1.26.3; a literal `GOTOOLCHAIN=local` run needs 1.26.8 installed first.
-- Critic gate: `architect` + `security-critic`, 1 round, no blocking findings. One cosmetic nit
-  (a test comment's wording) was applied without a re-run. Plan anchor re-verified `match`.
+**Just done** (architect session on opus, last_commit `727a5b0`):
+- Posted the fresh-session architect review on PR #288 (#128) against head `fbe9a25`.
+  `architect-review` went green on that SHA (commit status). Verdict: no blocking findings.
+  The owner merged it as `727a5b0`, closing #128 (Go 1.26.8, buildkit v0.33.1).
+- Reviewed without local execution: the PR changed dependency manifests and `.github/`.
+  Verified statically instead: `go.sum` matches sum.golang.org; the seven vendored buildkit
+  packages are byte-identical to the v0.33.1 module zip (and to v0.33.0); no `1.26.3` left;
+  `dockerfile/1.27.1` is v0.33.1 plus a version-string commit.
+- No findings filed.
+- First anchor for milestone 4 at this handoff without a resume-verified baseline (resume ran on
+  `awaiting_review`, so it did not verify): `verify --plan` printed `match`, description sha
+  `8bc5e03e` unchanged.
 
-**Next:** `/way-of-working:architect-review 288`. Model: **opus** (architect), in a **new
-window**: the gate needs a fresh session. #288 touches `tools/` and `.github/`, so
-`architect-review` stays red until it is posted on the head SHA.
+**Next:** pick the next milestone-4 task with the owner and hand it off to a coder session.
+Model: **opus** (architect) for the pick.
 
-**HITL Gate: NONE OPEN.** The next gate is the owner's merge of #288. The `v1.3` tag
-(build-order item 11, owner-owned) is still outstanding and does not block it.
+**HITL Gate: OPEN.** The owner's pick of the next M4 task, and the `v1.3` tag (build-order
+item 11, owner-owned).
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01.
