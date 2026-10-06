@@ -1,12 +1,12 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Steps 1-5 are merged. Step 6 (PR #354) is reviewed and
-waits for the owner's merge, step 7 (`v1.4`) is the owner's, and step 8 is next to build.
+**Now:** Milestone 4, Repo hardening: review gate and CI. Steps 1-6 are merged (step 6 as `3e48929`, #354).
+Step 7 (`v1.4`) is the owner's, and step 8 is next to build.
 
-**Just done** (architect session on opus, last_commit `96c8773`):
+**Just done** (architect session on opus, last_commit `3e48929`):
 - Posted the fresh-session architect review of PR #354 at head `78513cc`. Verdict: sound, nothing blocking. Every
   claim was executed in a WSL sandbox, #348 against real Betterleaks rc.1, and each new test went red under a
-  mutation that removed its fix. `architect-review` is green; the PR reads READY (admin merge).
+  mutation that removed its fix. The owner merged it as `3e48929`; #348-#351 closed.
 - Filed #356: the #349 pin-guard fix in `verify-devcontainer-image.yml` and `devcontainer-bump-decision.yml`
   has no regression test. Unmilestoned.
 - Closed #200, #220 and #263 by hand. #346 fixed them, but its `Closes #199, #200, ...` comma list only
@@ -17,12 +17,11 @@ its test, per the milestone build order and each issue body, on **sonnet** (code
 then `/way-of-working:critic-gate` (architect + security-critic) and `/way-of-working:ship`. Never merge, never tag.
 
 **HITL Gate: OPEN.** The owner confirms starting step 8. This is the first anchor on task #341: the handoff
-verify printed `match`, but no resume-side verify ran this session. Separately, the owner merges #354 and then
-tags `v1.4` (step 7); neither blocks step 8, a lint-only change.
+verify printed `match`, but no resume-side verify ran this session. Separately, the owner tags `v1.4` (step 7); it does
+not block step 8, a lint-only change.
 
 **Open for the owner (non-blocking):**
-- Merge #354: `gh pr merge 354 --repo 603-Identity/devcontainers --squash --admin --match-head-commit
-  78513ccba110b5403be4fe3b54fd6f681352e7c0`. Then tag `v1.4`; the pilots re-copy the gate and bump their pins.
+- Tag `v1.4` on `3e48929` or later; the pilots then re-copy the gate and bump their pins.
 - #278 stays open for its plugin half (#343 closed the gate half); consider moving it to the way-of-working
   tracker. #356 needs a milestone.
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01; #329 rides
