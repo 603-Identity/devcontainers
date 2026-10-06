@@ -42,10 +42,12 @@ CHECKSUM_URL=""
 # The file is read into a variable first, never piped into an awk that `exit`s on the first
 # match: awk closing the pipe while curl is still writing makes curl fail with exit 23 under
 # `pipefail`, and whether it does depends on the file's size and timing (first seen on a yq
-# run, #102).
+# run, #102). Every caller runs this inside `$( )`, where `set -e` does not reach, so a failed
+# curl must `return 1` here: without it a transfer that dies after the wanted line arrived
+# would be accepted.
 sha256_line() {
   local body
-  body="$(curl -fsSL "$1")"
+  body="$(curl -fsSL "$1")" || return 1
   awk -v f="$2" '$2 == f { print $1; exit }' <<< "$body"
 }
 
