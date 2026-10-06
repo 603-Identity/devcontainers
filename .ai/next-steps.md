@@ -1,37 +1,35 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Awaiting review: PR #314 (#94 fix), head
-`da05a8a`; task #102 follows it.
+**Now:** Milestone 4, Repo hardening: review gate and CI. Implementing: task #102 (bump-binaries GitHub
+App), waiting on the owner's App setup.
 
-**Just done** (coder session on sonnet, last_commit `d6625d1`):
-- Resumed on #102 and found its sequencing precondition unmet: #94 had to land before the bump-binaries
-  App exists (the App token is exactly #94's attacker).
-- Probed #94 on a throwaway PR (#313, closed, branch deleted): a non-admin writer (Seuss27) can `PUT`
-  another account's formal review body and `PATCH` their comment, leaving author, state and `commit_id`
-  unchanged. So the residual was real.
-- Built the fix as PR #314 (`Closes #94`): the gate reads each qualifying review's GraphQL
-  `userContentEdits` and requires every editor in `REVIEWER_IDS`; a long history, a deleted revision, an
-  unreadable editor or a failed lookup fails closed. Ships in the next release, not `v1.3`.
-- Critic pass (security-critic, architect, docs-consistency): 3 rounds, converged; second-opinion round
-  offered and declined. Local green gate passed: gate suites in WSL, shellcheck, zizmor.
-- Filed #315 (an edited review does not re-run the gate) in milestone 4.
+**Just done** (architect session on opus, last_commit `6ce0f50`):
+- Posted the fresh-session architect review on PR #314 (#94 fix) against head `da05a8a`. Verdict: sound,
+  no blocking findings. Every gate suite was run in a WSL sandbox and five planted mutations were all caught.
+  The #313 probe review's live `userContentEdits` shows Seuss27's edit, so the new check would reject it.
+  The gate went green on the PR's own `pull_request_review` run.
+- The owner merged #314 (`6ce0f50`); #94 is closed. The fix ships in the next release, not `v1.3`.
+- Filed #317 (non-blocking): in `gate-post-test.sh`, the edit-history fixture order disagrees with
+  the case names (GitHub lists newest first).
+- Milestone 4: first anchor with task #102, description sha `8bc5e03e` (unchanged). There is no
+  resume-verified baseline because this session's resume waited on `awaiting_review`.
 
-**Next:** `/way-of-working:architect-review 314` on **opus** (architect), in a new session. Never
-approves or merges; the owner admin-merges.
+**Next:** task #102 — once the owner has done steps 4-6 below, switch `bump-binaries.yml` from the
+deprecated `app-id` input (`BUMP_BINARIES_APP_ID`) to `client-id`, add `environment: bump-binaries`,
+update the docs, and ship it as a PR. On **sonnet** (coder). Never merge.
 
-**HITL Gate: NONE OPEN.** Next gate: the owner merges #314.
+**HITL Gate: OPEN.** (1) #102 steps 4-6 are the owner's: create the App (`contents: write` +
+`pull-requests: write`, this repo only), a `main`-restricted Environment `bump-binaries` holding the
+private key, and the App's **Client ID** (not the App ID) as repo variable `BUMP_BINARIES_CLIENT_ID`.
+(2) The milestone-4 anchor has no resume-verified baseline. The owner's "go" after (1) releases both.
 
 **Open for the owner (non-blocking):**
-- Task #102 steps 4-6 wait on #314 merging: create the App (`contents: write` + `pull-requests: write`,
-  this repo only), a `main`-restricted Environment `bump-binaries` holding the private key, and the App's
-  **Client ID** (not the App ID) as repo variable `BUMP_BINARIES_CLIENT_ID`; then a coder PR switches the
-  workflow from the deprecated `app-id` input (`BUMP_BINARIES_APP_ID`) to `client-id`, adds
-  `environment:` to `bump-binaries.yml` and updates the docs.
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01.
-- Place #255, #256, #263, #276, #278, #281, #282, #297 and #304 in a milestone (or leave them for a
-  `/way-of-working:plan-sprint` pass). #267 is unmilestoned on purpose: it is an auto-merge (#139)
-  precondition.
-- Delete branch `test/verify-pin-negative-10` on terraform-microsoft365-entra.
+- Place #255, #256, #263, #276, #278, #281, #282, #297, #304 and #317 in a milestone (or leave them for
+  a `/way-of-working:plan-sprint` pass). #267 is unmilestoned on purpose: it is an auto-merge (#139)
+  precondition. #315 is in milestone 4.
+- Delete branch `test/verify-pin-negative-10` on terraform-microsoft365-entra, and the local
+  `fix/gate-review-editor-94` here.
 - terraform-cloudflare-dns: its gate lists `.terraform.lock.hcl` and `.devcontainer/*` that its
   `code_paths` do not (the new lint warns); confirm during the #212 pilot follow-ups, along with
   whether it should cover `.claude/` (from #214).
