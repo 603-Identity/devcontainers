@@ -1,26 +1,18 @@
 # Next steps
 
 **Now:** Milestone 4, Repo hardening: review gate and CI, re-scoped 2026-10-06 to what the adoption waves copy,
-pin or run, ending in `v1.4`. Implementing build-order step 1, task #260.
+pin or run, ending in `v1.4`. Implementing build-order step 2 (consumer-lint bundle).
 
-**Just done** (architect session on opus, last_commit `d80daaf`):
-- Fresh-session architect reviews on the bump PRs. The owner merged #321 (uv, `eb4baf0`), #322 (tofu,
-  `62eac3e`) and #326 (yq, `d80daaf`). #102 is closed; the second bump dispatch passed every matrix job.
-- `/way-of-working:plan-sprint`: every unmilestoned issue is placed, each with a dated `[plan-sprint]` triage
-  comment. New milestone 6 (Internal hardening, due 2027-02-26) holds this repo's own merge-guard,
-  bump-binaries, CI, test-only and docs items, moved out of milestone 4. New milestone 7 (Auto-merge
-  readiness, trigger-gated) holds #267, #126 + #132 and #139 (moved from milestone 3). #329 is in milestone 5
-  with #148.
-- Rewrote milestone 4's description (new build order, file-bundled PRs, `v1.4`) and moved its due date to
-  2026-11-13. The anchor was re-taken on this session's own edit (verify: `match`) and now names #260.
-- Closed #330 unmerged; this sync replaces it.
+**Just done** (coder session on sonnet, last_commit `77b37fb`):
+- Task #260: the owner merged PR #332, so the repo has a root Apache-2.0 `LICENSE` and a README License
+  section. #260 is closed; build-order step 1 is complete. Docs-only, so no critic pass ran.
 
-**Next:** task #260 â€” on **sonnet** (coder): add a root `LICENSE` (Apache-2.0 full text, `Copyright 2026 Jared
-Groves`) and a README.md license section, per the issue body. It is docs-only and outside `code_paths`, so it
-needs no critic pass or review gate. Ship it as a PR; never merge. After that, milestone 4's description
-gives the order (consumer-lint bundle next).
+**Next:** task #249 — on **sonnet** (coder): build-order step 2 as one PR in `tools/check-consumer-workflows.sh`
+and its test, closing #249 + #251 + #255 + #256 (the bare `./` or `.` entry and YAML merge-key fail-open paths,
+raw job-name echoes, a wrong test comment), per each issue body. It touches the consumer lint, so run
+`/way-of-working:critic-gate` (`architect` + `security-critic`) before handing off. Ship it as a PR; never merge.
 
-**HITL Gate: NONE OPEN.** Next gate: the owner merges #260's PR.
+**HITL Gate: NONE OPEN.** Next gate: the owner merges the step 2 PR.
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01; #329 rides
