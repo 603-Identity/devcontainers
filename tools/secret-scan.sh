@@ -99,7 +99,7 @@ if [ "$nfind" -gt 0 ] || [ "$rc" -ne 0 ]; then
   jq -r 'def safe: tostring | gsub("[^A-Za-z0-9._/-]"; "_");
          select(type == "object" and has("finding")) | .finding
          | (.location.path // "?" | safe) as $f
-         | (.location.start_line | if type == "number" then tostring else null end) as $l
+         | (.location.start_line | if type == "number" and . >= 1 then tostring else null end) as $l
          | "::error file=\($f)\(if $l then ",line=\($l)" else "" end)::\(.rule_id | safe) at \($f)\(if $l then ":\($l)" else "" end)"'     "$work/out.jsonl" 2> /dev/null | sort -u | head -n 50 >&2 || true
   die "$nfind finding(s) (exit $rc). A red check means rotate the secret; never rewrite history and re-push."
 fi

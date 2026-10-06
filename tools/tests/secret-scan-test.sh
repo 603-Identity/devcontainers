@@ -30,6 +30,11 @@ case "$mode" in
   incomplete) echo '{"schema_version":"1","scan":{"state":"incomplete"}}'; exit 0 ;;
   norecord)   echo "config error" >&2; exit 1 ;;
   garbage)    echo 'not json'; exit 0 ;;
+  stderrinc)  echo '{"schema_version":"1","scan":{"state":"complete"}}'; echo "incomplete scan: 2 files skipped" >&2; exit 0 ;;
+  jsonlinc)   echo '{"schema_version":"1","log":"Incomplete Scan: a path was unreadable"}'; echo '{"schema_version":"1","scan":{"state":"complete"}}'; exit 0 ;;
+  zeroline)   echo '{"schema_version":"1","finding":{"rule_id":"org-pem","location":{"path":"z.tf","start_line":0}}}'
+              echo '{"schema_version":"1","finding":{"rule_id":"org-neg","location":{"path":"n.tf","start_line":-2}}}'
+              echo '{"schema_version":"1","scan":{"state":"complete"}}'; exit 1 ;;
   exit1clean) echo '{"schema_version":"1","scan":{"state":"complete"}}'; exit 1 ;;
 esac
 B
@@ -105,6 +110,21 @@ MODE=clean run FAKE_BL_FIRST=incomplete
 assert_rc "incomplete then complete passes" 0 "$RC"
 MODE=exit1clean run
 assert_rc "exit 1 with a complete record and no findings still fails" 1 "$RC"
+# #199: the wrapper's own 'incomplete scan' text check, which a complete record and exit 0 must not bypass.
+MODE=stderrinc run
+assert_rc "a complete record with 'incomplete scan' on stderr fails" 1 "$RC"
+err_has "and says it did not complete" "scan did not complete (state: incomplete"
+MODE=jsonlinc run
+assert_rc "a complete record with 'incomplete scan' in the JSONL fails" 1 "$RC"
+err_has "and says it did not complete too" "scan did not complete (state: incomplete"
+
+# #220: a start_line below 1 is not a line to anchor an annotation at.
+MODE=zeroline run
+assert_rc "findings with a start_line of 0 or below fail" 1 "$RC"
+err_has "a start_line of 0 is a file-level annotation" "::error file=z.tf::org-pem at z.tf"
+err_has "a negative start_line is a file-level annotation" "::error file=n.tf::org-neg at n.tf"
+err_lacks "no line=0" "line=0"
+err_lacks "no negative line" "line=-"
 
 for v in BETTERLEAKS_CONFIG BETTERLEAKS_CONFIG_TOML BETTERLEAKS_VALIDATE BETTERLEAKS_ANALYZE; do
   MODE=clean run "$v=x"
