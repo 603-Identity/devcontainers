@@ -217,7 +217,10 @@ What each piece trusts, and what it leaves open:
   bypass. On 603-Identity, org owners and any admin team also bypass it. It was read back
   through the API after creation. **The negative test is outstanding:** deleting a tag with the
   bump-binaries App token has not been tried, because the App does not exist yet (see Known
-  gaps). Releases are plain `vX.Y` tags with no release automation; the owner checks
+  gaps). Releases are signed `vX.Y` tags, each published as an immutable GitHub Release from
+  `v1.3` on (DEVC-D8), with no release automation. Once a release is published, GitHub refuses
+  to move or delete its tag, admins included, which closes the admin bypass above for that tag;
+  `v1.0`-`v1.2` predate it and keep only the ruleset. The owner checks
   `git merge-base --is-ancestor <sha> origin/main` before pushing one, and every consumer pins
   the release's commit SHA, never the tag.
 - **Liveness only.** Forks can block a bump with a failing same-named check; a fork's
