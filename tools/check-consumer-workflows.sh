@@ -35,6 +35,12 @@
 # It also checks the gate's `decide` pin has that same shape, and warns when the two pins
 # name different commits.
 #
+# Any workflow file in the directory that uses a YAML merge key (`<<:`), an anchor or an alias
+# also fails (#255): the rules read the file through `yq -o=json`, which drops a merge key, so
+# a key merged into a job would pass every rule. The template uses none of them. A mapping with
+# a duplicated key fails for the same reason: jq keeps only the last copy, so the first (a
+# `permissions:` with a write scope) is hidden from every rule.
+#
 # When `.ai/project.yml` sits next to `.github/` (<dir>/../../.ai/project.yml) it also fails when
 # (#214), for the gate's CONSUMER code_paths block:
 #   * the block's `>>> CONSUMER: code_paths` region is missing from the post job;
@@ -45,9 +51,12 @@
 #   * a `code_paths` entry reads `touches=0` through the gate's `case`, one finding per entry. It
 #     is a spot check: a dir `x/` is tried as a few paths under it, a glob as a few paths that
 #     match it (`**/` also with zero directories). A block copied from another adopter fails here.
-#     A leading `./` on an entry is dropped first (#245): the gate reads PR file paths from the
-#     GitHub files API (`filename`, `previous_filename`), which never start with `./`, so a block
-#     arm written `./tools/*` does not cover `tools/`.
+#     Leading `./` and `/` on an entry are dropped first (#245): the gate reads PR file paths from
+#     the GitHub files API (`filename`, `previous_filename`), which never start with `./`, so a
+#     block arm written `./tools/*` does not cover `tools/`. An entry left empty, or `.`, is the
+#     repo root (#249): it is sampled as `a`, `a/b` and so on, so a block arm `*` covers it and
+#     `./*` does not. An entry with a `//`, `/./` or `/../` segment is a finding on its own (the
+#     gate never sees such a path), and a block arm that covered only it then also warns.
 # and warns when a block pattern matches no entry's sample, or when a glob entry (a bracket
 # class, say) gets no sample that matches it, so that entry is not checked.
 set -euo pipefail
@@ -148,6 +157,16 @@ for f in "${files[@]}"; do
     finding "$f: not parseable YAML"
     continue
   fi
+  # `yq -o=json` drops a merge key (`<<:`), so a key merged into a job is invisible to every jq
+  # rule below (#255). The template uses no merge key, anchor or alias, so reject them all (a
+  # `ea` count spans every document in the file). Anything but a plain 0, a yq failure included,
+  # is a finding.
+  anchors="$(yq ea '[.. | select(key == "<<" or kind == "alias" or anchor != "")] | length' "$f" 2> /dev/null | tr -d '\r')" || anchors=""
+  [ "$anchors" = 0 ] || finding "$f: uses a YAML merge key (<<:), anchor or alias, which the rules below cannot see through. Write each key out."
+  # A duplicated mapping key: yq keeps both copies in the JSON and jq keeps only the last, so the
+  # first (a `permissions:` with a write scope, say) is hidden from every rule below.
+  dups="$(yq ea '[.. | select(kind == "map") | select((keys | length) != (keys | unique | length))] | length' "$f" 2> /dev/null | tr -d '\r')" || dups=""
+  [ "$dups" = 0 ] || finding "$f: has a duplicated mapping key, which the rules below cannot see through. Remove the extra copy."
   if [ "$(printf '%s' "$json" | j "$SHAPE_JQ")" != "true" ]; then
     finding "$f: not a workflow (the top level and jobs: must be mappings)"
     continue
@@ -250,17 +269,27 @@ $arms
         while IFS= read -r entry; do
           [ -n "$entry" ] || continue
           # The gate's `case` sees PR file paths from the GitHub files API (`tools/a`), never
-          # `./tools/a`, so sample the entry without a leading `./` (#245). A block arm written
-          # `./tools/*` then reads touches=0, as the real gate would. A bare `./` (or `.`) is left
-          # as it was, so it is still sampled as `./a` and is not checked correctly.
-          path="$entry"
-          while [[ "$path" == ./* ]]; do path="${path#./}"; done
-          [ -n "$path" ] || path="$entry"
+          # `./tools/a` or `/tools/a`, so sample the entry without leading `./` and `/` (#245). A
+          # block arm written `./tools/*` then reads touches=0, as the real gate would. What is left
+          # empty, or `.`, is the repo root (a bare `./`, `.` or `/`, #249): it is sampled as `a`,
+          # `A`, ..., so a block arm `*` covers it and `./*` does not.
+          path="$entry" root_entry=false
+          while [[ "$path" == ./* || "$path" == /* ]]; do path="${path#./}"; path="${path#/}"; done
+          if [ -z "$path" ] || [ "$path" = . ]; then root_entry=true path=""; fi
+          # A `//`, `/./` or `/../` segment never appears in a files-API path, so the gate would
+          # not match an arm written the same way: the lint cannot sample such an entry honestly.
+          if [ "$root_entry" = false ] && [[ "/${path%/}/" == *//* || "/${path%/}/" == */./* || "/${path%/}/" == */../* ]]; then
+            finding "$gate: the code_paths entry '$entry' in $project is not a canonical path (no '//', '/./' or '/../' segments), so it cannot be checked. Write it as the gate sees it, e.g. 'tools/'."
+            continue
+          fi
           # Several samples per entry, so one lucky shape (`images/a)` for `images/`) cannot pass.
           cands=(); match="$path"
           # `**/` also covers zero directories, so a base without it too; a glob in a dir entry
           # (`modules/*/`) is filled in the same way.
-          if [[ "$path" == */ ]] || [ -d "$root/$path" ]; then
+          if [ "$root_entry" = true ]; then
+            match="*"
+            cands=(a A .a a/b Z9_-.)
+          elif [[ "$path" == */ ]] || [ -d "$root/$path" ]; then
             base="${path%/}/"; match="${base}*"
             bases=("${base//[*?]/a}" "${base//\*/Z9_-.}" "${base//\*\*\//}")
             bases[1]="${bases[1]//\?/Z}"; bases[2]="${bases[2]//[*?]/a}"
@@ -271,7 +300,7 @@ $arms
           fi
           checked=0
           hint=""
-          [[ "$path" == *[/*?\[]* ]] || hint=" (A directory entry needs a trailing slash, or to exist next to .github/.)"
+          [ "$root_entry" = true ] || [[ "$path" == *[/*?\[]* ]] || hint=" (A directory entry needs a trailing slash, or to exist next to .github/.)"
           zero="${match//\*\*\//}"
           for sample in "${cands[@]}"; do
             # A sample built from a glob must itself match it, or it proves nothing.
@@ -315,7 +344,7 @@ elif ! cjson="$(yq -o=json '.' "$caller" 2> /dev/null)" || [ "$(printf '%s' "$cj
 else
   c() { printf '%s' "$cjson" | j "$@"; }
   [ "$(c '(.jobs // {}) | keys | join(",")')" = "verify" ] \
-    || finding "$caller: the only job must be 'verify' (found: $(c '(.jobs // {}) | keys | join(",")'))."
+    || finding "$caller: the only job must be 'verify' (found: $(c '(.jobs // {}) | keys | tojson'))."
   [ "$(c '[.jobs.verify | has("name"), has("if")] | any')" = "false" ] \
     || finding "$caller: job 'verify' must have no name: and no if:, so the check is always 'verify / verify'."
   [ "$(c "[$EVENTS_JQ] | join(\",\")")" = "pull_request" ] \
@@ -349,7 +378,7 @@ elif ! sjson="$(yq -o=json '.' "$scan_caller" 2> /dev/null)" || [ "$(printf '%s'
   :   # the loop above already reported it as not parseable, or not a workflow
 else
   s() { printf '%s' "$sjson" | j "$@"; }
-  [ "$(s '(.jobs // {}) | keys | join(",")')" = "secrets" ]     || finding "$scan_caller: the only job must be 'secrets' (found: $(s '(.jobs // {}) | keys | join(",")'))."
+  [ "$(s '(.jobs // {}) | keys | join(",")')" = "secrets" ]     || finding "$scan_caller: the only job must be 'secrets' (found: $(s '(.jobs // {}) | keys | tojson'))."
   [ "$(s '[.jobs.secrets | has("name"), has("if")] | any')" = "false" ]     || finding "$scan_caller: job 'secrets' must have no name: and no if:, so the check is always 'secrets / scan'."
   [ "$(s "[$EVENTS_JQ] | join(\",\")")" = "pull_request" ]     || finding "$scan_caller: the only trigger must be pull_request."
   [ "$(s '(.on | if type == "object" then (.pull_request // {}) else {} end) | (type == "object") and (keys | length == 0)')" = "true" ]     || finding "$scan_caller: pull_request must have no paths:, paths-ignore:, branches: or branches-ignore: filter (a filtered required check never reports)."
