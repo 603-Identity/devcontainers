@@ -30,10 +30,11 @@ real bump PRs that need their own review and merge.
 - The threat model's credentials row says the App token can "merge a PR"; the ruleset only lets the admin
   role update `main`, so that likely overstates it. Worth a small docs fix.
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01.
-- Place #255, #256, #263, #276, #278, #281, #282, #297 and #304 in a milestone (or leave them for a
+- Place #255, #256, #263, #276, #278, #281, #282, #297, #304 and #317 in a milestone (or leave them for a
   `/way-of-working:plan-sprint` pass). #267 is unmilestoned on purpose: it is an auto-merge (#139)
   precondition.
-- Delete branch `test/verify-pin-negative-10` on terraform-microsoft365-entra.
+- Delete branch `test/verify-pin-negative-10` on terraform-microsoft365-entra, and the local
+  `fix/gate-review-editor-94` here.
 - terraform-cloudflare-dns: its gate lists `.terraform.lock.hcl` and `.devcontainer/*` that its
   `code_paths` do not (the new lint warns); confirm during the #212 pilot follow-ups, along with
   whether it should cover `.claude/` (from #214).
