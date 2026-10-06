@@ -1,24 +1,26 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI, ending in `v1.4`. Build-order steps 1-5 are merged;
-step 6 (the secret-scan follow-ups) is ready to implement.
+**Now:** Milestone 4, Repo hardening: review gate and CI, ending in `v1.4`. Steps 1-5 are merged; step 6 (the
+secret-scan follow-ups) is built and open as PR #354, awaiting the fresh-session review.
 
-**Just done** (architect session on opus, last_commit `0f909f7`):
-- The owner merged step 5, PR #346, and its cursor-sync PR #352.
-- The owner decided to fix #348, not record it: drop the trailing boundary group from
-  `org-azure-ad-client-secret`. Recorded at
-  https://github.com/603-Identity/devcontainers/issues/348#issuecomment-6025865438.
-- First anchor for milestone 4 in this cursor, description sha `3387dd9c…`. This session's resume did not
-  verify the prior anchor; `plan-anchor.sh verify --plan` printed `match` at handoff. The anchor now names
-  #348 and the decision comment.
+**Just done** (coder session on sonnet, last_commit `78513cc`):
+- Built step 6 as one PR: #348 (trailing boundary dropped, two smoke checks, rule comment), #349 (pin guard
+  `^[^@]+@[0-9a-f]{40}$`, also applied to `verify-devcontainer-image.yml` and
+  `devcontainer-bump-decision.yml` at the owner's call), #350 (stderr reduced and prefixed) and #351
+  (finding records skipped in the incomplete-scan check). PR #354 closes #348-#351.
+- Green gate passed locally in WSL, except `go test` for `devc-verify` (WSL Go 1.26.3 < the module's 1.26.8;
+  untouched by this diff, CI covers it).
+- Critic pass: `security-critic` + `architect`, 1 fix round, converged (all models at their frontmatter
+  defaults; no second-opinion round).
+- Milestone 4 anchor re-verified (`match`); it now carries no task issue.
 
-**Next:** task #348 — on **sonnet** (coder), build M4 step 6 as one PR from `main`: #348 per the owner
-decision above (remove the trailing boundary group, add two smoke checks, update the rule comment), plus
-#349, #350 and #351 per their issue bodies. Then run the green gate, `/way-of-working:critic-gate` and
-`/way-of-working:ship`. `v1.4` (step 7) waits for step 6; never tag or release without the owner.
+**Next:** `/way-of-working:architect-review 354` � on **opus** (architect), in a NEW session, as
+JaredGroves-603 (the gate counts only that reviewer). Never approve or merge. The owner merges #354, then
+owns `v1.4` (step 7); never tag or release without the owner.
+Known leftovers, non-blocking: `err.log` is still grepped raw for `incomplete scan` (fails closed, only
+mislabels); the sibling pin guards have no tests of their own.
 
-**HITL Gate: OPEN.** First anchor for milestone 4 in this cursor (see Just done): the owner confirms with a
-"go" in the next session. Then the architect review of the step 6 PR; the `v1.4` tag is itself an owner gate.
+**HITL Gate: NONE OPEN.** Next gates: the architect review of #354 and the owner's merge, then the `v1.4` tag.
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01; #329 rides
