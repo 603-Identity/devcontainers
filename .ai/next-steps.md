@@ -1,26 +1,20 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Implementing #86.
+**Now:** Milestone 4, Repo hardening: review gate and CI. #86 built and shipped as PR #299, awaiting the fresh-session review.
 
-**Just done** (architect session on opus, last_commit `6eadcc4`):
-- Fresh-session architect review of #295 (v1.3 repin + DEVC-D8). No blocking findings. The
-  sandbox run, the gate tests and two planted mutations all behaved. The owner merged it as
-  `6eadcc4`.
-- Filed #297 (non-blocking): an immutable release's tag can still be deleted by deleting the
-  release first, so "admins included" overstates it. Also, `v1.0` is lightweight too.
-- The owner picked #86 as the next M4 task, with the fix of skipping a tool whose remote
-  `bump/<tool>-<version>` branch already exists.
-- Milestone 4 re-anchored on #86 without a resume-verified baseline: `verify --plan` printed
-  `match`, description sha `8bc5e03e` unchanged.
+**Just done** (coder session on sonnet, last_commit `9a4ab6f`, branch `fix/bump-skip-leftover-branch`):
+- `bump-binaries.sh` skips a tool whose remote `bump/<tool>-<version>` branch exists: a closed-PR leftover warns and skips, a branch with no PR (orphan) fails loudly, an `ls-remote` failure is an error. Exact ref match, `gh auth setup-git` first, never force-push or delete. New test `bump-leftover-branch-test.sh`; README note on declining a version.
+- Green gate: shellcheck and `tools/tests/run-gate-tests.sh` pass in WSL. The Docker-based entries were not run locally; CI runs them.
+- Critic pass (architect + security-critic): 2 rounds, converged (round 2 tightenings only; two small tightenings applied after it without a re-run). Not the review CI gate.
+- Opened #299 against `main`.
 
-**Next:** task #86 — in `.github/scripts/bump-binaries.sh`, skip a tool with a notice when its
-remote `bump/<tool>-<version>` branch already exists (`git ls-remote --exit-code origin
-refs/heads/$branch`), alongside the open-PR skip. Never force-push or delete the branch. Add a
-gate test for the leftover-branch case, run the green gate, then `/way-of-working:critic-gate`
-and `/way-of-working:ship`. Model: **sonnet** (coder).
+**Next:** `/way-of-working:architect-review 299` in a NEW session. Model: **opus** (architect). It
+posts the review, verifies `architect-review` green on the head SHA and files non-blocking
+findings. Never approve or merge.
 
-**HITL Gate: OPEN.** The re-anchor above: a human "go" starts #86. Next gate: the architect
-review of #86's PR.
+**HITL Gate: OPEN.** First anchor for milestone 4 on a non-task cursor, description sha
+`8bc5e03e` unchanged, no resume-verified baseline this session: a human "go" starts the review.
+Next gate: the human's merge of #299.
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01.
