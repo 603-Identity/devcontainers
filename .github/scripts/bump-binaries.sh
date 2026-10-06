@@ -7,7 +7,8 @@
 # that release's own published file or the registry's `integrity` field -- never from
 # hashing the download -- so the Dockerfiles' "no trust-on-first-use" rule holds here
 # too. On a version bump it rewrites the Dockerfile's ARG lines, opens a
-# bump/<tool>-<version> branch and PR (skipped if that PR is already open), and leaves
+# bump/<tool>-<version> branch and PR (skipped if that PR is already open, or if the branch
+# already exists on origin, e.g. after a human closed its PR unmerged), and leaves
 # everything else -- the surrounding comments, consumer CI pins, .trivyignore.yaml --
 # for the human review the PR goes through.
 #
@@ -290,7 +291,32 @@ if [ "$open_count" != "0" ]; then
   exit 0
 fi
 
+# A human who closes a bump PR unmerged and leaves its branch has declined that version. Cutting
+# a fresh branch would be rejected as non-fast-forward against it on every weekly run (#86), so
+# skip with a warning, and never force-push or delete the branch. `gh auth setup-git` only wires a
+# credential helper (the checkout does not persist one), so ls-remote also works on a private repo.
 gh auth setup-git
+
+# ls-remote's pattern matches the END of a ref name (x/refs/heads/bump/... would match), so read
+# its output and compare the ref exactly. Any ls-remote failure (network, auth) is an error, not
+# a reason to proceed or to skip.
+rc=0
+remote_refs="$(git -C "$root" ls-remote origin "refs/heads/$branch")" || rc=$?
+if [ "$rc" -ne 0 ]; then
+  echo "::error::$tool: could not check origin for $branch (git ls-remote exit $rc)" >&2
+  exit 1
+fi
+if printf '%s\n' "$remote_refs" | BUMP_REF="refs/heads/$branch" awk '$2 == ENVIRON["BUMP_REF"] { found = 1 } END { exit !found }'; then
+  # A branch with no PR at all is an orphan (the push worked, `gh pr create` failed), not a
+  # human's decline: fail loudly, as the rejected push used to, rather than hide the version.
+  any_count="$(gh pr list --repo "$repo" --head "$branch" --state all --json number --jq 'length')"
+  if [ "$any_count" = "0" ]; then
+    echo "::error::$tool: $branch exists on origin but has no PR (a failed run's leftover?): open its PR by hand, or delete the branch" >&2
+    exit 1
+  fi
+  echo "::warning::$tool: $branch already exists on origin and its PR is not open (closed unmerged?), skipping; delete the branch to propose this version again"
+  exit 0
+fi
 
 git -C "$root" config user.name "${APP_SLUG:?APP_SLUG must be set}[bot]"
 git -C "$root" config user.email "${APP_ID:?APP_ID must be set}+${APP_SLUG}[bot]@users.noreply.github.com"
