@@ -72,6 +72,12 @@ expect_fail "a short SHA pin" \
   pull_request glunk-works/app 7 "$SELF/.github/workflows/secret-scan.yml@0123456"
 expect_fail "a SHA pin with trailing characters" \
   pull_request glunk-works/app 7 "$SELF/.github/workflows/secret-scan.yml@${SHA40}x"
+expect_fail "a consumer on a branch named x@<40 hex> (#349)" \
+  pull_request glunk-works/app 7 "$SELF/.github/workflows/secret-scan.yml@refs/heads/x@$SHA40"
+expect_fail "a consumer on a tag named x@<40 hex> (#349)" \
+  pull_request glunk-works/app 7 "$SELF/.github/workflows/secret-scan.yml@refs/tags/x@$SHA40"
+expect_fail "a short branch name x@<40 hex> (#349)" \
+  pull_request glunk-works/app 7 "$SELF/.github/workflows/secret-scan.yml@x@$SHA40"
 expect_fail "self-test shape from another repo's workflow path" \
   pull_request "$SELF" 42 "glunk-works/other/.github/workflows/secret-scan-self.yml@refs/pull/42/merge"
 BASE_SHA=main expect_fail "a ref instead of a base SHA" \

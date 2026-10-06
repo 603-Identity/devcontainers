@@ -82,12 +82,19 @@ if [ "$state" = incomplete ]; then
   scan_once
 fi
 
-if grep -qi 'incomplete scan' "$work/err.log" "$work/out.jsonl" 2> /dev/null; then
+# The JSONL half skips finding records: their paths and messages come from the scanned repo, so
+# a file named "incomplete scan" must not turn a findings failure into did-not-complete.
+# Captured first, not piped: under pipefail a jq failure or SIGPIPE would hide a grep match.
+nonfinding="$(jq -r 'select(type != "object" or has("finding") == false) | tostring' "$work/out.jsonl" 2> /dev/null || true)"
+if grep -qi 'incomplete scan' "$work/err.log" 2> /dev/null || grep -qi 'incomplete scan' <<< "$nonfinding"; then
   state=incomplete
 fi
 
 if [ "$state" != complete ]; then
-  tail -n 20 "$work/err.log" >&2 || true
+  # Scanner stderr can quote paths from the scanned repo. Reduce it to a safe set (no CR, '#' or
+  # '[', so no extra line and no legacy ##[command]) and prefix every line so none can start
+  # with "::" and be read as a workflow command.
+  tail -n 20 "$work/err.log" | tr -c 'A-Za-z0-9._/:=, |()\n-' '_' | sed 's/^/  | /' >&2 || true
   die "scan did not complete (state: $state, exit $rc); treating as a failure, not as 'no findings'."
 fi
 if [ "$nfind" -lt 0 ]; then
