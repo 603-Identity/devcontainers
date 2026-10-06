@@ -298,6 +298,36 @@ to open them and approval to run (set 2026-10-05), which narrows the fork gap #1
 named. The threat model records the trust split, and #139 lists #267 among its
 preconditions.
 
+#### DEVC-D8: Each version ships as a signed tag with an immutable GitHub Release
+
+**Resolved** 2026-10-06 by the repo owner, when cutting `v1.3`.
+
+**Context.** `v1.0`-`v1.2` were bare tags (`v1.1` lightweight, `v1.2` signed and annotated),
+with no release notes. Consumers copy the gate from a tag and pin the reusable workflows to its
+SHA, so the upgrade steps for each version lived only in this roadmap. The `release-tags`
+ruleset lets the Repository admin role bypass it, so an admin could still move or delete a tag
+consumers had already pinned.
+
+**Decision.**
+- Each version is a signed, annotated `vX.Y` tag on a commit already on `main`, pushed by its
+  full ref (`git push origin refs/tags/vX.Y`).
+- Each tag is published as a GitHub Release, created with `gh release create vX.Y --verify-tag`
+  so it never mints an unsigned tag. The notes lead with the consumer upgrade steps (re-copy,
+  re-pin, re-lint), then the behaviour changes and the known gaps. A docs-consistency pass checks
+  them against the code before they are published.
+- Release immutability is on for the repo (set 2026-10-06). A published release's tag cannot be
+  moved or deleted, admins included. A mistake ships as a new version, never as an edit.
+- After each release, one PR re-points `template/`'s pins and this repo's own `decide` pin to
+  the new SHA.
+- Rejected: *staying with bare tags:* no place for upgrade steps that consumers see beside
+  Dependabot's pin bump, and the admin bypass stays open.
+
+**Why DEVC-D and not IAC-D.** It changes how this repo publishes. Consumers pin by SHA either
+way, so no other repo has to change.
+
+**Consequences.** `v1.3` is the first immutable release. `v1.0`-`v1.2` keep only the ruleset's
+protection. The threat model's tag-ruleset entry records the change.
+
 ### Org-wide IAC-D decisions that bind this repo
 
 Each of these is recorded in full in infrastructure-core's log. They are cited here only.
