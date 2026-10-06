@@ -1,28 +1,24 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Implementing; next task not yet picked.
+**Now:** Milestone 4, Repo hardening: review gate and CI. Implementing; #128 is next.
 
-**Just done** (architect session on opus, last_commit `e3869b4`):
-- Posted the fresh-session architect review on PR #284 (#96) against head `a31eb24`.
-  `architect-review` is green on that SHA (commit status). Verdict: sound, no blocking findings.
-  The owner merged it as `e3869b4`, closing #96.
-  Executed in an isolated sandbox in WSL: the gate suites, both render checks and shellcheck
-  passed. With the numeric uid test removed, the new test goes red. With the numeric test
-  removed and a single space in `REVIEWER_IDS`, it passes.
-- No findings filed. Two notes stay in the review only: the test covers the doubled space but
-  not leading or trailing spaces (all three reduce to the same thing after padding), and #96's
-  optional `read -ra` cleanup was not taken.
-- Plan anchor for milestone 4 re-verified at this handoff: `match`, description unchanged
-  (sha `8bc5e03e`). Resume did not verify it, because the status was `awaiting_review`.
+**Just done** (architect session on opus, last_commit `996ddd6`):
+- Closed #233 by hand. #274 (merged as `d334c02`) did its work but did not close it.
+- The owner picked #128 (build-order item 12) as the next task, "for now". Items 1-10a are
+  closed, so the build order's next step is item 11, the `v1.3` tag. It is owner-owned and not
+  yet tagged; it does not block #128.
+- First anchor for #128, description sha `8bc5e03e`: this session's resume did not verify the
+  prior anchor (the gate was open), so there was no baseline. The handoff-time
+  `verify --plan` against the prior anchor printed `match`.
 
-**Next:** pick the next milestone-4 task with the owner and hand it off to a coder session.
-Model: **opus** (architect) for the pick.
+**Next:** task #128 — Move Go and buildkit together (M4 build-order item 12), per #128's spec.
+Model: **sonnet** (coder). Critic gate: `architect` + `security-critic`. Then
+`/way-of-working:ship` and a fresh-session opus architect review.
 
-**HITL Gate: OPEN.** The `v1.3` tag (owner-owned, now that #92 and #96 are merged) and the
-owner's pick of the next M4 task.
+**HITL Gate: OPEN.** Owner "go" on the first #128 anchor (above). Separately, the `v1.3` tag
+(owner-owned) is still outstanding and does not block #128.
 
 **Open for the owner (non-blocking):**
-- Close #233 by hand (#274 did not close it).
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01.
 - Place #255, #256, #263, #276, #278, #281 and #282 in a milestone (or leave them for a
   `/way-of-working:plan-sprint` pass). #267 is unmilestoned on purpose: it is an auto-merge (#139)
