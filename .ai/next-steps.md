@@ -1,22 +1,20 @@
 # Next steps
 
 **Now:** Milestone 4, Repo hardening: review gate and CI, re-scoped 2026-10-06 to what the adoption waves copy,
-pin or run, ending in `v1.4`. Build-order step 2 (consumer-lint bundle) is built and awaiting review.
+pin or run, ending in `v1.4`. Build-order step 2 merged; step 3 is next, waiting on the owner's go.
 
-**Just done** (coder session on sonnet, last_commit `05ed726`, the head of PR #336):
-- Opened PR #336: the consumer lint now treats a bare `./`, `.` or `/` code_paths entry as the repo root, rejects
-  YAML merge keys, anchors, aliases and duplicated mapping keys, rejects non-canonical code_paths entries, and
-  prints job names through `tojson`. Closes #249, #251, #255, #256.
-- Critic pass (`architect` + `security-critic`): 3 rounds, converged (final round tightenings only); no
-  second-opinion round. It is not the review gate.
-- Follow-ups filed, unmilestoned: #334 (newline in a workflow file name), #335 (misleading warning on a
-  non-canonical entry).
+**Just done** (architect session on opus, last_commit `e6f753d`):
+- Posted the fresh-session review of PR #336 (no blocking findings; the suite and four guard-removal mutations
+  were reproduced in an isolated sandbox). The `architect-review` check went green; the owner merged it as
+  `e6f753d`, closing #249, #251, #255 and #256.
+- Re-anchored milestone 4 on task #315; the description is unchanged since the last anchor.
 
-**Next:** `/way-of-working:architect-review 336` — in a **new session** on **opus** (architect): post the
-fresh-session review of PR #336 and verify the `architect-review` check is green on its head SHA. Never approve or
-merge; the owner merges. After that merge, the next M4 build-order step in `docs/roadmap.md`.
+**Next:** task #315 — build M4 build-order step 3 (#315 + #281 + #282 + #317) as one PR in
+`tools/gate-template.yml.in`, re-rendered, on **sonnet** (coder). Then `/way-of-working:critic-gate`
+(`architect` + `security-critic`) and `/way-of-working:ship`. Never merge.
 
-**HITL Gate: OPEN.** PR #336 needs the fresh-session review, then the owner's merge.
+**HITL Gate: OPEN.** The owner confirms the start of step 3 (announced at the step 2 handoff). After that: the
+fresh-session architect-review of the step 3 PR, then the owner's merge.
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01; #329 rides
@@ -29,6 +27,8 @@ merge; the owner merges. After that merge, the next M4 build-order step in `docs
 - terraform-cloudflare-dns: its gate lists `.terraform.lock.hcl` and `.devcontainer/*` that its
   `code_paths` do not (the new lint warns); confirm during the #212 pilot follow-ups, along with
   whether it should cover `.claude/` (from #214).
+- Since #336, the consumer lint rejects YAML anchors and merge keys in every workflow file; an adopter
+  whose own workflows use them must write the keys out.
 - -dns#57, -dns#59 and -dns#65 are open. Other detect-secrets repos have migration issues:
   checkov-ledger-action#16, infrastructure-core#560, tenant-posture-assessment#31, trust-anchors#73.
 - Use `GH_TOKEN="$(gh auth token --user JaredGroves-603)"` for `gh` calls on this repo, and run
