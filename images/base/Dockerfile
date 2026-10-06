@@ -63,8 +63,8 @@ RUN curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_$
 
 # --- yq (mikefarah v4, NOT the python `yq`, which has a different syntax). Required
 # by way-of-working >= v0.13.0's /way-of-working:resume (bin/schema-complete.sh).
-ARG YQ_VERSION=4.53.6
-ARG YQ_SHA256=c5f056448f973ae7d39b5401949648a78f2dc1947d6a8eb65be60d5c504b9385
+ARG YQ_VERSION=4.54.1
+ARG YQ_SHA256=8e34fc298390875de416e6a4afcb8cabeceb25d9aa8506c1a2f9353cf702ea5f
 RUN curl -fsSL "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64" \
         -o /tmp/yq \
     && echo "${YQ_SHA256}  /tmp/yq" | sha256sum -c - \
