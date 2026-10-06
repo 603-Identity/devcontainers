@@ -125,7 +125,7 @@ at build and publish time, before any consumer pulls.
 
 6. **Changes to `main` are reviewed.** The `main-required-checks` ruleset requires a pull
    request, the lint, build and smoke-test checks, and `architect-review` on any change to
-   `code_paths`. `architect-review` counts only a formal review, made against the PR's head SHA (bound when posted, #278), from a
+   `code_paths`. `architect-review` counts only a formal review, made against the PR's head SHA whose body also carries the line `Reviewed against head <that SHA>` (#278), from a
    user ID in the gate's `REVIEWER_IDS` allowlist (today, only the owner's user ID), so a stranger on
    this public repo cannot turn it green by pasting the header and attestation strings. It is still an existence gate: it never reads
    what the review concluded, and the human's merge is the approval.
@@ -201,7 +201,7 @@ What each piece trusts, and what it leaves open:
 - **Auto-merge is off and stays off until its preconditions are met.** The fail-closed kill
   switch makes "not created yet" the off state. When it is on, this repo's `main`, then the
   publish, then a consumer merge becomes an unattended chain whose only human control is this
-  repo's own `architect-review`, an existence gate with known gaps (#93, #278). The owner
+  repo's own `architect-review`, an existence gate with known gaps (#93, and the skill half of #278). The owner
   creates `devc-automerge-on` only when #139's preconditions are met: among them a pilot that
   has taken real bumps through the review path, the reviewer App check (#267), and `disarm()`
   in every row (#126, #132). Docs-only pushes no longer publish: a push
@@ -444,10 +444,21 @@ These are stated plainly so nobody trusts the setup for more than it does:
   write account, which leaves author, state, `commit_id` and `submitted_at` unchanged), so a
   matching review also has to be unedited, or have only editors in `REVIEWER_IDS`. The gate
   reads the whole edit history from GraphQL (`userContentEdits`) for each otherwise-qualifying
-  review; an unreadable editor, a history longer than one page, a deleted revision or a failed lookup fails closed. Residuals, open: (1) the review is
-  bound to the head at the moment it is posted, not the one the reviewer read, so a push during
-  the review stamps the review onto the new head (the posting skill does not pin `commit_id`;
-  #278); (2) the gate re-runs when a review is edited or dismissed (`pull_request_review` types `edited` and
+  review; an unreadable editor, a history longer than one page, a deleted revision or a failed lookup fails closed. A matching review must also carry, as a line of its
+  own in its quote-stripped body, the literal `Reviewed against head <HEAD_SHA>` (#278).
+  `commit_id` is the head when the review is posted, not the commit the reviewer read, so a push
+  during the review stamps it onto the new head; the line is the reviewer's own statement of the
+  SHA they pinned, so a review that names an earlier head fails closed. The line may have
+  surrounding whitespace, backticks around the SHA and one trailing period (the posting skill's
+  own output); an abbreviated SHA, extra text or a `>`-quoted line does not match. A line inside
+  a code fence or an HTML comment, or one that is a lazy continuation of a blockquote, still counts.
+  It is a check on the reviewer's own text, not on GitHub: a writer's edit of the body is still
+  caught only by the editor check above, and a reviewer (a model reading untrusted PR text) who
+  writes the line without having read that head defeats it. Residuals, open: (1) the posting skill still does not pin
+  `commit_id`, so the safeguard is the gate refusing, not the skill posting against the right
+  commit (the way-of-working plugin's half of #278; posting with `POST
+  repos/{repo}/pulls/N/reviews` and `commit_id=<pinned>` would make the review fail to post
+  instead); (2) the gate re-runs when a review is edited or dismissed (`pull_request_review` types `edited` and
   `dismissed`; #315, #281), so a later edit by a stranger, or a dismissal, moves the status. An edit by a trusted reviewer
   still keeps it green while changing the text a human reads, and is not told apart from a typo fix. On a fork PR the
   `edited` and `dismissed` runs get the same read-only token as `submitted` (GitHub's rule for every
