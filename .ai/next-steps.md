@@ -1,40 +1,35 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Awaiting review: PR #323 (task #102), head
-`e06817d`.
+**Now:** Milestone 4, Repo hardening: review gate and CI. Awaiting review: the three bump PRs the
+bump-binaries App opened, #321 (uv), #322 (tofu) and #326 (yq).
 
-**Just done** (coder session on sonnet, last_commit `0fefe75`):
-- #319 merged as `0fefe75`: the bump-binaries job declares `environment: bump-binaries`, uses `client-id`
-  (`BUMP_BINARIES_CLIENT_ID`, now a repo-level variable), and resolves the bot's user id for the commit email.
-- First real dispatch of "Bump pinned binaries" (run 3): seven jobs passed, and the App opened #321 (uv)
-  and #322 (tofu), both still open. `bump (yq)` failed with `curl: (23)`: `resolve_yq` piped curl into an
-  awk that exits on its first match, so awk closed the pipe while curl was still writing and `pipefail`
-  failed the step. `sha256_line` (gh, uv, tofu, tflint, node) had the same latent race.
-- Built PR #323 (refs #102): checksum files are read into a variable before parsing, with `|| return 1`
-  in `sha256_line` because `set -e` does not reach inside `$( )`. The asset-names test's fake curl can
-  append a large body after the match and die after the body; every curl-pipe tool is run against both.
-- Critic pass (architect, security-critic; no docs touched): round 1 found the lost curl exit status, which
-  was fixed; the architect's round 2 on that delta found only a wrong test comment, now fixed. Local green
-  gate passed in WSL (shellcheck, all gate suites). No second-opinion round was run.
+**Just done** (coder session on sonnet, last_commit `742221f`):
+- #323 merged as `742221f`: bump-binaries reads each checksum file before parsing and fails when a transfer
+  dies. Re-dispatch of "Bump pinned binaries" then passed all eight matrix jobs; the commits are authored by
+  `603-bump-binaries[bot]`. #321 and #322 came from the first dispatch, #326 from the second.
+- Closed #102 (App, `main`-restricted Environment key, `BUMP_BINARIES_CLIENT_ID` repo variable, docs; every
+  checklist item evidenced in its closing comment).
+- Housekeeping: pruned the merged local branches; filed #327 (the threat model says the App token can merge
+  to `main`; the ruleset's only bypass is the admin role, so test it once and reword).
+- Each bump PR's only non-passing item is the `architect-review` status ("No fresh-session review posted
+  against this commit yet"): expected, since `images/` is in `code_paths`.
 
-**Next:** `/way-of-working:architect-review 323` on **opus** (architect), in a new window. Never approves
-or merges; the owner admin-merges. Then the owner re-dispatches "Bump pinned binaries" once on `main` and
-confirms every matrix job opens a bump PR or reports it is current; that closes #102. #321 and #322 are
-real bump PRs that need their own review and merge.
+**Next:** `/way-of-working:architect-review 321` on **opus** (architect), in a new window, then 322 and 326,
+each against its own head. A bump PR changes one Dockerfile ARG pair, so each review is: the version is
+the newest release, the sha256 matches the upstream checksum file (the same asset the Dockerfile
+downloads), nothing else changed. Never approves or merges; the owner admin-merges each.
 
-**HITL Gate: NONE OPEN.** Next gate: the owner merges #323.
+**HITL Gate: NONE OPEN.** Next gate: the owner merges each bump PR after its review.
 
 **Open for the owner (non-blocking):**
-- #315 (an edited review does not re-run the gate) is in milestone 4. The `bump-binaries` Environment
-  still lets admins bypass its protection rules; turning that off is optional.
-- The threat model's credentials row says the App token can "merge a PR"; the ruleset only lets the admin
-  role update `main`, so that likely overstates it. Worth a small docs fix.
+- #315 (an edited review does not re-run the gate) and #327 (the App-token wording, with a live test) are in
+  milestone 4. The `bump-binaries` Environment still lets admins bypass its protection rules; turning that
+  off is optional.
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01.
 - Place #255, #256, #263, #276, #278, #281, #282, #297, #304 and #317 in a milestone (or leave them for a
   `/way-of-working:plan-sprint` pass). #267 is unmilestoned on purpose: it is an auto-merge (#139)
   precondition.
-- Delete branch `test/verify-pin-negative-10` on terraform-microsoft365-entra, and the local
-  `fix/gate-review-editor-94` here.
+- Delete branch `test/verify-pin-negative-10` on terraform-microsoft365-entra.
 - terraform-cloudflare-dns: its gate lists `.terraform.lock.hcl` and `.devcontainer/*` that its
   `code_paths` do not (the new lint warns); confirm during the #212 pilot follow-ups, along with
   whether it should cover `.claude/` (from #214).
