@@ -1,23 +1,25 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Awaiting review.
+**Now:** Milestone 4, Repo hardening: review gate and CI. Implementing; next task not yet picked.
 
-**Just done** (coder session on sonnet, last_commit `a31eb24`):
-- Task #96: the reviewer check's comment in `tools/gate-post.sh` now says the numeric uid test is
-  load-bearing (it alone stops a missing ID matching a doubled, leading or trailing space in
-  `REVIEWER_IDS`). Mirrored into the template and this repo's gate; `render-gate.sh` checks pass.
-  Added a `gate-post-test` case (null id, doubled-space `REVIEWER_IDS`) that fails without the
-  numeric test. Gate suites and shellcheck pass in WSL. Shipped as PR #284.
-- Critic pass (architect + security-critic): 2 rounds, converged (wording tightenings applied,
-  delta re-check clean). No second-opinion round.
-- Milestone 4 description re-verified, sha `8bc5e03e`, unchanged.
+**Just done** (architect session on opus, last_commit `e3869b4`):
+- Posted the fresh-session architect review on PR #284 (#96) against head `a31eb24`.
+  `architect-review` is green on that SHA (commit status). Verdict: sound, no blocking findings.
+  The owner merged it as `e3869b4`, closing #96.
+  Executed in an isolated sandbox in WSL: the gate suites, both render checks and shellcheck
+  passed. With the numeric uid test removed, the new test goes red. With the numeric test
+  removed and a single space in `REVIEWER_IDS`, it passes.
+- No findings filed. Two notes stay in the review only: the test covers the doubled space but
+  not leading or trailing spaces (all three reduce to the same thing after padding), and #96's
+  optional `read -ra` cleanup was not taken.
+- Plan anchor for milestone 4 re-verified at this handoff: `match`, description unchanged
+  (sha `8bc5e03e`). Resume did not verify it, because the status was `awaiting_review`.
 
-**Next:** `/way-of-working:architect-review 284` — fresh-session architect review of PR #284
-(the #96 fix, head `a31eb24`); the `architect-review` check stays red until it is posted. Model
-**opus** (architect), in a new session.
+**Next:** pick the next milestone-4 task with the owner and hand it off to a coder session.
+Model: **opus** (architect) for the pick.
 
-**HITL Gate: NONE OPEN.** Next gates: the owner's merge of #284 after that review; then the
-`v1.3` tag (owner-owned, after #92 and #96).
+**HITL Gate: OPEN.** The `v1.3` tag (owner-owned, now that #92 and #96 are merged) and the
+owner's pick of the next M4 task.
 
 **Open for the owner (non-blocking):**
 - Close #233 by hand (#274 did not close it).
