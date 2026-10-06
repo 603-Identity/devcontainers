@@ -436,7 +436,7 @@ new_repo "$TEMPLATE_PATHS"$'\n  - "src/**/*.tf"'; set_block '                  i
                   .trivyignore.yaml|.gitattributes|.ai/project.yml) touches=1 ;;'
 lint; expect "a glob entry the block covers" 0; rm -rf "$SCRATCH"
 
-# A leading ./ on an entry is dropped (#245): the gate sees `git diff` paths, never `./tools/a`.
+# A leading ./ on an entry is dropped (#245): the gate reads PR file paths from the GitHub files API, never `./tools/a`.
 new_repo "${TEMPLATE_PATHS/  - tools\//  - .\/tools\/}"
 lint; expect "a ./tools/ entry against a block with tools/*" 0
 if [[ "$ERR" == *warning* ]]; then fail "a ./ entry covered by tools/* has nothing to warn about" "$ERR"; else pass; fi
@@ -447,6 +447,42 @@ new_repo "${TEMPLATE_PATHS/  - tools\//  - .\/tools\/}"; set_block '            
 lint; expect "a ./tools/ entry against a block with only ./tools/*" 1 "code_paths entry './tools/' in"
 if [[ "$ERR" == *"(tools/a reads touches=0"* ]]; then pass; else fail "the finding samples the entry without its ./" "$ERR"; fi
 rm -rf "$SCRATCH"
+
+# Extra leading slashes go too (#249): `.//tools/` is `tools/`, not a confusing /tools/a finding.
+new_repo "${TEMPLATE_PATHS/  - tools\//  - .\/\/tools\/}"
+lint; expect "a .//tools/ entry against a block with tools/*" 0
+if [[ "$ERR" == *warning* ]]; then fail "a .// entry covered by tools/* has nothing to warn about" "$ERR"; else pass; fi
+rm -rf "$SCRATCH"
+
+ROOT_ARMS_DOT='                  images/*|template/*|tests/*|tools/*|.claude/*|./*|.trivyignore.yaml|.gitattributes|.ai/project.yml) touches=1 ;;'
+# A // or /./ or /../ segment inside an entry never appears in a files-API path, so an arm written
+# the same way would fail open: the entry is a finding, not a sample.
+for odd in 'tools//' 'tools/.' 'tools/./' './/tools/./' 'tools/../tools/'; do
+  new_repo "${TEMPLATE_PATHS/  - tools\//  - $odd}"
+  lint; expect "a non-canonical '$odd' entry" 1 "code_paths entry '$odd' in"
+  assert_eq "the '$odd' finding says it is not canonical" 1 "$(grep -c 'not a canonical path' <<< "$ERR")"
+  rm -rf "$SCRATCH"
+done
+
+# Bare / and // are the repo root, with no directory-entry hint.
+for slashes in '/' '//'; do
+  new_repo "$TEMPLATE_PATHS"$'\n'"  - \"$slashes\""; set_block "$ROOT_ARMS_DOT"
+  lint; expect "a '$slashes' entry against a block with only ./*" 1 "code_paths entry '$slashes' in"
+  if [[ "$ERR" == *"needs a trailing slash"* ]]; then fail "the '$slashes' root entry gets no directory hint" "$ERR"; else pass; fi
+  rm -rf "$SCRATCH"
+done
+
+# A bare ./ or . entry is the repo root (#249). The gate never sees a path starting with ./, so
+# an arm ./* covers nothing; before the fix both of these passed with rc 0 and no warning.
+for root_entry in './' '.'; do
+  new_repo "$TEMPLATE_PATHS"$'\n'"  - $root_entry"; set_block "$ROOT_ARMS_DOT"
+  lint; expect "a '$root_entry' entry against a block with only ./*" 1 "code_paths entry '$root_entry' in"
+  if [[ "$ERR" == *"(a reads touches=0"* ]]; then pass; else fail "the '$root_entry' finding samples the root as a" "$ERR"; fi
+  rm -rf "$SCRATCH"
+done
+
+new_repo "$TEMPLATE_PATHS"$'\n  - ./'; set_block '                  *) touches=1 ;;'
+lint; expect "a ./ entry against a block with *" 0; rm -rf "$SCRATCH"
 
 # A directory entry with no trailing slash is a directory when it exists next to .github/.
 new_repo "$TEMPLATE_PATHS"$'\n  - docs'; mkdir "$REPO/docs"
@@ -520,6 +556,51 @@ lint; expect "code_paths that is not a list of strings" 1 "code_paths must be a 
 # No .ai/project.yml next to .github/: nothing to check against (the cases above all run without one).
 new_repo "$TEMPLATE_PATHS"; rm "$REPO/.ai/project.yml"
 lint; expect "no .ai/project.yml" 0; rm -rf "$SCRATCH"
+
+# --- YAML merge keys, anchors and aliases (#255) -------------------------------------------
+# `yq -o=json` drops a `<<:` key, so a strategy: merged into a caller job passed every rule.
+new_wf; sed -i 's|^    permissions:$|    <<: {strategy: {matrix: {x: [a]}}}\n    permissions:|' "$WF/$CALLER"
+lint; expect "a merge key in the verify caller" 1 "merge key"; rm -rf "$SCRATCH"
+
+new_wf; sed -i 's|^    permissions:$|    <<: {strategy: {matrix: {x: [a]}}}\n    permissions:|' "$WF/$SCAN"
+lint; expect "a merge key in the secret-scan caller" 1 "merge key"; rm -rf "$SCRATCH"
+
+# The gate too, and an anchor or an alias on its own.
+new_wf; sed -i 's|^  post:$|  post: \&post\n    <<: {concurrency: x}|' "$WF/$GATE"
+lint; expect "a merge key in the gate" 1 "merge key"; rm -rf "$SCRATCH"
+
+new_wf; printf 'x-a: &a {k: v}\nx-b: *a\n' >> "$WF/$CALLER"
+lint; expect "an anchor and an alias in the verify caller" 1 "merge key"; rm -rf "$SCRATCH"
+
+new_wf; printf 'x-a: &a v\n' >> "$WF/$CALLER"
+lint; expect "an anchor alone in the verify caller" 1 "merge key"; rm -rf "$SCRATCH"
+
+# A second document is no merge key: only the not-a-workflow finding fires.
+new_wf; printf -- '---\nb: 2\n' >> "$WF/$CALLER"
+lint; expect "a second document in the verify caller" 1 "not a workflow"
+if [[ "$ERR" == *"merge key"* ]]; then fail "a second document is not reported as a merge key" "$ERR"; else pass; fi
+rm -rf "$SCRATCH"
+
+# A duplicated key hides the first copy from jq: the write scope here is the one a run would not see.
+new_wf; sed -i 's|^    permissions:$|    permissions:\n      contents: write\n      statuses: write\n    permissions:|' "$WF/$CALLER"
+lint; expect "a duplicated permissions: key in the verify caller" 1 "duplicated mapping key"; rm -rf "$SCRATCH"
+
+# A custom tag on the map does not hide the duplicate from the check.
+new_wf; sed -i 's|^  verify:$|  verify: !x|; s|^    permissions:$|    permissions:\n      contents: write\n    permissions:|' "$WF/$CALLER"
+lint; expect "a duplicated key in a tagged job map" 1 "duplicated mapping key"; rm -rf "$SCRATCH"
+
+# A merge key in a later document is found too.
+new_wf; printf -- '---\nb:\n  <<: {c: 1}\n' >> "$WF/$CALLER"
+lint; expect "a merge key in a second document" 1 "merge key"; rm -rf "$SCRATCH"
+
+# --- job names print as JSON (#256) --------------------------------------------------------
+# A job key with a newline in it must not reach the log as a line of its own starting with `::`.
+for wf_name in "$CALLER" "$SCAN"; do
+  new_wf; printf '  "x\\n::error::pwned":\n    runs-on: ubuntu-latest\n    permissions: {}\n    steps:\n      - run: true\n' >> "$WF/$wf_name"
+  lint; expect "a newline in a job name in $wf_name" 1 "only job must be"
+  assert_eq "the $wf_name finding is one line" 0 "$(grep -c '^::' <<< "$ERR" || true)"
+  rm -rf "$SCRATCH"
+done
 
 # --- input handling ------------------------------------------------------------------------
 new_wf; printf 'a: [unclosed\n' > "$WF/bad.yml"
