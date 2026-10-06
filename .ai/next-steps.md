@@ -1,24 +1,26 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Awaiting review: PR #303 (#85 + #208).
+**Now:** Milestone 4, Repo hardening: review gate and CI. Implementing: task #262, then back to #102.
 
-**Just done** (coder session on sonnet, last_commit `6ddf1ec`):
-- PR #303 opened, closing #85 and #208, all in `.github/scripts/bump-binaries.sh`: every `resolve_*`
-  sets `CHECKSUM_URL` and the bump PR body carries `Checksum source:`; betterleaks takes release
-  candidates only while its pin is `X.Y.Z-rc.N`. Tests, README and threat-model line 34 updated.
-- Local gate in WSL: the betterleaks, leftover-branch and asset-names suites, `run-gate-tests.sh` and
-  shellcheck pass. The docker steps were not run locally (no Dockerfile or workflow changed); CI runs them.
-- Critic pass (security-critic, architect, docs-consistency): 2 rounds, converged; no second-opinion round
-  (declined). Not the review gate.
-- Follow-up #304 filed (rc pin skips GA when a newer rc exists); unmilestoned, for the owner to place.
-- Milestone 4 re-anchored to no task without a resume-verified baseline (resume waited on an open
+**Just done** (architect session on opus, last_commit `e3ee745`):
+- Fresh-session architect review of PR #303 (#85 + #208) posted; the gate went green on the head
+  commit. The owner merged it as `e3ee745`. Two cosmetic observations went in the review body only;
+  nothing was filed.
+- #262 added to milestone 4 at the owner's direction. It is a prerequisite of the claude-workbench
+  orchestrator plan (v9 § 8.5). Its ordering condition is met: claude-workbench#229 shipped in
+  v0.16.0, and `.claude/settings.json` pins `v0.16.0`. This change supersedes the #271
+  not-planned decision.
+- Milestone 4 re-anchored to task #262 without a resume-verified baseline (resume waited on an open
   gate, so it did not verify): `verify --plan` printed `match`, description sha `8bc5e03e` unchanged.
 
-**Next:** `/way-of-working:architect-review 303`, in a new session, on **opus** (architect). Then the
-owner merges #303 and picks the next M4 task.
+**Next:** task #262 — teach `.claude/hooks/merge-guard.sh` to admit resume's v0.16.0 cursor-sync
+merge (`gh pr merge <N> --repo <repo> --squash --admin --match-head-commit <oid>`) and keep refusing
+`--admin` on any other `gh pr merge`. Add fixtures for the new shape, `--admin` elsewhere and the
+old shape, and update the header's residuals. Then run critic-gate, ship and hand off for architect
+review. On **sonnet** (coder). After #262 merges, return to **#102** (bump-binaries GitHub App).
 
 **HITL Gate: OPEN.** The milestone-4 re-anchor lacks a resume-verified baseline. The owner's "go"
-releases the review session.
+releases the coder session.
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01.
@@ -32,6 +34,8 @@ releases the review session.
 - -dns#57, -dns#59 and -dns#65 are open. Other detect-secrets repos have migration issues:
   checkov-ledger-action#16, infrastructure-core#560, tenant-posture-assessment#31,
   trust-anchors#73. #220 is open. #251 (stale test comment) can ride along with #249.
+- The local plugin cache runs way-of-working 0.14.0 while `.claude/settings.json` pins v0.16.0;
+  refresh the plugin so `/resume` uses the `--admin` merge shape #262 admits.
 - Use `GH_TOKEN="$(gh auth token --user JaredGroves-603)"` for `gh` calls on this repo, and run
   commits, pushes and PRs from the Windows host (WSL's `gh` is Seuss27, no push). Run tests in
   WSL, not Git Bash. `gh issue create` and `gh pr create` hang under Git Bash; `gh api ... --input -`
