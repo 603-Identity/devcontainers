@@ -143,8 +143,8 @@ container](../README.md#checking-a-container):
 
 The repo owner merges it, once `architect-review`, `verify / verify` and `secrets / scan` have
 all reported green on it. If the repo had no gate on its default branch before, post the
-review on this PR as a formal PR review, not a comment: a comment runs the default branch's
-copy of the gate, which does not exist yet. Until step 9 nothing requires `verify / verify`
+review on this PR as a formal PR review, not a comment: a comment never counts, and it runs
+the default branch's copy of the gate, which does not exist yet. Until step 9 nothing requires `verify / verify`
 (unless the repo already did), so other PRs are not blocked. Do step 9 straight away, and merge no Dependabot image bump before it is done.
 
 ## 9. Require the checks, and set the repo settings

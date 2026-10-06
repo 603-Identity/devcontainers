@@ -95,8 +95,8 @@ read_kill_switch() {
 # to decide that no review is needed). Plain call, never inside `if`/`||`, so `set -e` stays
 # in force: a failed `gh api` must fail closed, never read as "nothing in scope".
 review_logic() {
-  local force_scope="$1" files f touches=0 head_date comments_json reviews_json found_at
-  local item body at uid login
+  local force_scope="$1" files f touches=0 reviews_json found_at
+  local item body at sha uid login
 
   # Posted first so the required check shows `pending`, not absent, while this runs.
   post_status pending "Checking for a fresh-session review..."
@@ -134,13 +134,14 @@ review_logic() {
     return 0
   fi
 
-  head_date="$(gh api "repos/${REPO}/commits/${HEAD_SHA}" --jq '.commit.committer.date')"
-  echo "Head commit: ${HEAD_SHA} (${head_date})"
-
-  # Captured into variables, not process substitution, so a failing `gh api` aborts
-  # under `set -e` instead of vanishing inside a subshell.
-  comments_json="$(gh api "repos/${REPO}/issues/${TARGET}/comments" --paginate --jq '.[] | {body, at: .created_at, uid: .user.id, login: .user.login} | tojson')"
-  reviews_json="$(gh api "repos/${REPO}/pulls/${TARGET}/reviews" --paginate --jq '.[] | {body, at: .submitted_at, uid: .user.id, login: .user.login} | tojson')"
+  # A review qualifies only when it is a formal PR review made against this exact head SHA
+  # (`commit_id`). A timestamp would be set by whoever creates the commit (#92), and a comment's
+  # body can certainly be edited after the fact by any writer (#94), so comments never count (whether a
+  # writer can edit a review body is unverified; see threat_model.md Known gaps). A dismissed
+  # or pending review is skipped. Captured
+  # into a variable, not process substitution, so a failing `gh api` aborts under `set -e`
+  # instead of vanishing inside a subshell.
+  reviews_json="$(gh api "repos/${REPO}/pulls/${TARGET}/reviews" --paginate --jq '.[] | select(.state != "DISMISSED" and .state != "PENDING") | {body, at: .submitted_at, sha: .commit_id, uid: .user.id, login: .user.login} | tojson')"
 
   found_at=""
   while IFS= read -r item; do
@@ -149,6 +150,7 @@ review_logic() {
     # pasted strings does not make the reply qualify.
     body="$(printf '%s' "$item" | jq -r '.body // "" | split("\n") | map(select(test("^\\s*>") | not)) | join("\n")')"
     at="$(printf '%s' "$item" | jq -r '.at // ""')"
+    sha="$(printf '%s' "$item" | jq -r '.sha // ""')"
     uid="$(printf '%s' "$item" | jq -r '.uid // ""')"
     login="$(printf '%s' "$item" | jq -r '.login // ""')"
     # Who posted it counts: anyone can paste the two strings. Only an ID in REVIEWER_IDS
@@ -157,17 +159,19 @@ review_logic() {
     if ! [[ "$uid" =~ ^[0-9]+$ && " ${REVIEWER_IDS} " == *" ${uid} "* ]]; then
       # Name the cause in the log, so a skipped review doesn't look like a missing one.
       if [[ "$body" == *"$HEADER"* && "$body" == *"$ATTESTATION"* ]]; then
-        echo "Skipped a matching comment/review by ${login:-<none>} (id ${uid:-<none>}): not in REVIEWER_IDS."
+        echo "Skipped a matching review by ${login:-<none>} (id ${uid:-<none>}): not in REVIEWER_IDS."
       fi
       continue
     fi
-    if [[ "$body" == *"$HEADER"* && "$body" == *"$ATTESTATION"* ]] \
-       && [[ "$at" > "$head_date" || "$at" == "$head_date" ]]; then
-      found_at="$at"
-      echo "Qualifying review found, posted ${at}."
-      break
+    if [[ "$body" == *"$HEADER"* && "$body" == *"$ATTESTATION"* ]]; then
+      if [ "$sha" = "$HEAD_SHA" ]; then
+        found_at="$at"
+        echo "Qualifying review found, posted ${at}."
+        break
+      fi
+      echo "Skipped a matching review by ${login:-<none>}: made against ${sha:-<no commit>}, not the head ${HEAD_SHA}."
     fi
-  done <<< "${comments_json}"$'\n'"${reviews_json}"
+  done <<< "${reviews_json}"
 
   if [ -n "$found_at" ]; then
     post_status success "Fresh-session review found (${found_at})."
@@ -176,7 +180,7 @@ review_logic() {
     # `gh api` prints no trailing newline, and the runner reads a workflow command
     # only at the start of a line, so this `echo` is what makes the ::error:: render.
     echo
-    echo "::error::No fresh-session review posted against head commit ${HEAD_SHA} (${head_date}) yet. A PR comment or review by a user in REVIEWER_IDS containing both \"${HEADER}\" and \"${ATTESTATION}\", posted at or after that commit, is required."
+    echo "::error::No fresh-session review posted against head commit ${HEAD_SHA} yet. A formal PR review by a user in REVIEWER_IDS, made against that commit and containing both \"${HEADER}\" and \"${ATTESTATION}\", is required."
     # Exit 0 on purpose: the status above is the enforcement.
   fi
   return 0

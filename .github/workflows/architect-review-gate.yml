@@ -14,14 +14,15 @@ name: Architect Review Gate
 #   * the `decide` pin, as `@<sha> # vX.Y` (a bare tag fails the reusable workflow's SHA check).
 #
 # review.ci_gate (.ai/project.yml): stays red on a PR that touches code_paths until a
-# fresh-session review is posted, as a PR comment or a formal PR review, against the PR's
-# CURRENT head commit. HEADER and ATTESTATION must match review.ci_gate.header/.attestation
-# in .ai/project.yml byte for byte. This is a literal substring match, not an intent match: a
+# fresh-session review is posted as a formal PR review made against the PR's CURRENT head
+# commit (its `commit_id` is the head SHA; a PR comment never counts).
+# HEADER and ATTESTATION must match review.ci_gate.header/.attestation in .ai/project.yml
+# byte for byte. This is a literal substring match, not an intent match: a
 # paraphrase turns the check red, and the failure looks like a review problem.
 #
 # This is an EXISTENCE gate, not a verdict gate. It checks that a fresh-session review was
-# posted, not what the review concluded; the human still reads it before merging. A comment
-# or review counts only when its author's numeric user ID is in REVIEWER_IDS, since anyone
+# posted, not what the review concluded; the human still reads it before merging. A review
+# counts only when its author's numeric user ID is in REVIEWER_IDS, since anyone
 # can paste the two strings. Not author_association: org membership can be private, and this
 # job's token then reads it as CONTRIBUTOR. IDs, not logins, because a released login can be
 # claimed by someone else.
@@ -40,7 +41,9 @@ name: Architect Review Gate
 #
 # issue_comment runs use the workflow file on the DEFAULT branch; pull_request and
 # pull_request_review runs use the PR's own copy. So a comment re-evaluates a PR with main's
-# gate, and a formal review with the PR's.
+# gate, and a formal review with the PR's. A comment never counts toward the status; it only
+# re-runs the gate. So on a fork PR, whose pull_request_review token is read-only, the reviewer
+# posts the formal review and then an allowlisted comment, and main's gate finds the review.
 
 on:
   pull_request:
@@ -54,7 +57,7 @@ permissions: {}
 
 # >>> CONSUMER: review values
 env:
-  # Space-separated numeric GitHub user IDs whose comment or review counts.
+  # Space-separated numeric GitHub user IDs whose formal review counts.
   # 281693088 = JaredGroves-603. A PR changing this list is checked by its own edited copy on
   # pull_request and pull_request_review runs, so the human's merge is the real control on it.
   REVIEWER_IDS: "281693088"
@@ -252,7 +255,7 @@ jobs:
       statuses: write       # post the `architect-review` commit status
       contents: write       # arm and disarm auto-merge
       pull-requests: write  # arm and disarm auto-merge
-      issues: read          # PR comments, which the API serves as issue comments
+      issues: read          # PR comments (unused by post now; dropping the scope is a follow-up)
     # One run at a time per (workflow, head SHA), so the status for a SHA comes from one
     # function run serially. GitHub keeps the last-queued run and cancels older PENDING ones
     # while a running one finishes (cancel-in-progress is false so a running post is never
@@ -371,8 +374,8 @@ jobs:
           # to decide that no review is needed). Plain call, never inside `if`/`||`, so `set -e` stays
           # in force: a failed `gh api` must fail closed, never read as "nothing in scope".
           review_logic() {
-            local force_scope="$1" files f touches=0 head_date comments_json reviews_json found_at
-            local item body at uid login
+            local force_scope="$1" files f touches=0 reviews_json found_at
+            local item body at sha uid login
 
             # Posted first so the required check shows `pending`, not absent, while this runs.
             post_status pending "Checking for a fresh-session review..."
@@ -410,13 +413,14 @@ jobs:
               return 0
             fi
 
-            head_date="$(gh api "repos/${REPO}/commits/${HEAD_SHA}" --jq '.commit.committer.date')"
-            echo "Head commit: ${HEAD_SHA} (${head_date})"
-
-            # Captured into variables, not process substitution, so a failing `gh api` aborts
-            # under `set -e` instead of vanishing inside a subshell.
-            comments_json="$(gh api "repos/${REPO}/issues/${TARGET}/comments" --paginate --jq '.[] | {body, at: .created_at, uid: .user.id, login: .user.login} | tojson')"
-            reviews_json="$(gh api "repos/${REPO}/pulls/${TARGET}/reviews" --paginate --jq '.[] | {body, at: .submitted_at, uid: .user.id, login: .user.login} | tojson')"
+            # A review qualifies only when it is a formal PR review made against this exact head SHA
+            # (`commit_id`). A timestamp would be set by whoever creates the commit (#92), and a comment's
+            # body can certainly be edited after the fact by any writer (#94), so comments never count (whether a
+            # writer can edit a review body is unverified; see threat_model.md Known gaps). A dismissed
+            # or pending review is skipped. Captured
+            # into a variable, not process substitution, so a failing `gh api` aborts under `set -e`
+            # instead of vanishing inside a subshell.
+            reviews_json="$(gh api "repos/${REPO}/pulls/${TARGET}/reviews" --paginate --jq '.[] | select(.state != "DISMISSED" and .state != "PENDING") | {body, at: .submitted_at, sha: .commit_id, uid: .user.id, login: .user.login} | tojson')"
 
             found_at=""
             while IFS= read -r item; do
@@ -425,6 +429,7 @@ jobs:
               # pasted strings does not make the reply qualify.
               body="$(printf '%s' "$item" | jq -r '.body // "" | split("\n") | map(select(test("^\\s*>") | not)) | join("\n")')"
               at="$(printf '%s' "$item" | jq -r '.at // ""')"
+              sha="$(printf '%s' "$item" | jq -r '.sha // ""')"
               uid="$(printf '%s' "$item" | jq -r '.uid // ""')"
               login="$(printf '%s' "$item" | jq -r '.login // ""')"
               # Who posted it counts: anyone can paste the two strings. Only an ID in REVIEWER_IDS
@@ -433,17 +438,19 @@ jobs:
               if ! [[ "$uid" =~ ^[0-9]+$ && " ${REVIEWER_IDS} " == *" ${uid} "* ]]; then
                 # Name the cause in the log, so a skipped review doesn't look like a missing one.
                 if [[ "$body" == *"$HEADER"* && "$body" == *"$ATTESTATION"* ]]; then
-                  echo "Skipped a matching comment/review by ${login:-<none>} (id ${uid:-<none>}): not in REVIEWER_IDS."
+                  echo "Skipped a matching review by ${login:-<none>} (id ${uid:-<none>}): not in REVIEWER_IDS."
                 fi
                 continue
               fi
-              if [[ "$body" == *"$HEADER"* && "$body" == *"$ATTESTATION"* ]] \
-                 && [[ "$at" > "$head_date" || "$at" == "$head_date" ]]; then
-                found_at="$at"
-                echo "Qualifying review found, posted ${at}."
-                break
+              if [[ "$body" == *"$HEADER"* && "$body" == *"$ATTESTATION"* ]]; then
+                if [ "$sha" = "$HEAD_SHA" ]; then
+                  found_at="$at"
+                  echo "Qualifying review found, posted ${at}."
+                  break
+                fi
+                echo "Skipped a matching review by ${login:-<none>}: made against ${sha:-<no commit>}, not the head ${HEAD_SHA}."
               fi
-            done <<< "${comments_json}"$'\n'"${reviews_json}"
+            done <<< "${reviews_json}"
 
             if [ -n "$found_at" ]; then
               post_status success "Fresh-session review found (${found_at})."
@@ -452,7 +459,7 @@ jobs:
               # `gh api` prints no trailing newline, and the runner reads a workflow command
               # only at the start of a line, so this `echo` is what makes the ::error:: render.
               echo
-              echo "::error::No fresh-session review posted against head commit ${HEAD_SHA} (${head_date}) yet. A PR comment or review by a user in REVIEWER_IDS containing both \"${HEADER}\" and \"${ATTESTATION}\", posted at or after that commit, is required."
+              echo "::error::No fresh-session review posted against head commit ${HEAD_SHA} yet. A formal PR review by a user in REVIEWER_IDS, made against that commit and containing both \"${HEADER}\" and \"${ATTESTATION}\", is required."
               # Exit 0 on purpose: the status above is the enforcement.
             fi
             return 0
