@@ -1,22 +1,23 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Implementing; #128 is next.
+**Now:** Milestone 4, Repo hardening: review gate and CI. Awaiting review on #288 (#128).
 
-**Just done** (architect session on opus, last_commit `996ddd6`):
-- Closed #233 by hand. #274 (merged as `d334c02`) did its work but did not close it.
-- The owner picked #128 (build-order item 12) as the next task, "for now". Items 1-10a are
-  closed, so the build order's next step is item 11, the `v1.3` tag. It is owner-owned and not
-  yet tagged; it does not block #128.
-- First anchor for #128, description sha `8bc5e03e`: this session's resume did not verify the
-  prior anchor (the gate was open), so there was no baseline. The handoff-time
-  `verify --plan` against the prior anchor printed `match`.
+**Just done** (coder session on sonnet, last_commit `fbe9a25`):
+- #128 built and opened as PR #288 on `chore/go-1.26.8-buildkit-0.33.1`: Go 1.26.3 -> 1.26.8 and
+  buildkit v0.33.0 -> v0.33.1 together (go.mod, go.sum, vendor/modules.txt, every setup-go pin,
+  the gate comment in `.ai/project.yml`, the `TestBuildkitMatchesFrontend` mapping).
+  `PreviousSyntax` deliberately untouched, per #128.
+- Local green gate: all steps pass in WSL. The `go test` step ran with `GOTOOLCHAIN=go1.26.8`
+  because WSL's Go is 1.26.3; a literal `GOTOOLCHAIN=local` run needs 1.26.8 installed first.
+- Critic gate: `architect` + `security-critic`, 1 round, no blocking findings. One cosmetic nit
+  (a test comment's wording) was applied without a re-run. Plan anchor re-verified `match`.
 
-**Next:** task #128 — Move Go and buildkit together (M4 build-order item 12), per #128's spec.
-Model: **sonnet** (coder). Critic gate: `architect` + `security-critic`. Then
-`/way-of-working:ship` and a fresh-session opus architect review.
+**Next:** `/way-of-working:architect-review 288`. Model: **opus** (architect), in a **new
+window**: the gate needs a fresh session. #288 touches `tools/` and `.github/`, so
+`architect-review` stays red until it is posted on the head SHA.
 
-**HITL Gate: OPEN.** Owner "go" on the first #128 anchor (above). Separately, the `v1.3` tag
-(owner-owned) is still outstanding and does not block #128.
+**HITL Gate: NONE OPEN.** The next gate is the owner's merge of #288. The `v1.3` tag
+(build-order item 11, owner-owned) is still outstanding and does not block it.
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01.
