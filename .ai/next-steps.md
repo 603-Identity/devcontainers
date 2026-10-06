@@ -1,25 +1,22 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Implementing; next task not yet picked.
+**Now:** Milestone 4, Repo hardening: review gate and CI. Implementing; #164 picked, coder next.
 
-**Just done** (architect session on opus, last_commit `727a5b0`):
-- Posted the fresh-session architect review on PR #288 (#128) against head `fbe9a25`.
-  `architect-review` went green on that SHA (commit status). Verdict: no blocking findings.
-  The owner merged it as `727a5b0`, closing #128 (Go 1.26.8, buildkit v0.33.1).
-- Reviewed without local execution: the PR changed dependency manifests and `.github/`.
-  Verified statically instead: `go.sum` matches sum.golang.org; the seven vendored buildkit
-  packages are byte-identical to the v0.33.1 module zip (and to v0.33.0); no `1.26.3` left;
-  `dockerfile/1.27.1` is v0.33.1 plus a version-string commit.
-- No findings filed.
-- First anchor for milestone 4 at this handoff without a resume-verified baseline (resume ran on
-  `awaiting_review`, so it did not verify): `verify --plan` printed `match`, description sha
-  `8bc5e03e` unchanged.
+**Just done** (architect session on opus, last_commit `1b0716f`):
+- The owner picked #164 (build-order item 13): `resolve_yq` reads the tarball's hash, but the
+  image pins the raw binary. Author MEMBER; the issue body is the spec (no spec comment).
+- First anchor for #164 without a resume-verified baseline (resume waited on the pick before it
+  verified): `verify --plan` printed `match`, description sha `8bc5e03e` unchanged.
 
-**Next:** pick the next milestone-4 task with the owner and hand it off to a coder session.
-Model: **opus** (architect) for the pick.
+**Next:** task #164 — make `resolve_yq` in `.github/scripts/bump-binaries.sh` read the raw
+`yq_linux_amd64` hash (what `images/base/Dockerfile` checks against `YQ_SHA256`), and add a
+gate-test fixture that fails when any tool's resolver asset name differs from the one the
+Dockerfile downloads. Green gate in WSL, then `/way-of-working:critic-gate` (`architect` +
+`security-critic`, per the milestone) and `/way-of-working:ship`.
+Model: **sonnet** (coder).
 
-**HITL Gate: OPEN.** The owner's pick of the next M4 task, and the `v1.3` tag (build-order
-item 11, owner-owned).
+**HITL Gate: OPEN.** The #164 anchor needs a human "go" (first anchor, no resume-verified
+baseline). The `v1.3` tag (build-order item 11, owner-owned) is unblocked: items 4-7 are closed.
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01.
