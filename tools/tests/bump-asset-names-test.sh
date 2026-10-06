@@ -91,7 +91,20 @@ case "$url" in
   *checksums_hashes_order) printf 'MD5\nSHA-1\nSHA-256\n' ;;
   *dist/index.json) printf '[{"version":"v%s","lts":"Fake"}]' "$FAKE_VER" ;;
   *sigstore.json) printf '{}' > "$out" ;;
-  *) if [ -n "$out" ]; then printf '%s' "$FAKE_BODY" > "$out"; else printf '%s' "$FAKE_BODY"; fi ;;
+  *) if [ -n "$out" ]; then printf '%s' "$FAKE_BODY" > "$out"
+     else
+       # FAKE_PAD: that many decoy lines AFTER the body, so a reader that stops at the first
+       # match closes the pipe while this is still writing. Like real curl, fail with 23 when a
+       # write fails (SIGPIPE ignored, so the failed write is seen).
+       trap '' PIPE
+       printf '%s' "$FAKE_BODY" || exit 23
+       # FAKE_CURL_RC: the transfer dies (this exit code) after the whole body was written.
+       [ -z "${FAKE_CURL_RC:-}" ] || exit "$FAKE_CURL_RC"
+       if [ -n "${FAKE_PAD:-}" ]; then
+         printf '\n' || exit 23
+         awk -v n="$FAKE_PAD" 'BEGIN { for (i = 0; i < n; i++) print "decoy" i " md5 sha1 " i }' || exit 23
+       fi
+     fi ;;
 esac
 C
   chmod +x "$SCRATCH/bin/"*
@@ -109,6 +122,43 @@ while IFS='|' read -r tool dir ver_arg sha_arg tag; do
   assert_rc "$tool bump runs" 0 "$rc"
   if [ "$got" = "$SHA_GOOD" ]; then pass
   else fail "$tool: resolver reads the checksum of $asset, the asset its Dockerfile downloads" "wrote '$got': $(cat "$SCRATCH/out")"; fi
+  rm -rf "$SCRATCH"
+done <<< "$TOOLS"
+
+# A checksum file longer than the pipe buffer, with the wanted line before the bulk: a resolver
+# that pipes curl into an awk that exits on the first match makes curl fail with exit 23 (seen on
+# yq, #102). Every tool must still resolve.
+while IFS='|' read -r tool dir ver_arg sha_arg tag; do
+  asset="$(dockerfile_asset "$ROOT_DIR/images/$dir/Dockerfile" "$ver_arg")" || asset=""
+  if [ -z "$asset" ]; then fail "$tool: found the asset its Dockerfile downloads"; continue; fi
+  setup "$dir"
+  FAKE_PAD=40000 FAKE_BODY="$(checksum_body "$tool" "$asset")" FAKE_TAG="$tag" FAKE_VER="$NEW_VER" \
+    PATH="$SCRATCH/bin:/usr/bin:/bin" REPO=o/r APP_SLUG=app BOT_USER_ID=1 GH_TOKEN=t \
+    bash "$R/.github/scripts/bump-binaries.sh" "$tool" > "$SCRATCH/out" 2>&1
+  rc=$?
+  got="$(sed -n "s/^ARG ${sha_arg}=//p" "$R/images/$dir/Dockerfile")"
+  assert_rc "$tool bump runs against a large checksum file" 0 "$rc"
+  if [ "$got" = "$SHA_GOOD" ]; then pass
+  else fail "$tool: a large checksum file still resolves the right hash" "wrote '$got': $(cat "$SCRATCH/out")"; fi
+  rm -rf "$SCRATCH"
+done <<< "$TOOLS"
+
+
+# A transfer that fails AFTER the wanted line arrived must fail the bump, not be accepted
+# (sha256_line runs inside `$( )`, where `set -e` does not reach). betterleaks downloads with
+# `curl -o` under top-level `set -e`, and cosign verifies the file, so it is left out here.
+while IFS='|' read -r tool dir ver_arg sha_arg tag; do
+  [ "$tool" != betterleaks ] || continue
+  asset="$(dockerfile_asset "$ROOT_DIR/images/$dir/Dockerfile" "$ver_arg")" || asset=""
+  if [ -z "$asset" ]; then fail "$tool: found the asset its Dockerfile downloads"; continue; fi
+  setup "$dir"
+  FAKE_CURL_RC=18 FAKE_BODY="$(checksum_body "$tool" "$asset")" FAKE_TAG="$tag" FAKE_VER="$NEW_VER" \
+    PATH="$SCRATCH/bin:/usr/bin:/bin" REPO=o/r APP_SLUG=app BOT_USER_ID=1 GH_TOKEN=t \
+    bash "$R/.github/scripts/bump-binaries.sh" "$tool" > "$SCRATCH/out" 2>&1
+  rc=$?
+  got="$(sed -n "s/^ARG ${sha_arg}=//p" "$R/images/$dir/Dockerfile")"
+  if [ "$rc" -ne 0 ]; then pass; else fail "$tool: a transfer that dies after the wanted line fails the bump" "exit $rc: $(cat "$SCRATCH/out")"; fi
+  if [ "$got" != "$SHA_GOOD" ]; then pass; else fail "$tool: nothing is written from a failed transfer" "wrote the hash"; fi
   rm -rf "$SCRATCH"
 done <<< "$TOOLS"
 

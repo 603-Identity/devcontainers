@@ -38,8 +38,17 @@ CHECKSUM_URL=""
 # sha256_line <url> <asset-filename> -> the sha256 field of a "sha256  filename" line.
 # gh, tflint, tofu and uv all publish this exact format (verified against gh, tflint,
 # tofu and uv's own checksum files; a format change elsewhere fails closed below).
+#
+# The file is read into a variable first, never piped into an awk that `exit`s on the first
+# match: awk closing the pipe while curl is still writing makes curl fail with exit 23 under
+# `pipefail`, and whether it does depends on the file's size and timing (first seen on a yq
+# run, #102). Every caller runs this inside `$( )`, where `set -e` does not reach, so a failed
+# curl must `return 1` here: without it a transfer that dies after the wanted line arrived
+# would be accepted.
 sha256_line() {
-  curl -fsSL "$1" | awk -v f="$2" '$2 == f { print $1; exit }'
+  local body
+  body="$(curl -fsSL "$1")" || return 1
+  awk -v f="$2" '$2 == f { print $1; exit }' <<< "$body"
 }
 
 # latest_release <owner/repo> -> tag_name and html_url from ONE API call, as
@@ -58,7 +67,7 @@ resolve_gh() {
 }
 
 resolve_yq() {
-  local tag order_url sums_url field
+  local tag order_url sums_url field sums
   IFS=$'\t' read -r tag RELEASE_URL <<< "$(latest_release mikefarah/yq)"
   NEW_VERSION="${tag#v}"
   # The checksums file lists one hash per algorithm, in the order this sidecar file
@@ -71,8 +80,9 @@ resolve_yq() {
   [ -n "$field" ] || { echo "::error::yq: SHA-256 not found in $order_url" >&2; exit 1; }
   field=$((field + 1))
   sums_url="https://github.com/mikefarah/yq/releases/download/${tag}/checksums"
-  NEW_CHECKSUM="$(curl -fsSL "$sums_url" \
-    | awk -v f="yq_linux_amd64" -v col="$field" '$1 == f { print $col; exit }')"
+  # Read into a variable first (see sha256_line): an early-exiting awk on a curl pipe races.
+  sums="$(curl -fsSL "$sums_url")"
+  NEW_CHECKSUM="$(awk -v f="yq_linux_amd64" -v col="$field" '$1 == f { print $col; exit }' <<< "$sums")"
   # Two files decide the hash: the column comes from the order file, the value from this one.
   CHECKSUM_URL="$sums_url (SHA-256 column per $order_url)"
 }
