@@ -9,23 +9,25 @@ owner's merge.
   `b94ea24`: no blocking findings. Reproduced in a WSL sandbox (gate tests, five mutations each turning a test
   red, the #263 rule against pinned Betterleaks 2.0.0-rc.1); the image smoke check was taken from CI. The
   `architect-review` gate went green on that head; `/way-of-working:pr-checks` verdict: READY (admin merge).
-- Filed the PR's four non-blocking findings, unmilestoned: #348 (a second secret straight after another is not
-  reported), #349 (the guard's SHA-pin check accepts a branch named `x@<40hex>`), #350 (unfiltered `err.log`
-  tail on the did-not-complete path), #351 ("incomplete scan" text inside a finding record).
+- Filed the PR's four non-blocking findings: #348 (a second secret straight after another is not reported),
+  #349 (the guard's SHA-pin check accepts a branch named `x@<40hex>`), #350 (unfiltered `err.log` tail on the
+  did-not-complete path), #351 ("incomplete scan" text inside a finding record).
+- `/way-of-working:plan-sprint`: placed every unmilestoned issue (#334, #335, #341, #348-#351) in milestone 4,
+  with a triage comment on each. Rewrote milestone 4's build order (owner-approved): new step 6 is the
+  secret-scan follow-ups before `v1.4`, the release moves to step 7, the #341 + #334 + #335 lint PR is step 8,
+  and #234 is step 9. Re-anchored to the new description.
 
-**Next:** once the owner has merged #346, on **opus** (architect): check that M4 steps 3-5 are all on `main`,
-then prepare the `v1.4` release (M4 step 6) and stop for the owner to approve and cut the tag. The pilots
-re-copy the gate and bump their pins in their own repos.
+**Next:** once the owner has merged #346, on **opus** (architect): take the #348 fix-or-record decision to the
+owner (M4 step 6, as #263 was decided) and record it on the issue, then hand step 6 (#349 + #350 + #351 + #348,
+one PR) to a sonnet coder session. `v1.4` (step 7) waits for step 6.
 
 **HITL Gate: OPEN.** The owner's merge of #346:
 `gh pr merge 346 --repo 603-Identity/devcontainers --squash --admin --match-head-commit b94ea2481e4f8bc0d016383c14f7b3cb541c014c`.
-Then the `v1.4` tag is itself an owner gate.
+Then the owner's #348 decision; the `v1.4` tag is itself an owner gate.
 
 **Open for the owner (non-blocking):**
-- Place #348-#351 (from the #346 review) in a milestone; #349 and #350 change the tagged secret-scan surface.
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01; #329 rides
   along. Milestone 6 step 2 starts with your live App-token merge test (#327).
-- Place #341 in a milestone (it fits beside M4's lint work, or #234).
 - The `bump-binaries` Environment still lets admins bypass its protection rules; turning that off is optional.
 - Delete the local branch `docs/sync-cursor-bumps-merged` (its PR #330 was closed unmerged) and
   `test/verify-pin-negative-10` on terraform-microsoft365-entra.
