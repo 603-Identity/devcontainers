@@ -1,25 +1,23 @@
 # Next steps
 
 **Now:** Milestone 4, Repo hardening: review gate and CI, re-scoped 2026-10-06 to what the adoption waves copy,
-pin or run, ending in `v1.4`. Build-order step 3 merged; step 4 is next, waiting on the owner's go.
+pin or run, ending in `v1.4`. Build-order step 4 (#278, gate side) is built and in review as PR #343.
 
-**Just done** (architect session on opus, last_commit `18cc928`):
-- Posted the fresh-session review of PR #339 (no blocking findings; the suite and three guard-removal mutations
-  were reproduced in an isolated sandbox in WSL). The `architect-review` check went green; the owner merged it as
-  `18cc928`, closing #315, #281, #282 and #317.
-- Filed the review's one non-blocking finding as #341 (the consumer lint does not check the gate's
-  `pull_request_review` trigger types). It has no milestone yet.
-- Re-anchored milestone 4 on task #278; the description is unchanged since the last anchor. The previous
-  ledger called step 4 "#220". The milestone's build order puts #278 at step 4 and #220 in step 5.
+**Just done** (coder session on sonnet, last_commit `0b2e8b8`):
+- Built #278's gate side: `tools/gate-post.sh` requires the line `Reviewed against head <sha>` in a qualifying
+  review's quote-stripped body, re-rendered into `template/` and this repo's gate, with gate-post tests, the gate
+  header comment, the threat model's Known gaps and the roadmap updated. Backticks around the SHA and one trailing
+  period match (the #339 review wrote ``Reviewed against head `<sha>`.``); tested both ways.
+- Critic pass (security-critic, architect, docs-consistency): 2 rounds, converged; the first round's fixes
+  (the trailing period, stale gate header comment, threat-model wording) were re-run clean.
+- Shipped as PR #343 from `ci/gate-reviewed-against-head-278`; not merged. The plugin half of #278 (the skill posting
+  with `commit_id` pinned) stays open as a Known-gaps residual, so #278 stays open.
 
-**Next:** task #278 — build M4 build-order step 4 on **sonnet** (coder), gate-side option only: the gate also
-requires the literal line `Reviewed against head ${HEAD_SHA}` in the qualifying review's quote-stripped body, in
-`tools/gate-template.yml.in` / `tools/gate-post.sh`, re-rendered, with gate-post tests and the threat model's Known
-gaps updated. Decide and test whether backticks around the SHA match: the #339 review wrote the line as
-``Reviewed against head `<sha>`.`` Then `/way-of-working:critic-gate` and `/way-of-working:ship`. Never merge.
+**Next:** `/way-of-working:architect-review 343` from a NEW session on **opus** (architect), in an isolated sandbox
+in WSL. Never approve, never merge.
 
-**HITL Gate: OPEN.** The owner confirms the start of step 4 (#278). After that: the fresh-session
-architect-review of the step 4 PR, then the owner's merge.
+**HITL Gate: OPEN.** The fresh-session architect-review of PR #343, then the owner's merge. Step 5 needs your call
+on #263.
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01; #329 rides
