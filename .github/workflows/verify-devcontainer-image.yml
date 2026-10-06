@@ -40,7 +40,7 @@ jobs:
             exit 1
           fi
           # A caller pinned to a branch or tag would run mutable code.
-          if ! [[ "$WORKFLOW_REF" =~ @[0-9a-f]{40}$ ]]; then
+          if ! [[ "$WORKFLOW_REF" =~ ^[^@]+@[0-9a-f]{40}$ ]]; then
             echo "::error::pin this workflow to a full commit SHA (@<sha> # vX.Y), not a ref."
             exit 1
           fi

@@ -43,15 +43,21 @@ finding.secret matches "^AAAA[BC]3NzaC"
 # default aws-access-token only with a secret key nearby). A lone secret is the common leak.
 # No validate/components: detection only.
 #
-# org-azure-ad-client-secret departs from upstream gitleaks on purpose twice: it has no component
-# gate (above), and (#263) a literal \n, \r or \t counts as a boundary before the secret, so one
-# pasted straight after an escape inside a JSON or shell string is found. Upstream needs a
-# boundary character and the escape's letter is not one. The rule exists for how Entra secrets
-# actually leak.
+# org-azure-ad-client-secret departs from upstream gitleaks on purpose three times: it has no
+# component gate (above); (#263) a literal \n, \r or \t counts as a boundary before the secret, so
+# one pasted straight after an escape inside a JSON or shell string is found (upstream needs a
+# boundary character and the escape's letter is not one); and (#348) it has no trailing boundary.
+# Upstream's trailing boundary is consumed by the match, so in `<S>\n<S>` (literal backslash-n) or
+# `,<S1>,<S2>,` the first match swallowed the separator the second secret needs as its leading
+# boundary and only one finding was reported. RE2 has no lookahead, so the boundary is dropped and
+# the match ends at the {31,34} upper bound. Cost: nothing is required after the secret any more,
+# so it also fires when any character follows it, or on the first 38-40 characters of a longer
+# run containing `<3 chars><digit>Q~`; rare, since ~ is not base64 and the entropy filter applies.
+# The rule exists for how Entra secrets actually leak.
 [[rules]]
 id = "org-azure-ad-client-secret"
 description = "Entra ID / Azure AD client secret (standalone, no component gate)"
-regex = '''(?:^|[\\'"\x60\s>=:(,)]|\\[nrt])([a-zA-Z0-9_~.]{3}\dQ~[a-zA-Z0-9_~.-]{31,34})(?:$|[\\'"\x60\s<),])'''
+regex = '''(?:^|[\\'"\x60\s>=:(,)]|\\[nrt])([a-zA-Z0-9_~.]{3}\dQ~[a-zA-Z0-9_~.-]{31,34})'''
 keywords = ["0q~", "1q~", "2q~", "3q~", "4q~", "5q~", "6q~", "7q~", "8q~", "9q~"]
 confidence = "high"
 filter = '''entropy(finding.secret) <= 3.0'''

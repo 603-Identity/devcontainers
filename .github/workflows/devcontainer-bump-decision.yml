@@ -57,7 +57,7 @@ jobs:
             pull_request|issue_comment|pull_request_review) ;;
             *) echo "::error::decide does not run on '$EVENT_NAME'."; exit 1 ;;
           esac
-          if ! [[ "$WORKFLOW_REF" =~ @[0-9a-f]{40}$ ]]; then
+          if ! [[ "$WORKFLOW_REF" =~ ^[^@]+@[0-9a-f]{40}$ ]]; then
             echo "::error::pin this workflow to a full commit SHA (@<sha> # vX.Y), not a ref."
             exit 1
           fi

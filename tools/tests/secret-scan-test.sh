@@ -35,6 +35,8 @@ case "$mode" in
   zeroline)   echo '{"schema_version":"1","finding":{"rule_id":"org-pem","location":{"path":"z.tf","start_line":0}}}'
               echo '{"schema_version":"1","finding":{"rule_id":"org-neg","location":{"path":"n.tf","start_line":-2}}}'
               echo '{"schema_version":"1","scan":{"state":"complete"}}'; exit 1 ;;
+  errcmd)     printf '%s\n' 'config error' '::error::injected' '::add-mask::x' $'x\r::add-mask::y' '##[error]z' >&2; exit 1 ;;
+  findinc)    echo '{"schema_version":"1","finding":{"rule_id":"org-x","location":{"path":"incomplete scan.tf","start_line":2}}}'; echo '{"schema_version":"1","scan":{"state":"complete"}}'; exit 1 ;;
   exit1clean) echo '{"schema_version":"1","scan":{"state":"complete"}}'; exit 1 ;;
 esac
 B
@@ -117,6 +119,19 @@ err_has "and says it did not complete" "scan did not complete (state: incomplete
 MODE=jsonlinc run
 assert_rc "a complete record with 'incomplete scan' in the JSONL fails" 1 "$RC"
 err_has "and says it did not complete too" "scan did not complete (state: incomplete"
+
+# #350: scanner stderr on the did-not-complete path is prefixed, so no line starts with a workflow command.
+MODE=errcmd run
+assert_rc "a did-not-complete run still fails" 1 "$RC"
+err_has "stderr is echoed, prefixed" "  | ::error::injected"
+err_lacks "no legacy ##[ command survives" "##["
+assert_eq "no carriage return survives" 0 "$(tr -cd '\r' < "$T/err" | wc -c | tr -d ' ')"
+if grep -q '^::error::injected\|^::add-mask::' "$T/err"; then fail "no stderr line starts with a workflow command" "$(cat "$T/err")"; else pass; fi
+# #351: a finding whose path says 'incomplete scan' is a findings failure, not did-not-complete.
+MODE=findinc run
+assert_rc "a finding with 'incomplete scan' in its path fails" 1 "$RC"
+err_has "and is reported as a finding" "finding(s)"
+err_lacks "not as did-not-complete" "scan did not complete"
 
 # #220: a start_line below 1 is not a line to anchor an annotation at.
 MODE=zeroline run

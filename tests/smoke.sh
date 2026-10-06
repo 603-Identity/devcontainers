@@ -77,8 +77,8 @@ bl_out=$(bl_scan "$bl_leak") || bl_rc=$?
 check "betterleaks planted token exit" 1 "$bl_rc"
 check "betterleaks planted token rule" org-high-entropy-quoted \
     "$(printf '%s\n' "$bl_out" | jq -rs '[.[] | select(has("finding")) | .finding.rule_id] | first')"
-# #198: a backslash is a boundary on both sides of an Entra client secret (as in upstream
-# gitleaks), so one inside an escaped string is still found. Derived from the same fixed string.
+# #198: a backslash before an Entra client secret is a boundary (as in upstream gitleaks) and
+# nothing is required after it (#348), so one inside an escaped string is still found. Derived from the same fixed string.
 printf 'x\\%s%s\\y\n' 'xyz7Q~' "$(printf %s "$bl_tok" | cut -c1-34)" > "$bl/b.txt"
 git -C "$bl" add -A
 git -C "$bl" commit -qm 'entra leak'
@@ -98,6 +98,27 @@ bl_out=$(bl_scan "$bl_entra..$bl_esc") || bl_rc=$?
 check "betterleaks escape-bounded Entra secret exit" 1 "$bl_rc"
 check "betterleaks escape-bounded Entra secret rule" 1 \
     "$(printf '%s\n' "$bl_out" | jq -rs '[.[] | select(has("finding")) | select(.finding.rule_id == "org-azure-ad-client-secret")] | length | if . > 0 then 1 else 0 end')"
+# #348: the rule has no trailing boundary, so a secret straight after another is a second
+# finding, not swallowed by the first match. Two secrets on one line, joined by a literal backslash-n and
+# followed by a backslash, then two joined by commas.
+bl_s="$(printf %s 'xyz7Q~'; printf %s "$bl_tok" | cut -c1-34)"
+printf '%s\\n%s\\y\n' "$bl_s" "$bl_s" > "$bl/d.txt"
+git -C "$bl" add -A
+git -C "$bl" commit -qm 'two entra secrets, backslash-separated'
+bl_two=$(git -C "$bl" rev-parse HEAD)
+bl_rc=0
+bl_out=$(bl_scan "$bl_esc..$bl_two") || bl_rc=$?
+check "betterleaks adjacent Entra secrets exit" 1 "$bl_rc"
+check "betterleaks adjacent Entra secrets (backslash) both found" 2 \
+    "$(printf '%s\n' "$bl_out" | jq -rs '[.[] | select(has("finding")) | select(.finding.rule_id == "org-azure-ad-client-secret")] | length')"
+printf ',%s,%s,\n' "$bl_s" "$bl_s" > "$bl/e.txt"
+git -C "$bl" add -A
+git -C "$bl" commit -qm 'two entra secrets, comma-separated'
+bl_two2=$(git -C "$bl" rev-parse HEAD)
+bl_rc=0
+bl_out=$(bl_scan "$bl_two..$bl_two2") || bl_rc=$?
+check "betterleaks comma-separated Entra secrets both found" 2 \
+    "$(printf '%s\n' "$bl_out" | jq -rs '[.[] | select(has("finding")) | select(.finding.rule_id == "org-azure-ad-client-secret")] | length')"
 rm -rf "$bl"
 check "PATH has ~/.local/bin" 1 "$(printf '%s' ":$PATH:" | grep -c ':/home/app/.local/bin:')"
 check "python3" 3.14 "$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
