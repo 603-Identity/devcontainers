@@ -1,33 +1,28 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Implementing: #85 + #208 for a coder session.
+**Now:** Milestone 4, Repo hardening: review gate and CI. Awaiting review: PR #303 (#85 + #208).
 
-**Just done** (architect session on opus, last_commit `c46372c`):
-- #299 (#86) and its cursor sync #301 merged.
-- The owner picked the next M4 work: #85 and #208, as one PR. Both are in
-  `.github/scripts/bump-binaries.sh`, and both issue bodies give the fix shape.
-- Milestone 4 re-anchored to task #85 without a resume-verified baseline (resume waited on an
-  open gate, so it did not verify): `verify --plan` printed `match`, description sha `8bc5e03e`
-  unchanged.
+**Just done** (coder session on sonnet, last_commit `6ddf1ec`):
+- PR #303 opened, closing #85 and #208, all in `.github/scripts/bump-binaries.sh`: every `resolve_*`
+  sets `CHECKSUM_URL` and the bump PR body carries `Checksum source:`; betterleaks takes release
+  candidates only while its pin is `X.Y.Z-rc.N`. Tests, README and threat-model line 34 updated.
+- Local gate in WSL: the betterleaks, leftover-branch and asset-names suites, `run-gate-tests.sh` and
+  shellcheck pass. The docker steps were not run locally (no Dockerfile or workflow changed); CI runs them.
+- Critic pass (security-critic, architect, docs-consistency): 2 rounds, converged; no second-opinion round
+  (declined). Not the review gate.
+- Follow-up #304 filed (rc pin skips GA when a newer rc exists); unmilestoned, for the owner to place.
+- Milestone 4 re-anchored to no task without a resume-verified baseline (resume waited on an open
+  gate, so it did not verify): `verify --plan` printed `match`, description sha `8bc5e03e` unchanged.
 
-**Next:** task #85 — in one PR closing #85 and #208, in `.github/scripts/bump-binaries.sh`:
-- (#85) Have each `resolve_*` set `CHECKSUM_URL` (the URL the checksum is actually read from)
-  alongside `RELEASE_URL`, and add `Checksum source: $CHECKSUM_URL` to the bump PR body.
-- (#208) Make `resolve_betterleaks` consider prereleases only while the current pin is
-  `X.Y.Z-rc.N`, and only stable releases once it is on GA. Add a
-  `tools/tests/bump-betterleaks-test.sh` case (pin `2.0.0`, only `v2.1.0-rc.1` newer) that
-  expects `up to date`. Update the script header, the README's "Updating a pinned tool" section
-  and the threat-model text that describe the prerelease exception.
-- Run the green gate in WSL, then `/way-of-working:critic-gate` and `/way-of-working:ship`.
+**Next:** `/way-of-working:architect-review 303`, in a new session, on **opus** (architect). Then the
+owner merges #303 and picks the next M4 task.
 
-Model: **sonnet** (coder).
-
-**HITL Gate: OPEN.** The milestone-4 re-anchor to #85 lacks a resume-verified baseline. The
-owner's "go" releases the coder session.
+**HITL Gate: OPEN.** The milestone-4 re-anchor lacks a resume-verified baseline. The owner's "go"
+releases the review session.
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01.
-- Place #255, #256, #263, #276, #278, #281, #282 and #297 in a milestone (or leave them for a
+- Place #255, #256, #263, #276, #278, #281, #282, #297 and #304 in a milestone (or leave them for a
   `/way-of-working:plan-sprint` pass). #267 is unmilestoned on purpose: it is an auto-merge (#139)
   precondition. #94 stays open (narrowed by #279, unverified).
 - Delete branch `test/verify-pin-negative-10` on terraform-microsoft365-entra.
