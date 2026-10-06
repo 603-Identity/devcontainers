@@ -146,7 +146,7 @@ done <<< "$TOOLS"
 
 # A transfer that fails AFTER the wanted line arrived must fail the bump, not be accepted
 # (sha256_line runs inside `$( )`, where `set -e` does not reach). betterleaks downloads with
-# `curl -o` and is covered by its own suite.
+# `curl -o` under top-level `set -e`, and cosign verifies the file, so it is left out here.
 while IFS='|' read -r tool dir ver_arg sha_arg tag; do
   [ "$tool" != betterleaks ] || continue
   asset="$(dockerfile_asset "$ROOT_DIR/images/$dir/Dockerfile" "$ver_arg")" || asset=""
