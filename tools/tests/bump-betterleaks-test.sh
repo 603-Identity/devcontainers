@@ -130,8 +130,8 @@ setup 2.0.0
 releases 'v2.0.0-rc.3\thttps://example.test/rc3\n'
 checksums 2.0.0-rc.3 "$SHA_OK"
 run betterleaks
-assert_rc "an rc below its own GA is a downgrade" 1 "$RC"
-out_has "downgrade" "refuses rc below GA"
+assert_rc "a GA pin with only an rc listed fails closed" 1 "$RC"
+out_has "no release matching" "an rc is not a candidate once the pin is GA (#208)"
 rm -rf "$SCRATCH"
 
 setup 2.0.0-rc.9
@@ -150,6 +150,23 @@ assert_rc "rc.10 outranks rc.9 numerically" 0 "$RC"
 out_has "PR already open" "rc.10 is newer than rc.9"
 rm -rf "$SCRATCH"
 
+# --- prereleases only while the pin is itself an rc (#208) --------------------------------
+setup 2.0.0
+releases 'v2.1.0-rc.1\thttps://example.test/rc\nv2.0.0\thttps://example.test/ga\n'
+checksums 2.0.0 "$SHA_OK"
+run betterleaks
+assert_rc "a GA pin ignores a newer rc" 0 "$RC"
+out_has "up to date" "pin 2.0.0 with only v2.1.0-rc.1 newer is up to date"
+rm -rf "$SCRATCH"
+
+setup 2.0.0
+releases 'v2.1.0\thttps://example.test/210\nv2.1.0-rc.1\thttps://example.test/rc\nv2.0.0\thttps://example.test/ga\n'
+checksums 2.1.0 "$SHA_OK"
+run betterleaks
+assert_rc "a GA pin still takes a newer GA release" 0 "$RC"
+out_has "PR already open" "pin 2.0.0 reaches the PR step for v2.1.0"
+rm -rf "$SCRATCH"
+
 # --- hostile or malformed upstream data --------------------------------------------------
 setup 2.0.0-rc.1
 releases 'v2.0.0-rc.2; touch pwned\thttps://example.test/x\nv3.0.0-beta\thttps://example.test/y\nlatest\thttps://example.test/z\nv2.0.0-rc.1\thttps://example.test/rc1\n'
@@ -164,7 +181,7 @@ setup 2.0.0-rc.1
 releases ''
 run betterleaks
 assert_rc "no usable release" 1 "$RC"
-out_has "no release with" "says there is no usable release"
+out_has "no release matching" "says there is no usable release"
 rm -rf "$SCRATCH"
 
 setup 2.0.0-rc.1

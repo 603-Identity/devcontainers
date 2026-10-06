@@ -100,6 +100,8 @@ setup 0 0 "" 0
 run
 assert_rc "a missing remote branch lets the bump proceed" 0 "$RC"
 if git_has "-C $R push -u origin bump/gh-2.103.0"; then pass; else fail "the branch is pushed" "$(cat "$FAKE_LOG")"; fi
+# #85: the PR body cites the URL the checksum was read from, not only the release page.
+if log_has "Checksum source: https://github.com/cli/cli/releases/download/v2.103.0/gh_2.103.0_checksums.txt"; then pass; else fail "the PR body cites the checksum source" "$(cat "$FAKE_LOG")"; fi
 rm -rf "$SCRATCH"
 
 # --- ls-remote itself fails (network/auth): an error, never a silent proceed or skip ----
