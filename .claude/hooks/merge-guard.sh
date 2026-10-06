@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
 # PreToolUse hook for the Bash and PowerShell tools, standing in for the `gh pr merge`
 # deny rules (#168). In Claude Code a deny rule wins over every allow rule and hook, so it
-# could not make room for the one merge /way-of-working:resume (0.15.0+) makes on the
+# could not make room for the one merge /way-of-working:resume (0.16.0+) makes on the
 # human's explicit confirmation: a handoff cursor-sync PR. This hook blocks every
 # `gh pr merge` the deny rules blocked, except /resume's exact command shape against a PR
 # that GitHub confirms is a cursor-sync PR. Even that one goes to a permission prompt
 # (`ask`), never straight through.
+#
+# The shape is /resume's v0.16.0 one, which carries --admin: the restrict-updates-to-main
+# ruleset makes every merge to main an admin bypass (#262). --admin is admitted only in
+# that exact shape, against a cursor-sync PR; on any other plain `gh pr merge` it is refused, as
+# is the pre-0.16.0 shape without it (/resume no longer sends it, and under the ruleset it
+# would be refused anyway). Refusing it keeps the admitted set to one command.
 #
 # Exit 2 blocks the call and sends stderr back to Claude. Exit 0 with no output leaves the
 # call to the normal permission flow. Exit 0 with an `ask` decision forces a prompt. Claude
@@ -13,8 +19,28 @@
 # every path here ends in `block` or the `ask`, never in a stray exit 1. No `set -e`, on
 # purpose.
 #
-# Residual: if this script cannot run at all (no bash), the call is not blocked. The main
-# ruleset still requires every check, architect-review included, before anything lands.
+# What --admin does and does not skip: the repo's admin role is the one bypass actor on
+# restrict-updates-to-main (an `update` rule), in `pull_request` bypass mode: it lifts the
+# restriction for a PR merge only, never for a direct push. main-required-checks has no bypass actors,
+# so every required check, architect-review included, must still be green before a merge
+# lands, admin or not.
+#
+# Residuals:
+#  - If this script cannot run at all (no bash), the call is not blocked, and nothing here
+#    stops an `--admin` merge of any PR past restrict-updates-to-main. The required checks
+#    still hold.
+#  - The `ask` is the only human gate on the one merge this admits. A PR the hook takes
+#    as cursor-sync (identified by its docs/sync-cursor-* branch and file list only) touches .ai/next-steps.md, which is outside
+#    code_paths, so architect-review has nothing to review on it.
+#  - The hook sees Claude's tool calls only. A human running the merge with --admin in
+#    their own terminal, or in the GitHub UI, is not guarded.
+#  - Only a segment that starts with `gh pr merge` is seen. A wrapper (`command`, `env`,
+#    `exec`, a `{ }` group, `if`), a path or quoted `gh`, `gh api` on the merge endpoint, or
+#    a `gh alias` is not, so --admin is refused on a plain `gh pr merge` only. The deny rules
+#    this replaced had similar blind spots; the required checks still hold either way.
+#  - The file check reads filenames only, not each file's status or mode.
+#  - A /resume older than 0.16.0 sends the refused shape, so its merge is blocked until
+#    the plugin is refreshed.
 #
 # stdin: the hook input JSON (`.tool_input.command`). Reads `repo:` and `pr_base:` from
 # .ai/project.yml under $CLAUDE_PROJECT_DIR (default: the current directory).
@@ -158,12 +184,12 @@ runs="$(executable_text "$heredocs")" || block "could not scan the command"
 is_merge "$runs" || exit 0
 
 usage="only /way-of-working:resume's cursor-sync merge passes here:
-  gh pr merge <N> --repo <repo> --squash --match-head-commit <40-hex sha>
+  gh pr merge <N> --repo <repo> --squash --admin --match-head-commit <40-hex sha>
 on its own, against a cursor-sync PR. Any other merge is the human's, on GitHub."
 
 trimmed="${cmd#"${cmd%%[![:space:]]*}"}"
 trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
-re='^gh pr merge ([1-9][0-9]*) --repo ([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+) --squash --match-head-commit ([0-9a-f]{40})$'
+re='^gh pr merge ([1-9][0-9]*) --repo ([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+) --squash --admin --match-head-commit ([0-9a-f]{40})$'
 [[ $trimmed =~ $re ]] || block "$usage"
 n="${BASH_REMATCH[1]}" repo="${BASH_REMATCH[2]}" oid="${BASH_REMATCH[3]}"
 
@@ -194,7 +220,7 @@ files="${files//$'\r'/}"
 [ "$files" = ".ai/next-steps.md" ] ||
   block "PR #$n changes more than .ai/next-steps.md: $(printf '%s' "$files" | tr '\n' ' ')"
 
-jq -cn --arg reason "merge-guard: PR #$n is a cursor-sync PR ($head_ref, only .ai/next-steps.md) at $oid. Confirm to squash-merge it." \
+jq -cn --arg reason "merge-guard: PR #$n is a cursor-sync PR ($head_ref, only .ai/next-steps.md) at $oid. Confirm to admin squash-merge it (--admin bypasses restrict-updates-to-main)." \
   '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "ask", permissionDecisionReason: $reason}}' ||
   block "could not write the ask decision"
 exit 0
