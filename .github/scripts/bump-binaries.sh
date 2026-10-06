@@ -23,7 +23,7 @@
 #
 # Usage: bump-binaries.sh <gh|yq|uv|tofu|tflint|node|npm|betterleaks>
 # Env:   REPO (owner/repo), GH_TOKEN (gh, authenticated for push+PR), APP_SLUG,
-#        APP_ID (the commit's bot identity)
+#        BOT_USER_ID (the bot's user id, for the commit's noreply email)
 set -euo pipefail
 
 tool="${1:?usage: bump-binaries.sh <gh|yq|uv|tofu|tflint|node|npm|betterleaks>}"
@@ -333,7 +333,7 @@ if printf '%s\n' "$remote_refs" | BUMP_REF="refs/heads/$branch" awk '$2 == ENVIR
 fi
 
 git -C "$root" config user.name "${APP_SLUG:?APP_SLUG must be set}[bot]"
-git -C "$root" config user.email "${APP_ID:?APP_ID must be set}+${APP_SLUG}[bot]@users.noreply.github.com"
+git -C "$root" config user.email "${BOT_USER_ID:?BOT_USER_ID must be set}+${APP_SLUG}[bot]@users.noreply.github.com"
 git -C "$root" switch -c "$branch"
 
 # The two values are validated above, but rewrite without a sed/awk program built

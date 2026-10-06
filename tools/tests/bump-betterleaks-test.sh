@@ -57,7 +57,7 @@ S
 
 run() { # run <tool> -> RC, OUT (stdout+stderr)
   RC=0
-  OUT="$(env PATH="$SCRATCH/bin:/usr/bin:/bin" REPO=o/r APP_SLUG=app APP_ID=1 GH_TOKEN=t \
+  OUT="$(env PATH="$SCRATCH/bin:/usr/bin:/bin" REPO=o/r APP_SLUG=app BOT_USER_ID=1 GH_TOKEN=t \
     bash "$R/.github/scripts/bump-binaries.sh" "$1" 2>&1)" || RC=$?
 }
 log_has() { grep -qF -- "$1" "$FAKE_LOG"; }

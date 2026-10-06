@@ -102,7 +102,7 @@ while IFS='|' read -r tool dir ver_arg sha_arg tag; do
   if [ -z "$asset" ]; then fail "$tool: found the asset its Dockerfile downloads"; continue; fi
   setup "$dir"
   FAKE_BODY="$(checksum_body "$tool" "$asset")" FAKE_TAG="$tag" FAKE_VER="$NEW_VER" \
-    PATH="$SCRATCH/bin:/usr/bin:/bin" REPO=o/r APP_SLUG=app APP_ID=1 GH_TOKEN=t \
+    PATH="$SCRATCH/bin:/usr/bin:/bin" REPO=o/r APP_SLUG=app BOT_USER_ID=1 GH_TOKEN=t \
     bash "$R/.github/scripts/bump-binaries.sh" "$tool" > "$SCRATCH/out" 2>&1
   rc=$?
   got="$(sed -n "s/^ARG ${sha_arg}=//p" "$R/images/$dir/Dockerfile")"

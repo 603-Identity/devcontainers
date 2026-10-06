@@ -13,10 +13,15 @@ name: Bump pinned binaries
 # contents: write + pull-requests: write. Record the app in docs/threat_model.md's
 # credential table if its scopes ever change.
 #
-# Until the App is provisioned (#87, #102) the job is skipped, not failed: the job-level
-# `if:` keys on the BUMP_BINARIES_APP_ID variable. It must stay a repo-level (not Environment) variable --
-# a job-level `if:` is evaluated before the job's Environment is attached and cannot see
-# Environment variables, so moving it there would skip the job forever.
+# The App's private key is a secret of the `bump-binaries` Environment, restricted to deployments
+# from `main`, so a workflow run on any other branch cannot read it (#102). The job declares that
+# Environment below.
+#
+# The job is skipped, not failed, until the BUMP_BINARIES_CLIENT_ID variable is set (#87): the
+# job-level `if:` keys on it. It must stay a repo-level (not Environment) variable -- a job-level
+# `if:` is evaluated before the job's Environment is attached and cannot see Environment variables,
+# so moving it there would skip the job forever. It is the App's Client ID, not its App ID:
+# create-github-app-token deprecates the `app-id` input in favour of `client-id`.
 #
 # zizmor-clean: top-level permissions: {}, every action pinned by SHA, no event data
 # reaches the shell (schedule and workflow_dispatch carry none).
@@ -30,8 +35,9 @@ permissions: {}
 jobs:
   bump:
     name: bump (${{ matrix.tool }})
-    if: vars.BUMP_BINARIES_APP_ID != ''
+    if: vars.BUMP_BINARIES_CLIENT_ID != ''
     runs-on: ubuntu-latest
+    environment: bump-binaries
     timeout-minutes: 10
     permissions:
       contents: read   # checkout only; the push and PR use the App token below
@@ -68,17 +74,30 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ vars.BUMP_BINARIES_APP_ID }}
+          client-id: ${{ vars.BUMP_BINARIES_CLIENT_ID }}
           private-key: ${{ secrets.BUMP_BINARIES_APP_PRIVATE_KEY }}
           repositories: devcontainers
           permission-contents: write
           permission-pull-requests: write
+
+      # The commit's noreply email needs the bot's USER id (`<id>+<slug>[bot]@users.noreply.github.com`),
+      # which is neither the App id nor the Client id; GitHub serves it publicly by login.
+      - name: Resolve the bot user id
+        id: bot
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+          id="$(gh api "/users/${APP_SLUG}[bot]" --jq .id)"
+          [[ "$id" =~ ^[0-9]+$ ]] || { echo "::error::Could not resolve the bot user id for ${APP_SLUG}[bot]" >&2; exit 1; }
+          echo "id=$id" >> "$GITHUB_OUTPUT"
 
       - name: Resolve and bump
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO: ${{ github.repository }}
           APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
-          APP_ID: ${{ vars.BUMP_BINARIES_APP_ID }}
+          BOT_USER_ID: ${{ steps.bot.outputs.id }}
           TOOL: ${{ matrix.tool }}
         run: bash .github/scripts/bump-binaries.sh "$TOOL"
