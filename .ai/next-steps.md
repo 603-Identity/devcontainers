@@ -1,43 +1,40 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Awaiting review: the three bump PRs the
-bump-binaries App opened, #321 (uv), #322 (tofu) and #326 (yq).
+**Now:** Milestone 4, Repo hardening: review gate and CI, re-scoped 2026-10-06 to what the adoption waves copy,
+pin or run, ending in `v1.4`. Implementing build-order step 1, task #260.
 
-**Just done** (coder session on sonnet, last_commit `742221f`):
-- #323 merged as `742221f`: bump-binaries reads each checksum file before parsing and fails when a transfer
-  dies. Re-dispatch of "Bump pinned binaries" then passed all eight matrix jobs; the commits are authored by
-  `603-bump-binaries[bot]`. #321 and #322 came from the first dispatch, #326 from the second.
-- Closed #102 (App, `main`-restricted Environment key, `BUMP_BINARIES_CLIENT_ID` repo variable, docs; every
-  checklist item evidenced in its closing comment).
-- Housekeeping: pruned the merged local branches; filed #327 (the threat model says the App token can merge
-  to `main`; the ruleset's only bypass is the admin role, so test it once and reword).
-- Each bump PR's only non-passing item is the `architect-review` status ("No fresh-session review posted
-  against this commit yet"): expected, since `images/` is in `code_paths`.
+**Just done** (architect session on opus, last_commit `d80daaf`):
+- Fresh-session architect reviews on the bump PRs. The owner merged #321 (uv, `eb4baf0`), #322 (tofu,
+  `62eac3e`) and #326 (yq, `d80daaf`). #102 is closed; the second bump dispatch passed every matrix job.
+- `/way-of-working:plan-sprint`: every unmilestoned issue is placed, each with a dated `[plan-sprint]` triage
+  comment. New milestone 6 (Internal hardening, due 2027-02-26) holds this repo's own merge-guard,
+  bump-binaries, CI, test-only and docs items, moved out of milestone 4. New milestone 7 (Auto-merge
+  readiness, trigger-gated) holds #267, #126 + #132 and #139 (moved from milestone 3). #329 is in milestone 5
+  with #148.
+- Rewrote milestone 4's description (new build order, file-bundled PRs, `v1.4`) and moved its due date to
+  2026-11-13. The anchor was re-taken on this session's own edit (verify: `match`) and now names #260.
+- Closed #330 unmerged; this sync replaces it.
 
-**Next:** `/way-of-working:architect-review 321` on **opus** (architect), in a new window, then 322 and 326,
-each against its own head. A bump PR changes one Dockerfile ARG pair, so each review is: the version is
-the newest release, the sha256 matches the upstream checksum file (the same asset the Dockerfile
-downloads), nothing else changed. Never approves or merges; the owner admin-merges each.
+**Next:** task #260 — on **sonnet** (coder): add a root `LICENSE` (Apache-2.0 full text, `Copyright 2026 Jared
+Groves`) and a README.md license section, per the issue body. It is docs-only and outside `code_paths`, so it
+needs no critic pass or review gate. Ship it as a PR; never merge. After that, milestone 4's description
+gives the order (consumer-lint bundle next).
 
-**HITL Gate: NONE OPEN.** Next gate: the owner merges each bump PR after its review.
+**HITL Gate: NONE OPEN.** Next gate: the owner merges #260's PR.
 
 **Open for the owner (non-blocking):**
-- #315 (an edited review does not re-run the gate) and #327 (the App-token wording, with a live test) are in
-  milestone 4. The `bump-binaries` Environment still lets admins bypass its protection rules; turning that
-  off is optional.
-- Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01.
-- Place #255, #256, #263, #276, #278, #281, #282, #297, #304 and #317 in a milestone (or leave them for a
-  `/way-of-working:plan-sprint` pass). #267 is unmilestoned on purpose: it is an auto-merge (#139)
-  precondition.
-- Delete branch `test/verify-pin-negative-10` on terraform-microsoft365-entra.
+- Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01; #329 rides
+  along.
+- Milestone 4 step 5 needs your call on #263 (fix the Entra rule, or record the gap) before it is built.
+  Milestone 6 step 2 starts with your live App-token merge test (#327).
+- The `bump-binaries` Environment still lets admins bypass its protection rules; turning that off is optional.
+- Delete the local branch `docs/sync-cursor-bumps-merged` (its PR #330 was closed unmerged), and
+  `test/verify-pin-negative-10` on terraform-microsoft365-entra.
 - terraform-cloudflare-dns: its gate lists `.terraform.lock.hcl` and `.devcontainer/*` that its
   `code_paths` do not (the new lint warns); confirm during the #212 pilot follow-ups, along with
   whether it should cover `.claude/` (from #214).
 - -dns#57, -dns#59 and -dns#65 are open. Other detect-secrets repos have migration issues:
-  checkov-ledger-action#16, infrastructure-core#560, tenant-posture-assessment#31,
-  trust-anchors#73. #220 is open. #251 (stale test comment) can ride along with #249.
-- The local plugin cache runs way-of-working 0.14.0 while `.claude/settings.json` pins v0.16.0;
-  refresh the plugin so `/resume` uses the `--admin` merge shape #307 admits.
+  checkov-ledger-action#16, infrastructure-core#560, tenant-posture-assessment#31, trust-anchors#73.
 - Use `GH_TOKEN="$(gh auth token --user JaredGroves-603)"` for `gh` calls on this repo, and run
   commits, pushes and PRs from the Windows host (WSL's `gh` is Seuss27, no push). Run tests in
   WSL, not Git Bash, from a CRLF-stripped copy. `gh issue create` and `gh pr create` hang under Git
