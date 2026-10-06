@@ -1,20 +1,23 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. #86 built and shipped as PR #299, awaiting the fresh-session review.
+**Now:** Milestone 4, Repo hardening: review gate and CI. #299 (#86) reviewed, awaiting the owner's merge.
 
-**Just done** (coder session on sonnet, last_commit `9a4ab6f`, branch `fix/bump-skip-leftover-branch`):
-- `bump-binaries.sh` skips a tool whose remote `bump/<tool>-<version>` branch exists: a closed-PR leftover warns and skips, a branch with no PR (orphan) fails loudly, an `ls-remote` failure is an error. Exact ref match, `gh auth setup-git` first, never force-push or delete. New test `bump-leftover-branch-test.sh`; README note on declining a version.
-- Green gate: shellcheck and `tools/tests/run-gate-tests.sh` pass in WSL. The Docker-based entries were not run locally; CI runs them.
-- Critic pass (architect + security-critic): 2 rounds, converged (round 2 tightenings only; two small tightenings applied after it without a re-run). Not the review CI gate.
-- Opened #299 against `main`.
+**Just done** (architect session on opus, last_commit `651770c`):
+- Posted the fresh-session architect review on PR #299 (#86) against head `9a4ab6f`.
+  `architect-review` went green on that SHA (commit status). Verdict: no blocking findings.
+- Executed in a WSL review sandbox: shellcheck clean, gate suite green, and four planted mutations
+  (suffix ref match, orphan check disabled, `ls-remote` failure swallowed, `gh auth setup-git`
+  moved after `ls-remote`) each turned the new test red. Live behaviour against GitHub is
+  unverified: the test fakes `git`, `gh` and `curl`, so the next scheduled bump run is the witness.
+- No findings filed. Two observations are noted in the review: a README line past the wrap,
+  and `gh pr list --head` matching fork heads by name (pre-existing, collaborators-only).
+- Milestone 4 re-anchored without a resume-verified baseline (resume ran on `awaiting_review`, so
+  it did not verify): `verify --plan` printed `match`, description sha `8bc5e03e` unchanged.
 
-**Next:** `/way-of-working:architect-review 299` in a NEW session. Model: **opus** (architect). It
-posts the review, verifies `architect-review` green on the head SHA and files non-blocking
-findings. Never approve or merge.
+**Next:** once the owner merges #299, pick the next milestone-4 task with the owner and hand it
+off to a coder session. Model: **opus** (architect) for the pick.
 
-**HITL Gate: OPEN.** First anchor for milestone 4 on a non-task cursor, description sha
-`8bc5e03e` unchanged, no resume-verified baseline this session: a human "go" starts the review.
-Next gate: the human's merge of #299.
+**HITL Gate: OPEN.** The owner's merge of #299, then the owner's pick of the next M4 task.
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01.
