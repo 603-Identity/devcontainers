@@ -1,23 +1,29 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. #299 (#86) reviewed, awaiting the owner's merge.
+**Now:** Milestone 4, Repo hardening: review gate and CI. Implementing: #85 + #208 for a coder session.
 
-**Just done** (architect session on opus, last_commit `651770c`):
-- Posted the fresh-session architect review on PR #299 (#86) against head `9a4ab6f`.
-  `architect-review` went green on that SHA (commit status). Verdict: no blocking findings.
-- Executed in a WSL review sandbox: shellcheck clean, gate suite green, and four planted mutations
-  (suffix ref match, orphan check disabled, `ls-remote` failure swallowed, `gh auth setup-git`
-  moved after `ls-remote`) each turned the new test red. Live behaviour against GitHub is
-  unverified: the test fakes `git`, `gh` and `curl`, so the next scheduled bump run is the witness.
-- No findings filed. Two observations are noted in the review: a README line past the wrap,
-  and `gh pr list --head` matching fork heads by name (pre-existing, collaborators-only).
-- Milestone 4 re-anchored without a resume-verified baseline (resume ran on `awaiting_review`, so
-  it did not verify): `verify --plan` printed `match`, description sha `8bc5e03e` unchanged.
+**Just done** (architect session on opus, last_commit `c46372c`):
+- #299 (#86) and its cursor sync #301 merged.
+- The owner picked the next M4 work: #85 and #208, as one PR. Both are in
+  `.github/scripts/bump-binaries.sh`, and both issue bodies give the fix shape.
+- Milestone 4 re-anchored to task #85 without a resume-verified baseline (resume waited on an
+  open gate, so it did not verify): `verify --plan` printed `match`, description sha `8bc5e03e`
+  unchanged.
 
-**Next:** once the owner merges #299, pick the next milestone-4 task with the owner and hand it
-off to a coder session. Model: **opus** (architect) for the pick.
+**Next:** task #85 — in one PR closing #85 and #208, in `.github/scripts/bump-binaries.sh`:
+- (#85) Have each `resolve_*` set `CHECKSUM_URL` (the URL the checksum is actually read from)
+  alongside `RELEASE_URL`, and add `Checksum source: $CHECKSUM_URL` to the bump PR body.
+- (#208) Make `resolve_betterleaks` consider prereleases only while the current pin is
+  `X.Y.Z-rc.N`, and only stable releases once it is on GA. Add a
+  `tools/tests/bump-betterleaks-test.sh` case (pin `2.0.0`, only `v2.1.0-rc.1` newer) that
+  expects `up to date`. Update the script header, the README's "Updating a pinned tool" section
+  and the threat-model text that describe the prerelease exception.
+- Run the green gate in WSL, then `/way-of-working:critic-gate` and `/way-of-working:ship`.
 
-**HITL Gate: OPEN.** The owner's merge of #299, then the owner's pick of the next M4 task.
+Model: **sonnet** (coder).
+
+**HITL Gate: OPEN.** The milestone-4 re-anchor to #85 lacks a resume-verified baseline. The
+owner's "go" releases the coder session.
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01.
