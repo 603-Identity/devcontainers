@@ -1,30 +1,33 @@
 # Next steps
 
 **Now:** Milestone 4, Repo hardening: review gate and CI, re-scoped 2026-10-06 to what the adoption waves copy,
-pin or run, ending in `v1.4`. Build-order steps 1-4 are merged; step 5 is next, implementing.
+pin or run, ending in `v1.4`. Build-order steps 1-4 are merged; step 5 is open as PR #346, awaiting review.
 
-**Just done** (architect session on opus, last_commit `d6342db`):
-- Posted the fresh-session architect-review of PR #343 (#278, gate side) at head `0b2e8b8`, executed in the WSL
-  review sandbox: gate tests green, and two mutations (dropping the check; dropping the trailing-period
-  alternatives) turned the matching cases red. No findings filed. `architect-review` went green; the owner merged
-  it as `d6342db`. #278 stays open for the plugin half (posting with `commit_id` pinned).
+**Just done** (coder session on sonnet, last_commit `b94ea24`):
+- Built M4 step 5 as one PR, https://github.com/603-Identity/devcontainers/pull/346 (#199 + #200 + #220 + #263):
+  the Entra rule treats a literal `\n`, `\r` or `\t` as a leading boundary (owner decision on #263), with a smoke
+  check; `start_line` below 1 gives a file-level annotation; tests for the "incomplete scan" check and for the
+  workflow's pin/event guard (new `secret-scan-guard-test.sh`, which also pins the guard's input sources).
+- Green gate passed (the host's `go test` cannot run: go 1.26.3 vs `go.mod` 1.26.8; no Go change). Critic pass:
+  1 round, converged (architect + security-critic, no second-opinion round); no blocking findings, the suggested
+  test and comment fixes were applied. The four non-blocking findings are in the PR body.
 
-**Next:** task #263 — build M4 step 5 as one PR (#199 + #200 + #220 + #263) on **sonnet** (coder), per the owner's
-decision on #263 (https://github.com/603-Identity/devcontainers/issues/263#issuecomment-6020938636: fix the Entra
-rule, don't record the gap). Green gate, then `/way-of-working:critic-gate` (architect + security-critic), then
-`/way-of-working:ship`. Never merge; the secret-scan tag waits for `v1.4` (step 6).
+**Next:** `/way-of-working:architect-review 346` on **opus** (architect), in a NEW session: the fresh-session
+review the gate requires, at the PR's current head. Never approve or merge; the secret-scan tag waits for `v1.4`
+(step 6).
 
-**HITL Gate: NONE OPEN.** Next gates: the fresh-session architect-review of the step 5 PR and the owner's merge,
-then the `v1.4` tag.
+**HITL Gate: NONE OPEN.** Next gates: that review, then the owner's merge of #346, then the `v1.4` tag.
 
 **Open for the owner (non-blocking):**
+- Place the #346 findings that are outside #263's spec: a second secret right after another is not reported
+  (the trailing boundary eats the backslash); the guard's pin check is anchored only at the end; an unfiltered
+  `err.log` tail on the did-not-complete path; the "incomplete scan" grep also reads finding records.
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01; #329 rides
   along. Milestone 6 step 2 starts with your live App-token merge test (#327).
 - Place #341 in a milestone (it fits beside M4's lint work, or #234).
 - The `bump-binaries` Environment still lets admins bypass its protection rules; turning that off is optional.
-- Delete the local branches `docs/sync-cursor-bumps-merged` (its PR #330 was closed unmerged) and
-  `ci/gate-reviewed-against-head-278` (#343 merged), and `test/verify-pin-negative-10` on
-  terraform-microsoft365-entra.
+- Delete the local branch `docs/sync-cursor-bumps-merged` (its PR #330 was closed unmerged) and
+  `test/verify-pin-negative-10` on terraform-microsoft365-entra.
 - terraform-cloudflare-dns: its gate lists `.terraform.lock.hcl` and `.devcontainer/*` that its
   `code_paths` do not (the new lint warns); confirm during the #212 pilot follow-ups, along with
   whether it should cover `.claude/` (from #214).
