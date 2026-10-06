@@ -23,8 +23,10 @@ approves or merges; the owner admin-merges.
 
 **Open for the owner (non-blocking):**
 - Task #102 steps 4-6 wait on #314 merging: create the App (`contents: write` + `pull-requests: write`,
-  this repo only), a `main`-restricted Environment holding the private key, `BUMP_BINARIES_APP_ID` as a
-  repo variable; then a coder PR adds `environment:` to `bump-binaries.yml` and updates the docs.
+  this repo only), a `main`-restricted Environment `bump-binaries` holding the private key, and the App's
+  **Client ID** (not the App ID) as repo variable `BUMP_BINARIES_CLIENT_ID`; then a coder PR switches the
+  workflow from the deprecated `app-id` input (`BUMP_BINARIES_APP_ID`) to `client-id`, adds
+  `environment:` to `bump-binaries.yml` and updates the docs.
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01.
 - Place #255, #256, #263, #276, #278, #281, #282, #297 and #304 in a milestone (or leave them for a
   `/way-of-working:plan-sprint` pass). #267 is unmilestoned on purpose: it is an auto-merge (#139)
