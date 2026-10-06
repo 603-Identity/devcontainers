@@ -1,22 +1,25 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Awaiting the review of #292.
+**Now:** Milestone 4, Repo hardening: review gate and CI. Implementing; next task not yet picked.
 
-**Just done** (coder session on sonnet, last_commit `a1fe4f7`):
-- #164 built and shipped as PR #292: `resolve_yq` reads the raw `yq_linux_amd64` hash, and the new
-  `tools/tests/bump-asset-names-test.sh` fails when a resolver's asset differs from its Dockerfile's.
-- Critic pass (`architect` + `security-critic`): 2 rounds, converged (round 2 tightenings only), all
-  on the critics' default models. A pre-review only; it does not satisfy the `architect-review` check.
-- The plan anchor re-verified `match` this session (description sha `8bc5e03e`), so no re-anchor gate.
-- Accepted, out of scope: the test's fake `curl` serves one body for any URL, so it checks the asset
-  name, not which checksum file is read.
+**Just done** (architect session on opus, last_commit `2f3bacc`):
+- Posted the fresh-session architect review on PR #292 (#164) against head `a1fe4f7`.
+  `architect-review` went green on that SHA (commit status). Verdict: no blocking findings.
+  The owner merged it as `2f3bacc`, closing #164.
+- Executed in a WSL review sandbox: shellcheck clean, gate suite green, and four planted mutations
+  (resolver back to the tarball, Dockerfile switched to the tarball, a tool missing from `TOOLS`,
+  gh pointed at a decoy) each turned the new test red. The PR's awk filter on the real yq v4.53.6
+  `checksums` returns the pinned `YQ_SHA256`.
+- No findings filed. The review body states the test's limits (one fake body for every URL, the
+  dispatch-line format the coverage check parses, offline only).
+- Milestone 4 re-anchored without a resume-verified baseline (resume ran on `awaiting_review`, so
+  it did not verify): `verify --plan` printed `match`, description sha `8bc5e03e` unchanged.
 
-**Next:** `/way-of-working:architect-review 292` in a **new window** (the review must be a fresh
-session). Model: **opus** (architect). Never approve or merge; the human merges once the
-`architect-review` check is green.
+**Next:** pick the next milestone-4 task with the owner and hand it off to a coder session.
+Model: **opus** (architect) for the pick.
 
-**HITL Gate: NONE OPEN.** Next gate is the human merge of #292. The `v1.3` tag (build-order item 11,
-owner-owned) is unblocked: items 4-7 are closed.
+**HITL Gate: OPEN.** The owner's pick of the next M4 task, and the `v1.3` tag (build-order
+item 11, owner-owned).
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01.
@@ -35,7 +38,6 @@ owner-owned) is unblocked: items 4-7 are closed.
   WSL, not Git Bash. `gh issue create` and `gh pr create` hang under Git Bash; `gh api ... --input -`
   with a timeout works. Auto mode blocks ruleset edits, required-job removal and branch deletes, so
   switch to manual for those.
-
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan:
 https://github.com/603-Identity/devcontainers/milestone/4
