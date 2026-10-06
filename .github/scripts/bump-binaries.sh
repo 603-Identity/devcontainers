@@ -58,13 +58,14 @@ resolve_yq() {
   # The checksums file lists one hash per algorithm, in the order this sidecar file
   # names them (field 1 is the asset name) -- read the order instead of hardcoding a
   # column, so an upstream reshuffle fails closed on a missing SHA-256 line rather than
-  # silently reading the wrong hash.
+  # silently reading the wrong hash. The asset is the raw binary, not the tarball:
+  # images/base/Dockerfile downloads yq_linux_amd64 and checks it against YQ_SHA256 (#164).
   order_url="https://github.com/mikefarah/yq/releases/download/${tag}/checksums_hashes_order"
   field="$(curl -fsSL "$order_url" | grep -n '^SHA-256$' | cut -d: -f1)"
   [ -n "$field" ] || { echo "::error::yq: SHA-256 not found in $order_url" >&2; exit 1; }
   field=$((field + 1))
   NEW_CHECKSUM="$(curl -fsSL "https://github.com/mikefarah/yq/releases/download/${tag}/checksums" \
-    | awk -v f="yq_linux_amd64.tar.gz" -v col="$field" '$1 == f { print $col; exit }')"
+    | awk -v f="yq_linux_amd64" -v col="$field" '$1 == f { print $col; exit }')"
 }
 
 resolve_uv() {
