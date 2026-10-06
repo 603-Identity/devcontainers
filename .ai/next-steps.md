@@ -1,31 +1,30 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Awaiting the review of #295.
+**Now:** Milestone 4, Repo hardening: review gate and CI. Implementing #86.
 
-**Just done** (architect session on opus, last_commit `e39ccdf`):
-- `v1.3` released (build-order item 11). The owner pushed the signed tag on `2f3bacc` and published
-  it as an immutable GitHub Release. Release immutability is now on for the repo. A docs-consistency
-  pass checked the notes: 2 rounds, converged (round 1 fixed the step-2 pin pairing and the #94
-  overclaim).
-- Reopened #94. It auto-closed on #279's merge, but the DEVC-D7 amendment says #279 only narrowed it.
-- Opened PR #295. It re-points the template's `decide`, `verify` and `secret-scan` pins, and this
-  repo's own `decide` pin, to `v1.3`, re-renders the template gate, and adds DEVC-D8 (signed tag +
-  immutable Release per version) with the matching threat-model edit. Render checks, the gate tests
-  in WSL and zizmor are green. Handed off without a critic-gate pass (mechanical pins + docs, owner's
-  call).
-- Milestone 4 re-anchored without a resume-verified baseline: `verify --plan` printed `match`,
-  description sha `8bc5e03e` unchanged.
+**Just done** (architect session on opus, last_commit `6eadcc4`):
+- Fresh-session architect review of #295 (v1.3 repin + DEVC-D8). No blocking findings. The
+  sandbox run, the gate tests and two planted mutations all behaved. The owner merged it as
+  `6eadcc4`.
+- Filed #297 (non-blocking): an immutable release's tag can still be deleted by deleting the
+  release first, so "admins included" overstates it. Also, `v1.0` is lightweight too.
+- The owner picked #86 as the next M4 task, with the fix of skipping a tool whose remote
+  `bump/<tool>-<version>` branch already exists.
+- Milestone 4 re-anchored on #86 without a resume-verified baseline: `verify --plan` printed
+  `match`, description sha `8bc5e03e` unchanged.
 
-**Next:** `/way-of-working:architect-review 295` in a **new window** (this session wrote the diff).
-Model: **opus** (architect). Never approve or merge. After the merge, pick the next milestone-4 task
-with the owner (#86 is next in the build order).
+**Next:** task #86 — in `.github/scripts/bump-binaries.sh`, skip a tool with a notice when its
+remote `bump/<tool>-<version>` branch already exists (`git ls-remote --exit-code origin
+refs/heads/$branch`), alongside the open-PR skip. Never force-push or delete the branch. Add a
+gate test for the leftover-branch case, run the green gate, then `/way-of-working:critic-gate`
+and `/way-of-working:ship`. Model: **sonnet** (coder).
 
-**HITL Gate: OPEN.** The re-anchor above, the human merge of #295 once `architect-review` is green,
-then the owner's pick of the next M4 task.
+**HITL Gate: OPEN.** The re-anchor above: a human "go" starts #86. Next gate: the architect
+review of #86's PR.
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01.
-- Place #255, #256, #263, #276, #278, #281 and #282 in a milestone (or leave them for a
+- Place #255, #256, #263, #276, #278, #281, #282 and #297 in a milestone (or leave them for a
   `/way-of-working:plan-sprint` pass). #267 is unmilestoned on purpose: it is an auto-merge (#139)
   precondition. #94 stays open (narrowed by #279, unverified).
 - Delete branch `test/verify-pin-negative-10` on terraform-microsoft365-entra.
