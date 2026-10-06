@@ -1,27 +1,28 @@
 # Next steps
 
 **Now:** Milestone 4, Repo hardening: review gate and CI, re-scoped 2026-10-06 to what the adoption waves copy,
-pin or run, ending in `v1.4`. Build-order steps 1-4 are merged; step 5 is open as PR #346, awaiting review.
+pin or run, ending in `v1.4`. Build-order steps 1-4 are merged; step 5 (PR #346) is reviewed and waiting on the
+owner's merge.
 
-**Just done** (coder session on sonnet, last_commit `b94ea24`):
-- Built M4 step 5 as one PR, https://github.com/603-Identity/devcontainers/pull/346 (#199 + #200 + #220 + #263):
-  the Entra rule treats a literal `\n`, `\r` or `\t` as a leading boundary (owner decision on #263), with a smoke
-  check; `start_line` below 1 gives a file-level annotation; tests for the "incomplete scan" check and for the
-  workflow's pin/event guard (new `secret-scan-guard-test.sh`, which also pins the guard's input sources).
-- Green gate passed (the host's `go test` cannot run: go 1.26.3 vs `go.mod` 1.26.8; no Go change). Critic pass:
-  1 round, converged (architect + security-critic, no second-opinion round); no blocking findings, the suggested
-  test and comment fixes were applied. The four non-blocking findings are in the PR body.
+**Just done** (architect session on opus, last_commit `ef5f90f`):
+- Posted the fresh-session architect review of https://github.com/603-Identity/devcontainers/pull/346 at head
+  `b94ea24`: no blocking findings. Reproduced in a WSL sandbox (gate tests, five mutations each turning a test
+  red, the #263 rule against pinned Betterleaks 2.0.0-rc.1); the image smoke check was taken from CI. The
+  `architect-review` gate went green on that head; `/way-of-working:pr-checks` verdict: READY (admin merge).
+- Filed the PR's four non-blocking findings, unmilestoned: #348 (a second secret straight after another is not
+  reported), #349 (the guard's SHA-pin check accepts a branch named `x@<40hex>`), #350 (unfiltered `err.log`
+  tail on the did-not-complete path), #351 ("incomplete scan" text inside a finding record).
 
-**Next:** `/way-of-working:architect-review 346` on **opus** (architect), in a NEW session: the fresh-session
-review the gate requires, at the PR's current head. Never approve or merge; the secret-scan tag waits for `v1.4`
-(step 6).
+**Next:** once the owner has merged #346, on **opus** (architect): check that M4 steps 3-5 are all on `main`,
+then prepare the `v1.4` release (M4 step 6) and stop for the owner to approve and cut the tag. The pilots
+re-copy the gate and bump their pins in their own repos.
 
-**HITL Gate: NONE OPEN.** Next gates: that review, then the owner's merge of #346, then the `v1.4` tag.
+**HITL Gate: OPEN.** The owner's merge of #346:
+`gh pr merge 346 --repo 603-Identity/devcontainers --squash --admin --match-head-commit b94ea2481e4f8bc0d016383c14f7b3cb541c014c`.
+Then the `v1.4` tag is itself an owner gate.
 
 **Open for the owner (non-blocking):**
-- Place the #346 findings that are outside #263's spec: a second secret right after another is not reported
-  (the trailing boundary eats the backslash); the guard's pin check is anchored only at the end; an unfiltered
-  `err.log` tail on the did-not-complete path; the "incomplete scan" grep also reads finding records.
+- Place #348-#351 (from the #346 review) in a milestone; #349 and #350 change the tagged secret-scan surface.
 - Milestone 5 (Trivy renewal 2026-11): renew or retire the #148 Trivy exceptions before 2026-11-01; #329 rides
   along. Milestone 6 step 2 starts with your live App-token merge test (#327).
 - Place #341 in a milestone (it fits beside M4's lint work, or #234).
