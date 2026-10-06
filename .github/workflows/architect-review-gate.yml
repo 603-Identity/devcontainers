@@ -16,6 +16,7 @@ name: Architect Review Gate
 # review.ci_gate (.ai/project.yml): stays red on a PR that touches code_paths until a
 # fresh-session review is posted as a formal PR review made against the PR's CURRENT head
 # commit (its `commit_id` is the head SHA; a PR comment never counts).
+# An edited review counts only if every editor in its edit history is in REVIEWER_IDS too (#94).
 # HEADER and ATTESTATION must match review.ci_gate.header/.attestation in .ai/project.yml
 # byte for byte. This is a literal substring match, not an intent match: a
 # paraphrase turns the check red, and the failure looks like a review problem.
@@ -370,12 +371,26 @@ jobs:
             esac
           }
 
+          # Who has edited a review's body: prints `ok` when its edit history is empty, otherwise the
+          # space-separated numeric ids of every editor in it (`none` for an editor with no readable id,
+          # such as a deleted user), and `unknown` when the node is not a review, the history is longer
+          # than one page, or any revision in it was deleted (a deleted revision hides its text, so it fails closed). REST has no edit metadata on reviews, so this is a GraphQL read of
+          # `userContentEdits` (#94). The whole history is read, not just the last editor: a writer's edit
+          # followed by a reviewer's typo fix must not launder the writer's text. A failed call aborts under
+          # `set -e` (called only as `x="$(review_editor ...)"`), so it fails closed, never reads as "unedited".
+          # shellcheck disable=SC2016
+          review_editor() { # node_id
+            gh api graphql -f query='query($id: ID!) { node(id: $id) { ... on PullRequestReview { userContentEdits(first: 100) { totalCount nodes { deletedAt editor { ... on User { databaseId } ... on Bot { databaseId } } } } } } }' \
+              -f id="$1" \
+              --jq '.data.node as $n | if ($n | type) != "object" or ($n | has("userContentEdits") | not) or ($n.userContentEdits | type) != "object" or ($n.userContentEdits.nodes | type) != "array" then "unknown" elif ($n.userContentEdits.totalCount // 0) > ($n.userContentEdits.nodes | length) then "unknown" elif any($n.userContentEdits.nodes[]; .deletedAt != null) then "unknown" elif ($n.userContentEdits.nodes | length) == 0 then "ok" else ([$n.userContentEdits.nodes[] | (.editor.databaseId // "none" | tostring)] | join(" ")) end'
+          }
+
           # The existing review logic. $1 = 1 forces "in scope" (the error row never reads a file list
           # to decide that no review is needed). Plain call, never inside `if`/`||`, so `set -e` stays
           # in force: a failed `gh api` must fail closed, never read as "nothing in scope".
           review_logic() {
             local force_scope="$1" files f touches=0 reviews_json found_at
-            local item body at sha uid login
+            local item body at sha uid login node editor editors_ok e
 
             # Posted first so the required check shows `pending`, not absent, while this runs.
             post_status pending "Checking for a fresh-session review..."
@@ -415,12 +430,14 @@ jobs:
 
             # A review qualifies only when it is a formal PR review made against this exact head SHA
             # (`commit_id`). A timestamp would be set by whoever creates the commit (#92), and a comment's
-            # body can certainly be edited after the fact by any writer (#94), so comments never count (whether a
-            # writer can edit a review body is unverified; see threat_model.md Known gaps). A dismissed
-            # or pending review is skipped. Captured
+            # body can be edited after the fact by any writer (#94), so comments never count. A review's
+            # body can be edited by any writer too (verified on #94: `PUT /pulls/{n}/reviews/{id}` by a
+            # non-author with write access succeeds and leaves author, state and `commit_id` unchanged),
+            # so a matching review also needs `review_editor` to say it was never edited, or that every
+            # editor in its history is an ID in REVIEWER_IDS. A dismissed or pending review is skipped. Captured
             # into a variable, not process substitution, so a failing `gh api` aborts under `set -e`
             # instead of vanishing inside a subshell.
-            reviews_json="$(gh api "repos/${REPO}/pulls/${TARGET}/reviews" --paginate --jq '.[] | select(.state != "DISMISSED" and .state != "PENDING") | {body, at: .submitted_at, sha: .commit_id, uid: .user.id, login: .user.login} | tojson')"
+            reviews_json="$(gh api "repos/${REPO}/pulls/${TARGET}/reviews" --paginate --jq '.[] | select(.state != "DISMISSED" and .state != "PENDING") | {body, at: .submitted_at, sha: .commit_id, uid: .user.id, login: .user.login, node: .node_id} | tojson')"
 
             found_at=""
             while IFS= read -r item; do
@@ -432,6 +449,7 @@ jobs:
               sha="$(printf '%s' "$item" | jq -r '.sha // ""')"
               uid="$(printf '%s' "$item" | jq -r '.uid // ""')"
               login="$(printf '%s' "$item" | jq -r '.login // ""')"
+              node="$(printf '%s' "$item" | jq -r '.node // ""')"
               # Who posted it counts: anyone can paste the two strings. Only an ID in REVIEWER_IDS
               # qualifies; a missing or non-numeric ID fails closed. Padding both sides with spaces
               # makes this a whole-word match. The numeric test is load-bearing: it alone stops a
@@ -445,12 +463,29 @@ jobs:
                 continue
               fi
               if [[ "$body" == *"$HEADER"* && "$body" == *"$ATTESTATION"* ]]; then
-                if [ "$sha" = "$HEAD_SHA" ]; then
-                  found_at="$at"
-                  echo "Qualifying review found, posted ${at}."
-                  break
+                if [ "$sha" != "$HEAD_SHA" ]; then
+                  echo "Skipped a matching review by ${login:-<none>}: made against ${sha:-<no commit>}, not the head ${HEAD_SHA}."
+                  continue
                 fi
-                echo "Skipped a matching review by ${login:-<none>}: made against ${sha:-<no commit>}, not the head ${HEAD_SHA}."
+                # A missing node id cannot be looked up, so it fails closed like an unknown editor.
+                editor=unknown
+                if [ -n "$node" ]; then
+                  editor="$(review_editor "$node")"
+                fi
+                [ -n "$editor" ] || editor=unknown
+                editors_ok=1
+                if [ "$editor" != ok ]; then
+                  for e in $editor; do
+                    [[ "$e" =~ ^[0-9]+$ && " ${REVIEWER_IDS} " == *" ${e} "* ]] || editors_ok=0
+                  done
+                fi
+                if [ "$editors_ok" != 1 ]; then
+                  echo "Skipped a matching review by ${login:-<none>}: its edit history is ${editor} (every editor must be in REVIEWER_IDS), or it could not be read."
+                  continue
+                fi
+                found_at="$at"
+                echo "Qualifying review found, posted ${at}."
+                break
               fi
             done <<< "${reviews_json}"
 
