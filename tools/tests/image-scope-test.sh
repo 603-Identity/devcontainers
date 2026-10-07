@@ -84,22 +84,30 @@ for ev in schedule workflow_dispatch some_new_event; do
   assert_rc "$ev builds" 0 "$RC"; assert_eq "$ev: build" 1 "$(outv build)"; end_scenario
 done
 
-# A push that creates the branch has an all-zero `before`.
+# An all-zero base (a push that created the branch, or no last successful publish found).
 new_scenario; BASE_SHA_OVERRIDE=0000000000000000000000000000000000000000 run_scope push M:README.md
 assert_rc "zero before" 0 "$RC"; assert_eq "zero before: build" 1 "$(outv build)"; end_scenario
 
-# Failing closed: an empty diff, an unfetchable base and a missing base all fail the step.
+# The base has HEAD's tree (a revert of everything since the last publish, or the base is HEAD):
+# the diff is empty for a legitimate reason, so skip rather than fail closed.
 new_scenario
+repo="$SCRATCH/repo"; git init -q "$repo"
+{ stream_commit base M:README.md M:images/base/Dockerfile; stream_commit change M:images/base/Dockerfile.new; stream_commit revert D:images/base/Dockerfile.new; }   | git -c core.protectNTFS=false -C "$repo" fast-import --quiet
+git -C "$repo" symbolic-ref HEAD refs/heads/main; git -C "$repo" remote add origin "$repo"
+for base in "$(git -C "$repo" rev-parse main)" "$(git -C "$repo" rev-parse main~2)"; do
+  : > "$GITHUB_OUTPUT"; : > "$SCRATCH/summary"; mkdir -p "$SCRATCH/tmp"; RC=0
+  ( cd "$repo" && env EVENT_NAME=push BASE_SHA="$base" RUNNER_TEMP="$SCRATCH/tmp"       GITHUB_STEP_SUMMARY="$SCRATCH/summary" bash "$SCRIPT" ) > "$SCRATCH/stdout" 2> "$SCRATCH/stderr" || RC=$?
+  assert_rc "same tree as $base" 0 "$RC"; assert_eq "same tree as $base: build" 0 "$(outv build)"
+done
 end_scenario
+
+# Failing closed: an unfetchable base and a missing base fail the step. (An empty diff only happens
+# for an equal tree, handled above; git cannot list nothing for two different trees.)
 new_scenario
 repo="$SCRATCH/repo"; git init -q "$repo"
 stream_commit base M:README.md | git -c core.protectNTFS=false -C "$repo" fast-import --quiet
 git -C "$repo" symbolic-ref HEAD refs/heads/main; git -C "$repo" remote add origin "$repo"
 : > "$GITHUB_OUTPUT"; : > "$SCRATCH/summary"; mkdir -p "$SCRATCH/tmp"
-RC=0; ( cd "$repo" && env EVENT_NAME=push BASE_SHA="$(git rev-parse HEAD)" RUNNER_TEMP="$SCRATCH/tmp" \
-  GITHUB_STEP_SUMMARY="$SCRATCH/summary" bash "$SCRIPT" ) > "$SCRATCH/stdout" 2> "$SCRATCH/stderr" || RC=$?
-if [ "$RC" -ne 0 ]; then pass; else fail "empty diff must fail"; fi
-assert_eq "empty diff writes no build=" 0 "$(outn build)"
 RC=0; ( cd "$repo" && env EVENT_NAME=push BASE_SHA=1111111111111111111111111111111111111111 RUNNER_TEMP="$SCRATCH/tmp" \
   GITHUB_STEP_SUMMARY="$SCRATCH/summary" bash "$SCRIPT" ) > "$SCRATCH/stdout" 2> "$SCRATCH/stderr" || RC=$?
 if [ "$RC" -ne 0 ]; then pass; else fail "unfetchable base must fail"; fi

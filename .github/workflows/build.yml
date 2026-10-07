@@ -72,8 +72,16 @@ jobs:
         run: bash tests/template-proof.sh
 
   # Every push to main used to publish a new tag set, docs-only pushes included, and each
-  # tag set is a Dependabot bump PR in every consumer. Publish only when the push changed
-  # something that affects an image. The weekly schedule and manual dispatch always do.
+  # tag set is a Dependabot bump PR in every consumer. Publish only when something that
+  # affects an image changed since the last successful publish. The weekly schedule and
+  # manual dispatch always do.
+  # A push is diffed against the commit of the newest main run whose publish JOB concluded
+  # success (last-publish-sha.sh), not against its own `before`: concurrency cancels a pending
+  # run when a newer push queues, and a publish can fail, so `before` would lose that change
+  # to the next docs-only push (#159). A run whose publish was skipped also reads `success`,
+  # hence the job level. A failed lookup, or none found among the newest 100 successful runs,
+  # builds: it fails toward publishing. `actions: read` is for that lookup and is this job's
+  # alone; the publish job holds no read of the run list.
   # This job is not a required check, so skipping the publish job below leaves PRs alone.
   scope:
     name: Did the push change an image?
@@ -81,6 +89,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      actions: read          # list main's build.yml runs and their jobs (last-publish-sha.sh)
     outputs:
       build: ${{ steps.scope.outputs.build }}
     steps:
@@ -88,11 +97,20 @@ jobs:
         with:
           persist-credentials: false
 
+      # Only a push needs a base: the schedule and dispatch always build, and image-scope.sh
+      # decides that before it reads BASE_SHA.
+      - name: Find the last successful publish
+        id: last
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/last-publish-sha.sh
+
       - name: Did the images or the template change?
         id: scope
         env:
           EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.before }}
+          BASE_SHA: ${{ steps.last.outputs.base }}
         run: bash .github/scripts/image-scope.sh
 
   # The event/ref clauses (an event allowlist, so a new trigger fails closed) repeat scope's
