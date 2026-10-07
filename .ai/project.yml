@@ -58,7 +58,7 @@ code_paths:
   - .gitattributes       # forces LF; a CRLF script or lock file breaks inside the image.
   - .ai/project.yml      # the source of truth for code_paths, the gate, the ruleset and the
                          # review gate. An edit weakening any of them must route to review.
-  - .claude/             # the plugin pin and the deny rules on merge and force-push.
+  - .claude/             # the plugin pin, the merge-guard hook, and the force-push and --no-verify deny rules.
 
 # ── the local green gate ─────────────────────────────────────────────────────
 # A local pre-check, not the gate of record; CI on the PR is. Mirrors lint.yml's four jobs, verify-selftest.yml
@@ -81,11 +81,16 @@ gates:
 # `main-required-checks` (ruleset id 24183176), created 2026-09-29, `enforcement: active`,
 # read back live via `GET /repos/603-Identity/devcontainers/rules/branches/main`. Same shape as
 # terraform-cloudflare-dns's: a `pull_request` rule plus a `required_status_checks` rule, no
-# bypass actors. The check names are the jobs' own `name:` fields, not typed from memory
+# bypass actors, so `--admin` never skips a required check. The check names are the jobs' own `name:` fields, not typed from memory
 # (IAC-D14's absent-check trap).
 #
 # build.yml's "Build, test, push and attest" job is deliberately absent: it runs only on
 # push to main, the schedule and manual dispatch, never on a pull request.
+#
+# Stated residual: a second ruleset, `restrict-updates-to-main` (rule `update`, one bypass
+# actor: the admin role in `pull_request` mode), also protects `main`. This `ruleset:` key takes
+# one name, so resume's drift check does not watch it. Deleting it or widening its bypass mode
+# to `always` would go unnoticed there; docs/threat_model.md invariant 6 records it.
 ruleset:
   name: main-required-checks
   rule_types: [pull_request, required_status_checks]

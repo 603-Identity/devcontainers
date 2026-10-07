@@ -319,7 +319,7 @@ preconditions.
 
 **Resolved** 2026-10-06 by the repo owner, when cutting `v1.3`.
 
-**Context.** `v1.0`-`v1.2` were bare tags (`v1.1` lightweight, `v1.2` signed and annotated),
+**Context.** `v1.0`-`v1.2` were bare tags (`v1.0` and `v1.1` lightweight, `v1.2` signed and annotated),
 with no release notes. Consumers copy the gate from a tag and pin the reusable workflows to its
 SHA, so the upgrade steps for each version lived only in this roadmap. The `release-tags`
 ruleset lets the Repository admin role bypass it, so an admin could still move or delete a tag
@@ -333,7 +333,8 @@ consumers had already pinned.
   re-pin, re-lint), then the behaviour changes and the known gaps. A docs-consistency pass checks
   them against the code before they are published.
 - Release immutability is on for the repo (set 2026-10-06). A published release's tag cannot be
-  moved or deleted, admins included. A mistake ships as a new version, never as an edit.
+  moved; it can be deleted only after deleting its release, and the name can never be reused.
+  The setting is `enforced_by_owner: false`, so an admin can turn it off before a future release. A mistake ships as a new version, never as an edit.
 - After each release, one PR re-points `template/`'s pins and this repo's own `decide` pin to
   the new SHA.
 - Rejected: *staying with bare tags:* no place for upgrade steps that consumers see beside
