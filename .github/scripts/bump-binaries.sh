@@ -13,8 +13,9 @@
 # for the human review the PR goes through.
 #
 # betterleaks (#190) is the exception to "stable only", but only while its pin is itself a release
-# candidate (X.Y.Z-rc.N): then it takes the highest-versioned release including prereleases (so
-# it can reach 2.0.0 GA). Once the pin is on a GA release it takes stable releases only, like every
+# candidate (X.Y.Z-rc.N): then it takes the highest-versioned release among any GA release and the
+# release candidates of the pin's own X.Y.Z (so it can reach 2.0.0 GA, and never follows a later
+# line's rcs past it, #304). Once the pin is on a GA release it takes stable releases only, like every
 # other tool (#208). Either way it takes the checksum only after cosign verifies the release's
 # sigstore bundle for its checksums.txt against the pinned signer identity.
 #
@@ -67,7 +68,7 @@ resolve_gh() {
 }
 
 resolve_yq() {
-  local tag order_url sums_url field sums
+  local tag order_url sums_url field sums order
   IFS=$'\t' read -r tag RELEASE_URL <<< "$(latest_release mikefarah/yq)"
   NEW_VERSION="${tag#v}"
   # The checksums file lists one hash per algorithm, in the order this sidecar file
@@ -76,7 +77,11 @@ resolve_yq() {
   # silently reading the wrong hash. The asset is the raw binary, not the tarball:
   # images/base/Dockerfile downloads yq_linux_amd64 and checks it against YQ_SHA256 (#164).
   order_url="https://github.com/mikefarah/yq/releases/download/${tag}/checksums_hashes_order"
-  field="$(curl -fsSL "$order_url" | grep -n '^SHA-256$' | cut -d: -f1)"
+  # Read into a variable first, and tolerate grep's no-match exit: under pipefail a missing
+  # SHA-256 line would otherwise kill the script before the message below (#325). A curl
+  # failure still exits here.
+  order="$(curl -fsSL "$order_url")"
+  field="$(grep -n '^SHA-256$' <<< "$order" | cut -d: -f1 || true)"
   [ -n "$field" ] || { echo "::error::yq: SHA-256 not found in $order_url" >&2; exit 1; }
   field=$((field + 1))
   sums_url="https://github.com/mikefarah/yq/releases/download/${tag}/checksums"
@@ -145,23 +150,28 @@ ver_key() {
 
 # While Betterleaks is pinned to a release candidate, /releases/latest (which skips
 # prereleases) is the wrong question: take the highest-versioned non-draft release instead,
-# prereleases included, and never a tag that is not exactly vX.Y.Z or vX.Y.Z-rc.N. Once the pin
-# is a GA release, consider only exactly-vX.Y.Z tags, so the job never proposes the next rc (#208).
+# counting only GA releases and rcs of the pin's own X.Y.Z (a newer line's rc would keep the pin
+# on the rc track and never land on GA, #304), and never a tag that is not exactly vX.Y.Z or
+# vX.Y.Z-rc.N. Once the pin is a GA release, consider only exactly-vX.Y.Z tags, so the job never
+# proposes the next rc (#208).
 # The pin is read from the Dockerfile here, ahead of the generic read further down.
 # Its checksums.txt is taken ONLY after the release's sigstore bundle verifies with the pinned signer identity for that exact tag
 # (the release workflow, run at that tag, via GitHub Actions OIDC); a failed or missing
 # verification is an error, never a fallback to the unsigned file. Needs `cosign` on PATH.
 BETTERLEAKS_ISSUER="https://token.actions.githubusercontent.com"
 resolve_betterleaks() {
-  local best="" best_key="" best_url="" tag url key dir identity pin tag_re
+  local best="" best_key="" best_url="" tag url key dir identity pin pin_core="" tag_re
   pin="$(sed -n 's/^ARG BETTERLEAKS_VERSION=//p' "$root/images/base/Dockerfile")"
   [ -n "$pin" ] || { echo "::error::betterleaks: could not read BETTERLEAKS_VERSION from $root/images/base/Dockerfile" >&2; exit 1; }
   tag_re='^v[0-9]+\.[0-9]+\.[0-9]+$'
   if [[ "$pin" =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
     tag_re='^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$'
+    pin_core="${pin%%-*}"
   fi
   while IFS=$'\t' read -r tag url; do
     [[ "$tag" =~ $tag_re ]] || continue
+    # In rc mode an rc counts only on the pin's own X.Y.Z; GA releases always count.
+    if [[ -n "$pin_core" && "$tag" == *-rc.* && "${tag#v}" != "$pin_core"-rc.* ]]; then continue; fi
     key="$(ver_key "${tag#v}")"
     if [ -z "$best" ] || [[ "$key" > "$best_key" ]]; then best="$tag"; best_key="$key"; best_url="$url"; fi
   done < <(gh api "repos/betterleaks/betterleaks/releases" --paginate --jq '.[] | select(.draft | not) | [.tag_name, .html_url] | @tsv')

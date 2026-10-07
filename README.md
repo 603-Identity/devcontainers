@@ -658,7 +658,7 @@ own published checksum file (npm: the registry's `integrity` field) -- never fro
 hashing the download -- and opens one PR per tool that is behind, with the release page
 and the URL the checksum was read from linked in the body (not a diff -- see step 1 below). To decline a version, close its PR and leave the `bump/<tool>-<version>` branch: the
 next run skips that tool with a warning (#86), and deleting the branch proposes the version again. **betterleaks is the exception** (#190): while its pin is a release candidate (`X.Y.Z-rc.N`, today 2.0.0-rc.1) it
-takes the highest-versioned release *including release candidates*, and once the pin is on a GA
+takes the highest-versioned release among any GA release and the release candidates of its own `X.Y.Z` (never a later line's rc, #304), and once the pin is on a GA
 release it takes stable releases only, like every other tool (#208). It takes the sha256 only after `cosign verify-blob` accepts the
 release's sigstore bundle for `checksums.txt` against the signer identity for that exact tag
 (`betterleaks/betterleaks` `release.yml` at `refs/tags/v<version>`, issuer GitHub Actions). A

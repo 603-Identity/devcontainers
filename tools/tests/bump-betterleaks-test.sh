@@ -159,6 +159,23 @@ assert_rc "a GA pin ignores a newer rc" 0 "$RC"
 out_has "up to date" "pin 2.0.0 with only v2.1.0-rc.1 newer is up to date"
 rm -rf "$SCRATCH"
 
+setup 2.0.0-rc.1
+releases 'v2.1.0-rc.1\thttps://example.test/rc21\nv2.0.0\thttps://example.test/ga\nv2.0.0-rc.1\thttps://example.test/rc1\n'
+checksums 2.0.0 "$SHA_OK"
+run betterleaks
+assert_rc "an rc pin reaches GA past a later line's rc (#304)" 0 "$RC"
+out_has "PR already open" "the bump goes ahead"
+if log_has "curl https://github.com/betterleaks/betterleaks/releases/download/v2.0.0/checksums.txt"; then pass; else fail "the checksum is taken from v2.0.0, not v2.1.0-rc.1" "$(cat "$FAKE_LOG")"; fi
+rm -rf "$SCRATCH"
+
+setup 2.0.0-rc.1
+releases 'v2.1.0-rc.1\thttps://example.test/rc21\nv2.0.0-rc.1\thttps://example.test/rc1\n'
+checksums 2.0.0-rc.1 "$SHA_OK"
+run betterleaks
+assert_rc "a later line's rc alone is ignored (#304)" 0 "$RC"
+out_has "up to date" "the pin stays on its own rc"
+rm -rf "$SCRATCH"
+
 setup 2.0.0
 releases 'v2.1.0\thttps://example.test/210\nv2.1.0-rc.1\thttps://example.test/rc\nv2.0.0\thttps://example.test/ga\n'
 checksums 2.1.0 "$SHA_OK"
