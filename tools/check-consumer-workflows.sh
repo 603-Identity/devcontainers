@@ -23,6 +23,12 @@
 #     (same reason: they run on the bare runner with run: steps only), they run on anything but
 #     a GitHub-hosted runner label, or `post` holds a scope other than statuses, contents,
 #     pull-requests: write and issues: read;
+#   * the gate's `on:` is not a mapping (the list form `on: [pull_request, ...]` fails), lacks a
+#     trigger the template has, or a `types:` list lacks a type of it: pull_request opened,
+#     synchronize, reopened; issue_comment created; pull_request_review submitted, edited,
+#     dismissed (#341), with nothing but `types:` under each (a `branches:` or `paths:` filter can
+#     keep runs from firing). A gate copied before v1.4 fails here, not warns: re-render it from
+#     the template;
 #   * the gate's `.github/` rule is missing (a pin bump of `decide` edits only .github/, and
 #     that rule is what makes it always need review);
 #   * devcontainer-image.yml is not the caller the template ships: one job `verify`, no `name:`
@@ -56,7 +62,9 @@
 #     block arm written `./tools/*` does not cover `tools/`. An entry left empty, or `.`, is the
 #     repo root (#249): it is sampled as `a`, `a/b` and so on, so a block arm `*` covers it and
 #     `./*` does not. An entry with a `//`, `/./` or `/../` segment is a finding on its own (the
-#     gate never sees such a path), and a block arm that covered only it then also warns.
+#     gate never sees such a path). The arms that cover such an entry with its odd segments folded
+#     away (`tools//` as `tools/`) draw no "pattern matches none" warning (#335); an entry with a
+#     `..` segment spares every arm.
 # and warns when a block pattern matches no entry's sample, or when a glob entry (a bracket
 # class, say) gets no sample that matches it, so that entry is not checked.
 set -euo pipefail
@@ -77,8 +85,12 @@ yq --version 2> /dev/null | grep -q 'mikefarah' \
 [ -d "$dir" ] || { echo "usage: check-consumer-workflows.sh [WORKFLOW_DIR] ($dir is not a directory)" >&2; exit 2; }
 
 findings=0
-finding() { findings=$((findings + 1)); echo "check-consumer-workflows: $*" >&2; }
-warn() { echo "check-consumer-workflows: warning: $*" >&2; }
+# A message can carry a consumer's file name or path, and a name with a newline in it would start
+# a log line of its own: `::error::...` is a workflow command to a runner (#334). Control
+# characters print as `?`, so every message stays one line.
+say() { local m="$*"; echo "check-consumer-workflows: ${m//[[:cntrl:]]/?}" >&2; }
+finding() { findings=$((findings + 1)); say "$@"; }
+warn() { say "warning: $*"; }
 j() { jq -r "$@" | tr -d '\r'; }   # jq.exe writes CRLF on Windows
 
 GATE_NAME=architect-review-gate.yml
@@ -139,6 +151,32 @@ IMAGES_JQ='(.jobs[$j] // {}) | [has("container"), has("services")] | any'
 # keep code from an earlier job (a Dependabot-bumped action) alive next to the status token.
 # shellcheck disable=SC2016
 HOSTED_JQ='(.jobs[$j]["runs-on"] // null) | (type == "string") and test("^(ubuntu|windows|macos)-(latest|[0-9]+([.][0-9]+)*)(-arm)?$")'
+
+# The gate's triggers (#341), one finding per line: `on:` not a mapping, an event missing, an event
+# with anything but `types:` under it (a `branches:` or `paths:` filter can keep its edit and
+# dismissal runs from firing), or a `types:` list that lacks a type the template has. A gate that
+# keeps `pull_request_review: [submitted]` leaves a stale `success` on the head SHA after an edit
+# or a dismissal (#315, #281). No `types:` key means every type of the event (the default for
+# pull_request is the template's own three).
+# shellcheck disable=SC2016
+GATE_ON_JQ='{pull_request: ["opened","synchronize","reopened"], issue_comment: ["created"],
+             pull_request_review: ["submitted","edited","dismissed"]} as $need
+  | (.on // null) as $on
+  | if ($on | type) != "object" then "on: must be a mapping of events, as in the template"
+    else $need | to_entries[]
+      | .key as $e | .value as $want
+      | if ($on | has($e) | not) then "\($e) is not a trigger"
+        else $on[$e] as $c
+          | if $c == null then empty
+            elif ($c | type) != "object" or ([$c | keys[] | select(. != "types")] | length) > 0
+              then "\($e) must be a mapping with only types: under it"
+            elif ($c | has("types") | not) then empty
+            else ([$c.types] | flatten) as $have
+              | ([$want[] | select(. as $t | $have | index($t) | not)]) as $lack
+              | if ($lack | length) > 0 then "\($e) types lacks " + ($lack | join(", ")) else empty end
+            end
+        end
+    end'
 
 # True when the gate's `post` job holds exactly the scopes spec section 0 gives it.
 POST_PERMS_JQ='(.jobs.post.permissions // null)
@@ -209,6 +247,10 @@ elif [ -n "$gate_json" ]; then
     [ "$(printf '%s' "$gate_json" | j --arg j "$job" "$HOSTED_JQ")" = "true" ] \
       || finding "$gate: job '$job' must run on a GitHub-hosted runner (runs-on: ubuntu-latest), not a self-hosted one."
   done
+  while IFS= read -r why; do
+    [ -n "$why" ] || continue
+    finding "$gate: the gate's on: block must match the template ($why). A gate whose triggers differ from the template can leave a stale or missing status after an edit, a dismissal or a new head."
+  done < <(printf '%s' "$gate_json" | j "$GATE_ON_JQ")
   [ "$(printf '%s' "$gate_json" | j "$POST_PERMS_JQ")" = "true" ] \
     || finding "$gate: job 'post' may hold only statuses, contents and pull-requests: write, plus issues: read."
   # The line anywhere in post's script, not in the fixed region of it: this catches an honest
@@ -265,7 +307,7 @@ $arms
         fi
       fi
       if [ "$arm_ok" = true ]; then
-        samples=()
+        samples=() nc_samples=() nc_all=false
         while IFS= read -r entry; do
           [ -n "$entry" ] || continue
           # The gate's `case` sees PR file paths from the GitHub files API (`tools/a`), never
@@ -280,6 +322,13 @@ $arms
           # not match an arm written the same way: the lint cannot sample such an entry honestly.
           if [ "$root_entry" = false ] && [[ "/${path%/}/" == *//* || "/${path%/}/" == */./* || "/${path%/}/" == */../* ]]; then
             finding "$gate: the code_paths entry '$entry' in $project is not a canonical path (no '//', '/./' or '/../' segments), so it cannot be checked. Write it as the gate sees it, e.g. 'tools/'."
+            # Its arm matches none of the samples above, which is the same problem, not a second
+            # one (#335): sample the entry with the odd segments folded away, so only the arms that
+            # cover it are spared the reverse-pass warning. `..` cannot be folded; spare them all.
+            nc="/$path/"
+            while [[ "$nc" == *//* || "$nc" == */./* ]]; do nc="${nc//\/\//\/}"; nc="${nc//\/.\//\/}"; done
+            nc="${nc#/}"; nc="${nc%/}"
+            if [[ "/$path/" == */../* ]]; then nc_all=true; else nc_samples+=("$nc" "$nc/a"); fi
             continue
           fi
           # Several samples per entry, so one lucky shape (`images/a)` for `images/`) cannot pass.
@@ -325,8 +374,8 @@ $arms
             [ "$p" = '.github/*' ] && continue
             hit=false
             # shellcheck disable=SC2053  # the glob match is the point
-            for s in ${samples[@]+"${samples[@]}"}; do [[ "$s" == $p ]] && { hit=true; break; }; done
-            [ "$hit" = true ] || warn "$gate: the CONSUMER pattern '$p' matches none of the code_paths entries in $project."
+            for s in ${samples[@]+"${samples[@]}"} ${nc_samples[@]+"${nc_samples[@]}"}; do [[ "$s" == $p ]] && { hit=true; break; }; done
+            [ "$hit" = true ] || [ "$nc_all" = true ] || warn "$gate: the CONSUMER pattern '$p' matches none of the code_paths entries in $project."
           done
         done <<< "$region"
       fi
