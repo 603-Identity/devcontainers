@@ -88,7 +88,7 @@ G
 out="" url=""
 while [ $# -gt 0 ]; do case "$1" in -o) out="$2"; shift 2 ;; -*) shift ;; *) url="$1"; shift ;; esac; done
 case "$url" in
-  *checksums_hashes_order) printf 'MD5\nSHA-1\nSHA-256\n' ;;
+  *checksums_hashes_order) printf '%b' "${FAKE_ORDER:-MD5\nSHA-1\nSHA-256\n}" ;;
   *dist/index.json) printf '[{"version":"v%s","lts":"Fake"}]' "$FAKE_VER" ;;
   *sigstore.json) printf '{}' > "$out" ;;
   *) if [ -n "$out" ]; then printf '%s' "$FAKE_BODY" > "$out"
@@ -161,5 +161,16 @@ while IFS='|' read -r tool dir ver_arg sha_arg tag; do
   if [ "$got" != "$SHA_GOOD" ]; then pass; else fail "$tool: nothing is written from a failed transfer" "wrote the hash"; fi
   rm -rf "$SCRATCH"
 done <<< "$TOOLS"
+
+# An order file with no SHA-256 line must reach the explanatory error, not die silently under
+# pipefail (#325).
+setup base
+FAKE_ORDER='MD5\nSHA-1\n' FAKE_BODY="" FAKE_TAG=v99.88.77 FAKE_VER="$NEW_VER" \
+  PATH="$SCRATCH/bin:/usr/bin:/bin" REPO=o/r APP_SLUG=app BOT_USER_ID=1 GH_TOKEN=t \
+  bash "$R/.github/scripts/bump-binaries.sh" yq > "$SCRATCH/out" 2>&1
+rc=$?
+assert_rc "yq without a SHA-256 line in the order file fails" 1 "$rc"
+if grep -qF 'yq: SHA-256 not found in' "$SCRATCH/out"; then pass; else fail "yq says why: SHA-256 not found" "$(cat "$SCRATCH/out")"; fi
+rm -rf "$SCRATCH"
 
 summary
