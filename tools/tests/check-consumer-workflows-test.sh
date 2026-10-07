@@ -31,7 +31,7 @@ lint() {
 # lint_up: run the lint with provenance on, against the fixture upstream $UP.
 lint_up() {
   RC=0
-  ERR="$(CHECK_CONSUMER_UPSTREAM="$UP" bash "$LINT" "${1:-$WF}" 2>&1 > /dev/null)" || RC=$?
+  ERR="$(CHECK_CONSUMER_UPSTREAM="$UP" bash "$LINT" "$WF" 2>&1 > /dev/null)" || RC=$?
 }
 expect() { # description expected-rc [stderr-substring]
   assert_rc "$1" "$2" "$RC"
