@@ -1,23 +1,23 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Steps 1-8 are done; step 9 (#234) is designed and
-ready to build.
+**Now:** Milestone 4, Repo hardening: review gate and CI. Steps 1-8 are done; step 9 (#234) is built and open
+as PR #365, awaiting its fresh-session architect review.
 
-**Just done** (architect session on opus, last_commit `b28c973`):
-- Posted the design for #234 as [issue comment 6037027799](https://github.com/603-Identity/devcontainers/issues/234#issuecomment-6037027799),
-  and the owner decided its three questions: first-parent of `main` (not just ancestor), a `# vX.Y` tag that
-  does not peel to the pin fails, and "couldn't check" exits 3.
-- Re-anchored milestone 4 on task #234 plus that spec comment. The description sha (`3387dd9c…`) is unchanged
-  and `plan-anchor.sh verify --plan` printed `match`, but this session's resume did not run `verify` (the
-  design gate was open), so the gate below names the re-anchor.
+**Just done** (coder session on sonnet, last_commit `736047f`, PR #365 head):
+- Built #234 per the [settled design](https://github.com/603-Identity/devcontainers/issues/234#issuecomment-6037027799)
+  in `tools/check-consumer-workflows.sh`, its tests, and the header, `docs/adopting.md`, `docs/threat_model.md`
+  and README edits. Resume's `plan-anchor.sh verify` printed `match`, which cleared the re-anchor gate.
+- Critic pass on the diff (architect, security-critic, docs-consistency): 2 rounds, converged (round 2
+  tightenings only); no second-opinion round. Declined tightenings: also clearing `GIT_GRAFT_FILE`/`GIT_SSL_*`
+  from git's env, and rejecting a `//host/share` override path.
+- The lint covers only the verify, decide and secret-scan pins, as designed; other `uses:` references to this
+  repo are not checked.
 
-**Next:** task #234 — build M4 step 9 per the settled design in the spec comment above, on **sonnet** (coder):
-the provenance check in `tools/check-consumer-workflows.sh`, its six tests, and the script header,
-`docs/adopting.md` step 5 and `docs/threat_model.md` residual edits. Then the green gate, critic-gate
-(architect + security-critic), ship, and a fresh-session architect review.
+**Next:** `/way-of-working:architect-review 365` on **opus** (architect), in a **new session**: post the review
+on PR #365's head, verify `architect-review` goes green on that SHA, file non-blocking findings. The human then
+merges.
 
-**HITL Gate: OPEN** — only the milestone 4 re-anchor above (a human "go" at resume clears it). The #234 design
-decision is closed.
+**HITL Gate: NONE OPEN.** Next gate: the human's merge of #365.
 
 **Open for the owner (non-blocking):**
 - The pilots (terraform-cloudflare-dns, terraform-microsoft365-entra) re-copy the gate and re-pin to
