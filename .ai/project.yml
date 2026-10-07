@@ -120,3 +120,4 @@ models:
   coder: sonnet
   second_opinion: fable   # offered as an optional late critic-gate round on a different model;
                           # runs only when the human authorizes it in-session.
+orchestration: null   # the sprint-orchestrator loop never dispatches into this repo.
