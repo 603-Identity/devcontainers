@@ -1,20 +1,23 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Steps 1-7 are done and the template pins `v1.4`.
-Step 8 is next, waiting on the owner's go.
+**Now:** Milestone 4, Repo hardening: review gate and CI. Step 8 is built and its PR is open, waiting on the
+fresh-session architect review.
 
-**Just done** (architect session on opus, last_commit `34f3f5e`):
-- Reviewed PR #359 at head `ef202a6` (sound, no findings; every claim executed in a WSL sandbox, both pin
-  guards witnessed red by mutation). The owner merged it as `34f3f5e`: the template's three pins and this
-  repo's own `decide` pin now name `9153da1 # v1.4`.
-- Anchored task #341 for M4 step 8 (first task anchor on milestone 4; its description re-verified unchanged).
+**Just done** (coder session on sonnet, last_commit `89ad6b7`):
+- Built M4 step 8 as PR #361 (head `89ad6b7`): `tools/check-consumer-workflows.sh` lints the gate's `on:` triggers
+  (#341; a gate copied before v1.4 now fails, not warns), prints control characters as `?` so a file name cannot
+  forge a `::` line (#334), and no longer double-reports a non-canonical `code_paths` entry (#335, per pattern).
+  Gate tests, shellcheck and the lint's own suite pass in WSL; Docker-based gate entries were not re-run (nothing
+  in the diff touches them).
+- Critic pass: security-critic + architect, 3 rounds (2 fix rounds), converged; the `fable` second-opinion
+  round was offered and declined. Round 2 caught a `..` defect the round-1 fix had introduced.
+- Anchor: milestone 4's description sha is unchanged (`3387dd9c…`), but this handoff had no verified baseline, so the
+  anchor is re-established and the gate below is open on it.
 
-**Next:** task #341 â€” build M4 step 8 (#341 + #334 + #335) as one PR in `tools/check-consumer-workflows.sh` and
-its test, on **sonnet** (coder). Run the gate tests in WSL, then `/way-of-working:critic-gate`, then
-`/way-of-working:ship`; the PR body says `Closes #341, closes #334, closes #335`.
+**Next:** `/way-of-working:architect-review 361` in a **new** session on **opus** (architect). The owner then
+merges #361. After it: M4 step 9, if the milestone has one (read milestone 4 before assuming).
 
-**HITL Gate: OPEN** â€” the owner's go on step 8 (task #341, anchored for the first time at this handoff).
-Next gate after that: the fresh-session architect review of the step 8 PR.
+**HITL Gate: OPEN** — the fresh-session architect review of PR #361, then the owner's merge.
 
 **Open for the owner (non-blocking):**
 - The pilots (terraform-cloudflare-dns, terraform-microsoft365-entra) re-copy the gate and re-pin to
