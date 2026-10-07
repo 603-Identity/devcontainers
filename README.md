@@ -143,7 +143,7 @@ What a healthy container looks like (from the terraform-cloudflare-dns pilot):
 [`devcontainer-image.yml`](template/.github/workflows/devcontainer-image.yml) and the
 [gate](template/.github/workflows/architect-review-gate.yml) only mean something with these
 in place. `tools/check-consumer-workflows.sh` lints the workflow shapes named below (the caller, write
-permissions, `uses:` in the gate's `resolve` and `post`, the gate's triggers, the `.github/` rule, the pin shapes). When
+permissions, `uses:` in the gate's `resolve` and `post`, the gate's triggers, the `.github/` rule, the pin shapes, and that each pin is on this repo's `main` and its tag points at it, which needs network access). When
 `.ai/project.yml` sits next to `.github/`, it also runs each `code_paths` entry through the gate's
 CONSUMER `case` block (a dir `x/` as a few sample paths under it, a glob as a few paths that match
 it: a spot check, not a proof of full coverage) and fails

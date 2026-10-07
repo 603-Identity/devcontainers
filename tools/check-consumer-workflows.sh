@@ -2,10 +2,27 @@
 # Lint for a consuming repo's workflows (spec section 4, "Consumer prerequisites"). Run it in
 # the consuming repo, in the adoption PR and from the pilots:
 #
-#   check-consumer-workflows.sh [WORKFLOW_DIR]     default: .github/workflows
+#   check-consumer-workflows.sh [--no-provenance] [WORKFLOW_DIR]     default: .github/workflows
 #
-# Exit 0: clean. 1: at least one finding (each printed to stderr). 2: usage, or a missing tool.
-# Needs bash, jq and yq (mikefarah, v4). Reads files only; it never touches the network.
+# Exit 0: clean. 1: at least one finding (each printed to stderr). 2: usage, a missing jq or yq, or a bad
+# CHECK_CONSUMER_UPSTREAM.
+# 3: no finding, but the pins' provenance could not be checked (below): never read it as ok.
+# Needs bash, jq and yq (mikefarah, v4), and git plus network access to github.com for the pin
+# provenance check. Everything else reads files only.
+#
+# Pin provenance (#234): once the pin shapes pass, each distinct pinned SHA (verify, decide and
+# secret-scan; usually one) must be on the first-parent line of 603-Identity/devcontainers `main`,
+# and its `# vX.Y` comment must name a tag that peels to it. GitHub serves any commit in this
+# repo's fork network by SHA, so a pin can be shaped right and still name a commit that was never
+# on `main`. One scratch clone of `main` answers for every pin (`--bare --single-branch
+# --filter=tree:0`, not shallow); the URL is fixed here, never taken from `origin`, and a SHA is
+# never fetched by name, so a fork-only commit is simply absent. No token and no `gh`. A pin off
+# `main`, or a tag that does not peel to it, is a finding (exit 1). A clone or `ls-remote` that
+# fails, or no `git`, prints `could not check pin provenance` and exits 3 if nothing else is
+# wrong. `--no-provenance` skips the check for offline use, prints `pin provenance NOT checked`
+# and also exits 3 on an otherwise clean run. `CHECK_CONSUMER_UPSTREAM` replaces the clone URL
+# for the tests (a local fixture repo) and prints a warning when set. The bytes at a legitimate
+# `main` commit are trusted as merged: that is the `main` ruleset's and the review's job.
 #
 # It runs when you tell it to: at adoption and from the pilots. Nothing re-runs it in the
 # consuming repo's CI, so a later edit that breaks a rule is not caught until the next run.
@@ -70,7 +87,20 @@
 set -euo pipefail
 export LC_ALL=C
 
-dir="${1:-.github/workflows}"
+check_provenance=true
+dir=""
+end_opts=false
+for arg in "$@"; do
+  case "$end_opts:$arg" in
+    false:--) end_opts=true ;;
+    false:--no-provenance) check_provenance=false ;;
+    false:-*) echo "usage: check-consumer-workflows.sh [--no-provenance] [WORKFLOW_DIR] (unknown option $arg)" >&2; exit 2 ;;
+    *) [ -z "$dir" ] || { echo "usage: check-consumer-workflows.sh [--no-provenance] [--] [WORKFLOW_DIR]" >&2; exit 2; }; dir="$arg" ;;
+  esac
+done
+dir="${dir:-.github/workflows}"
+# Fixed, never read from `origin`: the person running this may be in a fork's checkout (#234).
+UPSTREAM_URL=https://github.com/603-Identity/devcontainers.git
 VERIFY_WF='603-Identity/devcontainers/.github/workflows/verify-devcontainer-image.yml'
 SCAN_WF='603-Identity/devcontainers/.github/workflows/secret-scan.yml'
 DECIDE_WF='603-Identity/devcontainers/.github/workflows/devcontainer-bump-decision.yml'
@@ -82,7 +112,7 @@ for tool in jq yq; do
 done
 yq --version 2> /dev/null | grep -q 'mikefarah' \
   || { echo "check-consumer-workflows: yq must be mikefarah/yq (v4)" >&2; exit 2; }
-[ -d "$dir" ] || { echo "usage: check-consumer-workflows.sh [WORKFLOW_DIR] ($dir is not a directory)" >&2; exit 2; }
+[ -d "$dir" ] || { echo "usage: check-consumer-workflows.sh [--no-provenance] [WORKFLOW_DIR] ($dir is not a directory)" >&2; exit 2; }
 
 findings=0
 # A message can carry a consumer's file name or path, and a name with a newline in it would start
@@ -92,6 +122,12 @@ say() { local m="$*"; echo "check-consumer-workflows: ${m//[[:cntrl:]]/?}" >&2; 
 finding() { findings=$((findings + 1)); say "$@"; }
 warn() { say "warning: $*"; }
 j() { jq -r "$@" | tr -d '\r'; }   # jq.exe writes CRLF on Windows
+# The pins that passed their shape rule, for the provenance check: file, 40-hex sha, tag (`vX.Y`).
+pin_file=() pin_sha=() pin_tag=()
+add_pin() {
+  local t="${3#\#}"
+  pin_file+=("$1"); pin_sha+=("$2"); pin_tag+=("${t#"${t%%[![:space:]]*}"}")
+}
 
 GATE_NAME=architect-review-gate.yml
 # A workflow file is a mapping whose jobs: is a mapping of mappings.
@@ -265,6 +301,8 @@ elif [ -n "$gate_json" ]; then
   if [ -z "$decide_sha" ] || ! [[ "$decide_comment" =~ $VERSION_COMMENT ]]; then
     decide_sha=""
     finding "$gate: the decide pin must be '$DECIDE_WF@<40-hex sha> # vX.Y'."
+  else
+    add_pin "$gate" "$decide_sha" "$decide_comment"
   fi
 
   # Rule 2b (#214): the CONSUMER `code_paths` block must cover the repo's own `.ai/project.yml`
@@ -413,8 +451,11 @@ else
   if [[ "$verify_uses" == "$VERIFY_WF@"* ]] && [[ "${verify_uses#"$VERIFY_WF"@}" =~ ^[0-9a-f]{40}$ ]]; then verify_sha="${verify_uses#"$VERIFY_WF"@}"; fi
   if [ -z "$verify_sha" ] || ! [[ "$verify_comment" =~ $VERSION_COMMENT ]]; then
     finding "$caller: the verify pin must be '$VERIFY_WF@<40-hex sha> # vX.Y'."
-  elif [ -n "${decide_sha:-}" ] && [ "$decide_sha" != "$verify_sha" ]; then
-    warn "the verify pin ($verify_sha) and the decide pin ($decide_sha) name different commits. Bump them together."
+  else
+    add_pin "$caller" "$verify_sha" "$verify_comment"
+    if [ -n "${decide_sha:-}" ] && [ "$decide_sha" != "$verify_sha" ]; then
+      warn "the verify pin ($verify_sha) and the decide pin ($decide_sha) name different commits. Bump them together."
+    fi
   fi
 fi
 
@@ -439,11 +480,86 @@ else
   scan_comment="$(yq '.jobs.secrets.uses | line_comment' "$scan_caller" 2> /dev/null | tr -d '\r' || true)"
   if ! { [[ "$scan_uses" == "$SCAN_WF@"* ]] && [[ "${scan_uses#"$SCAN_WF"@}" =~ ^[0-9a-f]{40}$ ]] && [[ "$scan_comment" =~ $VERSION_COMMENT ]]; }; then
     finding "$scan_caller: the secrets pin must be '$SCAN_WF@<40-hex sha> # vX.Y'."
+  else
+    add_pin "$scan_caller" "${scan_uses#"$SCAN_WF"@}" "$scan_comment"
+  fi
+fi
+
+# Rule 6 (#234): every pin names a commit on the first-parent line of this repo's `main`, and its
+# `# vX.Y` comment names a tag that peels to it. A pin shaped right can still name a commit that
+# was never on `main`: GitHub serves any commit of the fork network by SHA. One scratch clone of
+# `main` answers for every pin, since a clone holds only what `main` holds.
+unchecked=0
+if [ "${#pin_sha[@]}" -gt 0 ]; then
+  if [ "$check_provenance" = false ]; then
+    say "pin provenance NOT checked (--no-provenance)."
+    unchecked=1
+  else
+    # Hardened as infrastructure-core's action-pin helper is: no prompt, no user or system config,
+    # and no config or repo location carried in the environment (`GIT_CONFIG_COUNT` could carry a
+    # `url.<x>.insteadOf` that redirects the fixed URL).
+    prov_git() {
+      ${TIMEOUT_CMD[@]+"${TIMEOUT_CMD[@]}"} env -u GIT_CONFIG_PARAMETERS -u GIT_CONFIG_COUNT \
+        -u GIT_DIR -u GIT_WORK_TREE -u GIT_ASKPASS -u SSH_ASKPASS \
+        GIT_TERMINAL_PROMPT=0 GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null \
+        GIT_CONFIG_NOSYSTEM=1 git -c credential.helper= "$@"
+    }
+    cannot_check() { unchecked=1; say "could not check pin provenance: ${1//$'\n'/; }"; }
+    TIMEOUT_CMD=()
+    ! command -v timeout > /dev/null || TIMEOUT_CMD=(timeout 120)
+    upstream="$UPSTREAM_URL"
+    if [ -n "${CHECK_CONSUMER_UPSTREAM:-}" ]; then
+      upstream="$CHECK_CONSUMER_UPSTREAM"
+      # A local fixture only: the override must not be able to point a run at a network repo,
+      # where it could answer "ok" for a fork's commit.
+      case "$upstream" in
+        /* | file:///*) ;;
+        *) echo "check-consumer-workflows: CHECK_CONSUMER_UPSTREAM must be an absolute local path or a file:/// URL." >&2; exit 2 ;;
+      esac
+      warn "CHECK_CONSUMER_UPSTREAM is set: pins are checked against $upstream, not $UPSTREAM_URL."
+    fi
+    scratch=""
+    if ! command -v git > /dev/null; then
+      cannot_check "git is not installed."
+    elif ! scratch="$(mktemp -d)"; then
+      cannot_check "mktemp -d failed."
+    else
+      trap 'rm -rf "$scratch"' EXIT
+      # Never `git fetch <sha>`: that would serve a fork-only commit. Cloning `main` alone leaves
+      # such a commit absent. Not shallow, or an old pin would read as a fork's.
+      if ! err="$(prov_git clone -q --bare --single-branch --branch main --filter=tree:0 --no-tags -- "$upstream" "$scratch/up.git" 2>&1)"; then
+        cannot_check "$err"
+      elif ! err="$(prov_git -C "$scratch/up.git" rev-list --first-parent main 2>&1 > "$scratch/first-parent")"; then
+        cannot_check "$err"
+      elif ! tags="$(prov_git -C "$scratch/up.git" ls-remote --tags origin 2>&1)"; then
+        cannot_check "$tags"
+      else
+        for i in "${!pin_sha[@]}"; do
+          sha="${pin_sha[$i]}" tag="${pin_tag[$i]}" file="${pin_file[$i]}"
+          if ! grep -Fxq "$sha" "$scratch/first-parent"; then
+            finding "$file: pin $sha is not on 603-Identity/devcontainers main's first-parent line (a fork, a PR head or a branch commit)."
+            continue
+          fi
+          # An annotated tag lists its commit on the `^{}` line, a lightweight one on its own.
+          peeled="$(printf '%s\n' "$tags" | awk -v t="refs/tags/$tag" \
+            '$2 == (t "^{}") { print $1; f = 1 } $2 == t { p = $1 } END { if (!f && p != "") print p }')"
+          if [ -z "$peeled" ]; then
+            finding "$file: pin $sha is labeled $tag, but 603-Identity/devcontainers has no tag $tag."
+          elif [ "$peeled" != "$sha" ]; then
+            finding "$file: tag $tag points at $peeled, not the pinned $sha."
+          fi
+        done
+      fi
+    fi
   fi
 fi
 
 if [ "$findings" -gt 0 ]; then
   echo "check-consumer-workflows: $findings finding(s)." >&2
   exit 1
+fi
+if [ "$unchecked" = 1 ]; then
+  echo "check-consumer-workflows: no findings, but pin provenance was not checked (exit 3, never ok)." >&2
+  exit 3
 fi
 echo "check-consumer-workflows: ok."

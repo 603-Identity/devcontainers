@@ -104,7 +104,10 @@ consuming repo needs](../README.md#what-the-consuming-repo-needs):
 5. Run `tools/check-consumer-workflows.sh` from a checkout of this repo against the repo's
    `.github/workflows`. With `.ai/project.yml` beside `.github/`, it also spot-checks each
    `code_paths` entry against the gate's `case` block and fails on one it does not cover. Nothing re-runs it later, so do
-   it now.
+   it now. It also needs `git` and network access to github.com: it clones this repo's `main` to
+   confirm each pinned SHA is on `main`'s first-parent line and that its `# vX.Y` tag points at it
+   (a pin to a fork-only commit fails). If it cannot reach GitHub it exits 3 (or 1 when it has findings), which is not a
+   pass; `--no-provenance` skips that check offline and also exits 3.
 6. Private repos: apply the push ruleset that blocks secret-bearing files, and record each
    exception in the PR.
 
