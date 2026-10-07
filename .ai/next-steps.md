@@ -13,11 +13,24 @@
     2 rounds (architect + security-critic + docs-consistency), converged. All critics ran on their frontmatter
     defaults; no second-opinion round.
 
-**Next:** task #309 — on **sonnet** (coder): build milestone 6 step 3 as one docs PR. #309: record
-`restrict-updates-to-main` in `.ai/project.yml` and `docs/threat_model.md`. #310: fix the `.claude/` comment in
-`.ai/project.yml`. #327: correct the App-token merge wording, using the owner's live test result recorded in
-#327. #297: fix the immutable-release tag wording. Then `/way-of-working:critic-gate` (docs-consistency) and
-`/way-of-working:ship`. `.ai/project.yml` is in `code_paths`, so the PR needs the architect review.
+**Next:** task #309 — on **sonnet** (coder): build milestone 6 step 3 as one docs PR (`Closes #309, closes #310,
+closes #327, closes #297`). Each issue's body is the spec:
+- #309: name `restrict-updates-to-main` next to threat-model invariant 6. Give its one bypass actor (admin role,
+  `pull_request` mode), and say that `main-required-checks` has no bypass actors, so `--admin` never skips a
+  required check. The `ruleset:` schema takes one name, so record the second ruleset as a stated residual in
+  `.ai/project.yml`'s `ruleset:` comment. Resume's drift check does not watch it.
+- #310: reword the `.ai/project.yml` `.claude/` comment as "the plugin pin, the merge-guard hook, and the
+  force-push deny rules".
+- #327: the owner's live test (2026-10-07, recorded in #327) is done. All three App-token attempts were refused:
+  merge (`405`), a ref update of `main` (`422`), and deleting a `v*` tag (`422`). Reword the bump-binaries
+  credentials row from those results, naming `restrict-updates-to-main`'s bypass list as the control and keeping
+  the real residuals. Then drop "not tried" from the tag-deletion negative test in Known gaps.
+- #297: the immutable-release tag "cannot be moved; can be deleted only after deleting its release, and the name
+  can never be reused". Note that `immutable-releases` is `enforced_by_owner: false`. In DEVC-D8's Context,
+  write "`v1.0` and `v1.1` lightweight".
+
+Then `/way-of-working:critic-gate` (docs-consistency) and `/way-of-working:ship`. `.ai/project.yml` is in
+`code_paths`, so the PR needs the architect review.
 
 **HITL Gate: NONE OPEN** — next gate: the owner's merge of the step 3 docs PR.
 
