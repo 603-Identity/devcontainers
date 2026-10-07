@@ -465,6 +465,8 @@ for odd in 'tools//' 'tools/.' 'tools/./' './/tools/./' 'tools/../tools/'; do
   new_repo "${TEMPLATE_PATHS/  - tools\//  - $odd}"
   lint; expect "a non-canonical '$odd' entry" 1 "code_paths entry '$odd' in"
   assert_eq "the '$odd' finding says it is not canonical" 1 "$(grep -c 'not a canonical path' <<< "$ERR")"
+  # The arm that covered only that entry must not draw a second complaint about the same entry (#335).
+  assert_eq "the '$odd' entry draws no 'matches none' warning" 0 "$(grep -c 'matches none' <<< "$ERR" || true)"
   rm -rf "$SCRATCH"
 done
 
@@ -605,6 +607,78 @@ for wf_name in "$CALLER" "$SCAN"; do
   assert_eq "the $wf_name finding is one line" 0 "$(grep -c '^::' <<< "$ERR" || true)"
   rm -rf "$SCRATCH"
 done
+
+# Only the arms that cover the non-canonical entry are spared (#335): a stale arm still warns.
+new_repo "${TEMPLATE_PATHS/  - tools\//  - tools//}"
+set_block '                  images/*|template/*|tests/*|tools/*|legacy/*|.claude/*|.trivyignore.yaml|.gitattributes|.ai/project.yml) touches=1 ;;'
+lint; expect "a stale arm next to a non-canonical entry" 1 "pattern 'legacy/*' matches none"
+assert_eq "tools/* is not warned about" 0 "$(grep -c "pattern 'tools/\*' matches none" <<< "$ERR" || true)"
+rm -rf "$SCRATCH"
+
+# `..` spares every arm only as a whole segment: `a..b//` is folded like any other entry.
+new_repo "${TEMPLATE_PATHS/  - tools\//  - a..b//}"
+lint; expect "a non-canonical entry with .. inside a name" 1 "not a canonical path"
+assert_eq "a..b// spares no arm (tools/* still warns)" 1 "$(grep -c 'matches none' <<< "$ERR" || true)"
+rm -rf "$SCRATCH"
+
+# --- the gate's triggers (#341) -------------------------------------------------------------
+new_wf; sed -i 's|^    types: \[submitted, edited, dismissed\]$|    types: [submitted]|' "$WF/$GATE"
+lint; expect "a pull_request_review trigger with only submitted" 1 "pull_request_review types lacks edited, dismissed"; rm -rf "$SCRATCH"
+
+new_wf; sed -i 's|^    types: \[submitted, edited, dismissed\]$|    types: [submitted, edited]|' "$WF/$GATE"
+lint; expect "a pull_request_review trigger without dismissed" 1 "pull_request_review types lacks dismissed"; rm -rf "$SCRATCH"
+
+new_wf; sed -i 's|^    types: \[submitted, edited, dismissed\]$|    types: [dismissed, edited, submitted, extra]|' "$WF/$GATE"
+lint; expect "extra review types in any order" 0; rm -rf "$SCRATCH"
+
+new_wf; sed -i 's|^    types: \[submitted, edited, dismissed\]$|    types: submitted|' "$WF/$GATE"
+lint; expect "a pull_request_review types: given as a bare string" 1 "pull_request_review types lacks edited, dismissed"; rm -rf "$SCRATCH"
+
+new_wf; sed -i '/^  pull_request_review:$/{n;d}' "$WF/$GATE"
+lint; expect "a pull_request_review trigger with no types: (every type)" 0; rm -rf "$SCRATCH"
+
+new_wf; sed -i '/^  pull_request_review:$/,/^    types: /d' "$WF/$GATE"
+lint; expect "no pull_request_review trigger" 1 "pull_request_review is not a trigger"; rm -rf "$SCRATCH"
+
+new_wf; sed -i '/^  issue_comment:$/,/^    types: /d' "$WF/$GATE"
+lint; expect "no issue_comment trigger" 1 "issue_comment is not a trigger"; rm -rf "$SCRATCH"
+
+new_wf; sed -i 's|^    types: \[opened, synchronize, reopened\]$|    types: [opened]|' "$WF/$GATE"
+lint; expect "a pull_request trigger with only opened" 1 "pull_request types lacks synchronize, reopened"; rm -rf "$SCRATCH"
+
+new_wf; sed -i 's|^on:$|on: [pull_request, issue_comment, pull_request_review]|; /^  pull_request:$/,/^    types: \[submitted, edited, dismissed\]$/d' "$WF/$GATE"
+lint; expect "on: given as a list" 1 "on: must be a mapping"; rm -rf "$SCRATCH"
+
+new_wf; sed -i '/^  pull_request:$/,/^    types: \[opened, synchronize, reopened\]$/d' "$WF/$GATE"
+lint; expect "no pull_request trigger" 1 "pull_request is not a trigger"; rm -rf "$SCRATCH"
+
+new_wf; sed -i 's|^    types: \[submitted, edited, dismissed\]$|&\n    branches: [main]|' "$WF/$GATE"
+lint; expect "a branches: filter on pull_request_review" 1 "pull_request_review must be a mapping with only types:"; rm -rf "$SCRATCH"
+
+new_wf; sed -i 's|^    types: \[created\]$|&\n    paths: [x]|' "$WF/$GATE"
+lint; expect "a paths: filter on issue_comment" 1 "issue_comment must be a mapping with only types:"; rm -rf "$SCRATCH"
+
+new_wf; sed -i '/^  pull_request_review:$/{N;s/.*/  pull_request_review: [submitted, edited, dismissed]/}' "$WF/$GATE"
+lint; expect "pull_request_review given as a list" 1 "pull_request_review must be a mapping with only types:"; rm -rf "$SCRATCH"
+
+new_wf; sed -i 's|^    types: \[submitted, edited, dismissed\]$|    types:|' "$WF/$GATE"
+lint; expect "an empty types: on pull_request_review" 1 "pull_request_review types lacks submitted, edited, dismissed"; rm -rf "$SCRATCH"
+
+new_wf; sed -i '/^  issue_comment:$/{N;s/.*/  issue_comment:/}' "$WF/$GATE"
+lint; expect "issue_comment with no body (every type)" 0; rm -rf "$SCRATCH"
+
+# --- file names print without control characters (#334) -----------------------------------
+# A file name with a newline in it must not reach the log as a line of its own starting with `::`.
+new_wf; printf 'a: [unclosed\n' > "$WF/x"$'\n'"::error title=forged::pwned.yml"
+lint; expect "a newline in a workflow file name" 1 "not parseable"
+assert_eq "no output line starts with ::" 0 "$(grep -c '^::' <<< "$ERR" || true)"
+rm -rf "$SCRATCH"
+
+# A carriage return or an escape sequence in a name prints as `?` too.
+new_wf; printf 'a: [unclosed\n' > "$WF/y"$'\r'"::error::z"$'\e'"[31m.yml"
+lint; expect "a CR and an ESC in a workflow file name" 1 "y?::error::z?[31m.yml"
+assert_eq "no output line holds a CR or an ESC" 0 "$(printf '%s' "$ERR" | grep -c $'[\r\e]' || true)"
+rm -rf "$SCRATCH"
 
 # --- input handling ------------------------------------------------------------------------
 new_wf; printf 'a: [unclosed\n' > "$WF/bad.yml"
