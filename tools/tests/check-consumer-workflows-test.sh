@@ -20,10 +20,18 @@ new_wf() {
   mkdir -p "$WF"
   cp "$TEMPLATE_DIR/$CALLER" "$TEMPLATE_DIR/$GATE" "$TEMPLATE_DIR/$SCAN" "$WF/"
 }
-# lint: run the lint on $WF, leaving the exit code in RC and stderr in ERR.
+# lint: run the lint on $WF, leaving the exit code in RC and stderr in ERR. Pin provenance needs
+# the network, so these runs skip it (`--no-provenance` exits 3 when nothing else is wrong, read
+# here as 0). The provenance cases at the end run against a local fixture instead.
 lint() {
   RC=0
-  ERR="$(bash "$LINT" "${1:-$WF}" 2>&1 > /dev/null)" || RC=$?
+  ERR="$(bash "$LINT" --no-provenance "${1:-$WF}" 2>&1 > /dev/null)" || RC=$?
+  [ "$RC" != 3 ] || RC=0
+}
+# lint_up: run the lint with provenance on, against the fixture upstream $UP.
+lint_up() {
+  RC=0
+  ERR="$(CHECK_CONSUMER_UPSTREAM="$UP" bash "$LINT" "$WF" 2>&1 > /dev/null)" || RC=$?
 }
 expect() { # description expected-rc [stderr-substring]
   assert_rc "$1" "$2" "$RC"
@@ -497,7 +505,7 @@ lint; expect "an existing directory entry without a trailing slash" 1 "code_path
 # The same finding when the lint is run from inside .github/workflows with `.`, or with a
 # trailing `/.` (the root is resolved, not trimmed from the text).
 new_repo "$TEMPLATE_PATHS"$'\n  - docs'; mkdir "$REPO/docs"; set_block '                  docs) touches=1 ;;'
-RC=0; ERR="$(cd "$WF" && bash "$LINT" . 2>&1 > /dev/null)" || RC=$?
+RC=0; ERR="$(cd "$WF" && bash "$LINT" --no-provenance . 2>&1 > /dev/null)" || RC=$?
 expect "a directory entry, run with . from .github/workflows" 1 "code_paths entry 'docs'"
 lint "$WF/."; expect "a directory entry, run with a trailing /." 1 "code_paths entry 'docs'"; rm -rf "$SCRATCH"
 
@@ -516,7 +524,7 @@ lint; expect "a bracket-class entry and a comment line" 0 "cannot build a sample
 
 # An exported CDPATH must not switch the check off (cd would print the directory it found).
 new_repo "$TEMPLATE_PATHS"$'\n  - docs/'
-RC=0; ERR="$(cd "$REPO" && CDPATH=".:/tmp" bash "$LINT" 2>&1 > /dev/null)" || RC=$?
+RC=0; ERR="$(cd "$REPO" && CDPATH=".:/tmp" bash "$LINT" --no-provenance 2>&1 > /dev/null)" || RC=$?
 expect "an uncovered entry with CDPATH exported" 1 "code_paths entry 'docs/'"; rm -rf "$SCRATCH"
 
 # A glob inside a directory entry is filled in, not skipped.
@@ -689,6 +697,80 @@ lint "$SCRATCH/empty"; expect "an empty directory" 1 "no workflow files"; rm -rf
 
 new_wf
 lint "$SCRATCH/nope"; expect "a missing directory" 2 "not a directory"; rm -rf "$SCRATCH"
+
+# --- pin provenance (#234) -----------------------------------------------------------------
+# A fixture upstream: `main` is c1 (annotated tag v1.0), c2 (lightweight tag v1.1), then a no-ff
+# merge of `side` (s1, an ancestor of main but not on its first-parent line). `fork` (f1) was
+# never merged. The lint clones it through CHECK_CONSUMER_UPSTREAM instead of github.com.
+g() { git -c user.name=t -c user.email=t@t -c commit.gpgsign=false -c tag.gpgsign=false -c init.defaultBranch=main "$@"; }
+new_upstream() {
+  UPROOT="$(mktemp -d)"
+  local w="$UPROOT/work"
+  g init -q "$w"
+  g -C "$w" commit -q --allow-empty -m c1; C1="$(g -C "$w" rev-parse HEAD)"; g -C "$w" tag -a v1.0 -m v1.0
+  g -C "$w" branch side; g -C "$w" branch fork
+  g -C "$w" commit -q --allow-empty -m c2; C2="$(g -C "$w" rev-parse HEAD)"; g -C "$w" tag v1.1
+  g -C "$w" checkout -q side; g -C "$w" commit -q --allow-empty -m s1; S1="$(g -C "$w" rev-parse HEAD)"
+  g -C "$w" checkout -q fork; g -C "$w" commit -q --allow-empty -m f1; F1="$(g -C "$w" rev-parse HEAD)"
+  g -C "$w" checkout -q main; g -C "$w" merge -q --no-ff side -m merge-side
+  g clone -q --bare "$w" "$UPROOT/up.git"
+  UP="$UPROOT/up.git"
+}
+# pin_all SHA TAG: every pin to this repo's reusable workflows in $WF names SHA, labeled TAG.
+pin_all() {
+  sed -i -E "/603-Identity\/devcontainers\/\.github\/workflows/s|@[0-9a-f]{40} # v[0-9.]+|@$1 # $2|" "$WF/$CALLER" "$WF/$GATE" "$WF/$SCAN"
+}
+
+new_upstream; new_wf; pin_all "$C2" v1.1
+lint_up; expect "a tagged commit on main" 0 "CHECK_CONSUMER_UPSTREAM is set"
+pin_all "$C1" v1.0
+lint_up; expect "an annotated tag that peels to the pinned commit" 0
+
+pin_all "$F1" v1.1
+lint_up; expect "a pin that exists only on a branch (a fork)" 1 "is not on 603-Identity/devcontainers main's first-parent line"
+pin_all "$S1" v1.1
+lint_up; expect "a merged branch's commit is not on the first-parent line" 1 "first-parent"
+
+pin_all "$C2" v1.0
+lint_up; expect "a tag that does not peel to the pin" 1 "tag v1.0 points at $C1, not the pinned $C2"
+pin_all "$C2" v9.9
+lint_up; expect "a tag the upstream does not have" 1 "has no tag v9.9"
+
+# Couldn't check is never ok: exit 3, with its own message, and a finding still wins the exit code.
+pin_all "$C2" v1.1
+UP="$UPROOT/does-not-exist.git" lint_up; expect "an unreachable upstream" 3 "could not check pin provenance"
+sed -i 's|^  pull_request:$|  pull_request:\n  push:|' "$WF/$CALLER"
+UP="$UPROOT/does-not-exist.git" lint_up; expect "a finding and an unreachable upstream" 1 "could not check pin provenance"
+rm -rf "$SCRATCH"
+
+new_wf; RC=0
+ERR="$(bash "$LINT" --no-provenance "$WF" 2>&1 > /dev/null)" || RC=$?
+expect "--no-provenance on a clean template" 3 "pin provenance NOT checked"
+rm -rf "$SCRATCH"
+
+new_wf; RC=0
+ERR="$(bash "$LINT" --bogus "$WF" 2>&1 > /dev/null)" || RC=$?
+expect "an unknown option" 2 "unknown option"
+sed -i 's|^  pull_request:$|  pull_request:\n  push:|' "$WF/$CALLER"
+ERR="$(bash "$LINT" --no-provenance "$WF" 2>&1 > /dev/null)" && RC=0 || RC=$?
+expect "--no-provenance with a finding" 1 "only trigger"
+rm -rf "$SCRATCH"
+
+# The override takes a local fixture only, and git config carried in the environment cannot
+# redirect the clone.
+new_wf; pin_all "$C2" v1.1
+UP="https://example.invalid/x.git" lint_up; expect "a network CHECK_CONSUMER_UPSTREAM" 2 "absolute local path"
+GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="url.$UPROOT/nowhere.insteadOf" GIT_CONFIG_VALUE_0="$UP" lint_up
+expect "an insteadOf in the environment does not redirect the clone" 0
+rm -rf "$SCRATCH"
+
+# Three pins at one commit make one clone, not three.
+new_wf; pin_all "$C2" v1.1
+mkdir "$UPROOT/bin"; REAL_GIT="$(command -v git)"
+printf '#!/bin/sh\necho "$*" >> "%s/git.log"\nexec "%s" "$@"\n' "$UPROOT" "$REAL_GIT" > "$UPROOT/bin/git"; chmod +x "$UPROOT/bin/git"
+PATH="$UPROOT/bin:$PATH" lint_up; expect "three pins at one commit" 0
+assert_eq "three pins at one commit clone once" 1 "$(grep -c ' clone ' "$UPROOT/git.log")"
+rm -rf "$SCRATCH" "$UPROOT"
 
 # The two template pins agree (the lint only warns on a mismatch; this repo's template must not).
 caller_sha="$(grep -oE 'verify-devcontainer-image\.yml@[0-9a-f]{40}' "$TEMPLATE_DIR/$CALLER" | cut -d@ -f2)"

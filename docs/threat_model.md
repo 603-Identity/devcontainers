@@ -280,8 +280,10 @@ content, and this one must.
   - A compromised commit here reaches consumers only through a human-merged SHA bump, which the
     new version itself scans; the impact is bounded by `contents: read` and no secrets.
   - A commit anywhere in the fork network can be named by SHA, so a consumer's pin could point at
-    a commit that is not on `main`. Follow-up: have `check-consumer-workflows.sh` check the pin is
-    an ancestor of `main`.
+    a commit that is not on `main`. When it is run, `check-consumer-workflows.sh` clones `main`
+    and requires the verify, decide and secret-scan pins to be on its first-parent line, with the `# vX.Y` tag peeling to it
+    (#234); an unreachable GitHub exits 3, never ok. Nothing re-runs the lint in a consumer's CI,
+    so between runs this stays a residual that human review of each pin bump covers.
   - A PR that introduces its own false positive needs the ignore or rule change merged first,
     because the config is read from the base commit.
 
