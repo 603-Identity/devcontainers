@@ -5,7 +5,8 @@
 # set, and so a Dependabot bump PR in every consumer, for a docs-only push to main).
 #
 # Env: EVENT_NAME (github.event_name), BASE_SHA (the commit to diff HEAD against: the PR
-# base, or the push's `before`), RUNNER_TEMP, GITHUB_OUTPUT, GITHUB_STEP_SUMMARY.
+# base, or for a push the last successful publish, see last-publish-sha.sh), RUNNER_TEMP,
+# GITHUB_OUTPUT, GITHUB_STEP_SUMMARY.
 # Run from a checkout of the commit under test, with `origin` pointing at the repo.
 #
 # The weekly schedule and manual dispatch always give build=1: they exist to rebuild
@@ -24,7 +25,8 @@
 # it git C-quotes a path with non-ASCII bytes, a control character such as a tab or
 # newline, `"` or `\`, which then matches no pattern below. The list goes through a file
 # because a shell variable cannot hold a NUL. `set -e` is load-bearing: a failed fetch or
-# diff fails the job, and an empty list fails it too, so neither ever reads as "nothing
+# diff fails the job, and an empty list fails it too unless the base has HEAD's tree (then
+# nothing changed since it, and the build is skipped), so a failure never reads as "nothing
 # changed".
 set -euo pipefail
 
@@ -40,7 +42,8 @@ case "${EVENT_NAME:?EVENT_NAME is required}" in
 esac
 
 : "${BASE_SHA:?BASE_SHA is required}"
-# A push that creates the branch has an all-zero `before`: there is no base to diff.
+# An all-zero base means there is none to diff: no last successful publish was found
+# (last-publish-sha.sh gives it for every failure), or a push created the branch.
 case "$BASE_SHA" in
   *[!0]*) ;;
   *)
@@ -53,6 +56,13 @@ esac
 git fetch --no-tags --depth=1 origin "$BASE_SHA"
 files="${RUNNER_TEMP:?RUNNER_TEMP is required}/changed-files.nul"
 git diff -z --name-only --no-renames "$BASE_SHA" HEAD > "$files"
+# The same tree as the base (a revert of everything since the last publish, or the base is HEAD)
+# lists nothing legitimately, and nothing has changed since an image was published from it.
+if [ ! -s "$files" ] && [ "$(git rev-parse "$BASE_SHA^{tree}")" = "$(git rev-parse 'HEAD^{tree}')" ]; then
+  emit 0
+  echo "HEAD has the same tree as the base: build skipped." >> "$GITHUB_STEP_SUMMARY"
+  exit 0
+fi
 if [ ! -s "$files" ]; then
   echo "::error::git diff listed no changed files. Failing closed rather than skipping the build."
   exit 1
