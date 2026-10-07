@@ -1,28 +1,31 @@
 
 # Next steps
 
-**Now:** Milestone 6, Internal hardening, in `planning`.
+**Now:** Milestone 6, Internal hardening, in `implementing`.
 
-**Just done:** Archived milestone 4 (Repo hardening: review gate and CI). Its last change merged as `344d625`, and
-the way-of-working `v0.17.0` pin merged after it as `b670f57` (#370). #278 is closed, and the rest of it is tracked
-as glunk-works/claude-workbench#346.
+**Just done:**
+- The owner approved milestone 6's build order as written on 2026-10-07 (description sha `6cbed054…414f61`,
+  `verify --plan` match), which closes the first-anchor gate. Step 1's task #304 is anchored.
+- `/way-of-working:plan-sprint` placed #356 (regression test for the #349 pin guard) in milestone 6. It is on
+  the milestone but not in the written build order; it fits with step 9's test-only fixes.
+- Planning only: no code diff, so no critic pass.
 
-**Milestone close:** closed: milestone 4, "Repo hardening: review gate and CI" (`verify --plan` match, 0 open issues).
+**Next:** task #304 — on **sonnet** (coder): build milestone 6 step 1. Fix #304 (betterleaks rc pin skips GA)
+and #325 (resolve_yq's missing SHA-256 error is unreachable) in one PR on `.github/scripts/bump-binaries.sh`,
+with tests. Run the green gate in WSL, then `/way-of-working:critic-gate` (architect + security-critic) and
+`/way-of-working:ship`.
 
-**Next:** on **opus** (architect): plan M6. Sequence milestone 6's 22 open issues into a build order.
-`/way-of-working:plan-sprint` can help triage. Anchoring the plan is `/way-of-working:handoff`.
-
-**HITL Gate: OPEN**: first anchor for milestone 6, description sha `6cbed054…414f61`. The next gate is the
-owner's approval of the M6 build order.
+**HITL Gate: NONE OPEN** — next gate: the owner's merge of the #304 + #325 PR. Step 3 later waits on the owner's
+live App-token test (#327).
 
 **Open for the owner (non-blocking):**
-- Milestone 5 (Trivy renewal 2026-11) is due 2026-10-29. Renew or retire the #148 Trivy exceptions before
-  2026-11-01; #329 rides along. On 2026-10-07 the owner chose M6 first because little has changed for the renewal.
-- Milestone 6 step 2 starts with your live App-token merge test (#327).
+- Milestone 5 (Trivy renewal 2026-11) is due 2026-10-29. The owner put M6 first on 2026-10-07 while the tofu and
+  tflint vendors have yet to release fixes. The #148 exceptions still expire 2026-11-01: if no fix has shipped by
+  late October, re-scan and renew the rest at most 30 days out. #329 rides along.
+- Milestone 6 step 3 starts with your live App-token merge test (#327).
 - Any other repo that bumps way-of-working to `v0.17.0` reads `incomplete` until it answers `orchestration`,
   and needs the drive-letter mirror after `plugin update` (claude-workbench#347).
 - The pilots re-copy the gate and re-pin to `9153da1b6eb4ff2d845cb41efaabab3882529130 # v1.4`; tracked there.
-- #356 needs a milestone.
 - The `bump-binaries` Environment still lets admins bypass its protection rules; turning that off is optional.
 - terraform-cloudflare-dns: its gate lists `.terraform.lock.hcl` and `.devcontainer/*` that its `code_paths`
   do not; confirm during the #212 pilot follow-ups, along with whether it should cover `.claude/` (from #214).
