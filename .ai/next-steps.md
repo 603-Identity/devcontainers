@@ -1,22 +1,23 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Steps 1-8 are done; step 9 (#234) is next and starts
-with its design.
+**Now:** Milestone 4, Repo hardening: review gate and CI. Steps 1-8 are done; step 9 (#234) is designed and
+ready to build.
 
-**Just done** (architect session on opus, last_commit `6b28e39`):
-- Fresh-session architect review of PR #361 at head `89ad6b7`: sound, no findings. Every claim was executed in a
-  WSL sandbox, the new suite fails on `main`'s script, and each new guard was witnessed red by mutation.
-- The owner merged #361 as `6b28e39`; #341, #334 and #335 are closed.
-- Re-anchored milestone 4 on task #234. Its description sha (`3387dd9c…`) is unchanged and `plan-anchor.sh verify
-  --plan` printed `match`, but this session's resume did not verify it, so the gate below names it.
+**Just done** (architect session on opus, last_commit `b28c973`):
+- Posted the design for #234 as [issue comment 6037027799](https://github.com/603-Identity/devcontainers/issues/234#issuecomment-6037027799),
+  and the owner decided its three questions: first-parent of `main` (not just ancestor), a `# vX.Y` tag that
+  does not peel to the pin fails, and "couldn't check" exits 3.
+- Re-anchored milestone 4 on task #234 plus that spec comment. The description sha (`3387dd9c…`) is unchanged
+  and `plan-anchor.sh verify --plan` printed `match`, but this session's resume did not run `verify` (the
+  design gate was open), so the gate below names the re-anchor.
 
-**Next:** task #234 — settle the design for M4 step 9 (consumer lint: check a pinned SHA is an ancestor of
-`main`) in the issue, on **opus** (architect). Propose it as an issue comment and get the owner's decision;
-don't build it yet. The build then goes to **sonnet** (coder), then critic-gate (architect + security-critic),
-then a fresh-session architect review.
+**Next:** task #234 — build M4 step 9 per the settled design in the spec comment above, on **sonnet** (coder):
+the provenance check in `tools/check-consumer-workflows.sh`, its six tests, and the script header,
+`docs/adopting.md` step 5 and `docs/threat_model.md` residual edits. Then the green gate, critic-gate
+(architect + security-critic), ship, and a fresh-session architect review.
 
-**HITL Gate: OPEN** — the owner's decision on #234's design (the milestone makes it a human call), and the
-milestone 4 re-anchor above.
+**HITL Gate: OPEN** — only the milestone 4 re-anchor above (a human "go" at resume clears it). The #234 design
+decision is closed.
 
 **Open for the owner (non-blocking):**
 - The pilots (terraform-cloudflare-dns, terraform-microsoft365-entra) re-copy the gate and re-pin to
