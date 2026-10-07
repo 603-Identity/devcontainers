@@ -466,7 +466,7 @@ These are stated plainly so nobody trusts the setup for more than it does:
   only on the reviewer's allowlisted re-run comment. A history with a deleted revision (a web-UI action; the public API cannot delete
   one, so this was not exercised live) fails closed, since the revision's text is hidden. The
   bump-binaries App's own ability to make the edit is the same call and was not tested; the fix does not depend on it. A human still reads the PR and merges. Consumers take the
-  head-SHA binding (#92) in `v1.3` and the review-editor check (#94) in the next release
+  head-SHA binding (#92) in `v1.3` and the review-editor check (#94) in `v1.4`
   (DEVC-D7, DEVC-D8).
 - **A same-repo PR runs its own copy of the gate.** `pull_request` and
   `pull_request_review` runs execute the PR's version of `architect-review-gate.yml`

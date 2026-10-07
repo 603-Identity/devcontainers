@@ -114,7 +114,7 @@ jobs:
     # workflow's SHA check. Keep it equal to the pin in devcontainer-image.yml. Dependabot's
     # github-actions ecosystem bumps both. A bump edits only .github/, so it is never exempt
     # and always needs a review.
-    uses: 603-Identity/devcontainers/.github/workflows/devcontainer-bump-decision.yml@2f3bacc7513d82764eccb0cfe4d177d5b3405c42 # v1.3
+    uses: 603-Identity/devcontainers/.github/workflows/devcontainer-bump-decision.yml@9153da1b6eb4ff2d845cb41efaabab3882529130 # v1.4
     # <<< CONSUMER: decide pin
     with:
       head_sha: ${{ needs.resolve.outputs.head_sha }}
