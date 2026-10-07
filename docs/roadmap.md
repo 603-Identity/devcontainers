@@ -20,6 +20,10 @@ adoption runbook). The pilots, terraform-cloudflare-dns and terraform-microsoft3
 adopted the template (#10 closed). The waves (#26 to #28) follow `docs/adopting.md`. Org secret
 scanning (#190) moved to milestone 4.
 
+Repo hardening: review gate and CI (milestone 4) is done. Its last change merged as `344d625`
+(#365, consumer pin provenance). The skill half of #278 moved to the way-of-working plugin
+(glunk-works/claude-workbench#346).
+
 ## Next action
 
 The next piece of work is set by the open milestone on this repo, since
