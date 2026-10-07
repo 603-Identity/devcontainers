@@ -1,23 +1,22 @@
 # Next steps
 
-**Now:** Milestone 4, Repo hardening: review gate and CI. Steps 1-8 are done; step 9 (#234) is built and open
-as PR #365, awaiting its fresh-session architect review.
+**Now:** Milestone 4, Repo hardening: review gate and CI. Steps 1-8 are done; step 9 (#234) is open as PR #365,
+back to the coder: a required check is red, so the architect review is on hold.
 
-**Just done** (coder session on sonnet, last_commit `736047f`, PR #365 head):
-- Built #234 per the [settled design](https://github.com/603-Identity/devcontainers/issues/234#issuecomment-6037027799)
-  in `tools/check-consumer-workflows.sh`, its tests, and the header, `docs/adopting.md`, `docs/threat_model.md`
-  and README edits. Resume's `plan-anchor.sh verify` printed `match`, which cleared the re-anchor gate.
-- Critic pass on the diff (architect, security-critic, docs-consistency): 2 rounds, converged (round 2
-  tightenings only); no second-opinion round. Declined tightenings: also clearing `GIT_GRAFT_FILE`/`GIT_SSL_*`
-  from git's env, and rejecting a `//host/share` override path.
-- The lint covers only the verify, decide and secret-scan pins, as designed; other `uses:` references to this
-  repo are not checked.
+**Just done** (architect session on opus, `9b968de`):
+- Started `/way-of-working:architect-review 365` and stopped before posting: `shellcheck (scripts)` is red on
+  head `736047f` (SC2120: `lint_up` in `tools/tests/check-consumer-workflows-test.sh` reads `${1:-$WF}` but is
+  never passed an argument). The PR body's "shellcheck clean" is wrong. No review was posted; the owner chose to
+  hold it until the fix lands. Every other required check except `architect-review` is green.
+- First plan anchor for milestone 4 with task #234 and its design comment; the description is unchanged.
 
-**Next:** `/way-of-working:architect-review 365` on **opus** (architect), in a **new session**: post the review
-on PR #365's head, verify `architect-review` goes green on that SHA, file non-blocking findings. The human then
-merges.
+**Next:** task #234 — on **sonnet** (coder), fix SC2120 on PR #365's branch by changing `lint_up` to use `"$WF"`
+(`lint()` takes arguments, so leave it as it is), run shellcheck with CI's own command line, re-run the suite in WSL, push (no
+force-push), fix the PR body's shellcheck claim, and confirm the other required checks are green on the new head.
+Then `/way-of-working:handoff` for a fresh-session `/way-of-working:architect-review 365` on opus.
 
-**HITL Gate: NONE OPEN.** Next gate: the human's merge of #365.
+**HITL Gate: OPEN** — first anchor for milestone 4 with task #234; the owner's "go" clears it. Next gate: the
+owner's merge of #365 after the review is posted on the new head.
 
 **Open for the owner (non-blocking):**
 - The pilots (terraform-cloudflare-dns, terraform-microsoft365-entra) re-copy the gate and re-pin to
