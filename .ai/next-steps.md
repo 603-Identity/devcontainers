@@ -3,43 +3,36 @@
 **Now:** Milestone 6, Internal hardening, in `implementing`.
 
 **Just done:**
-- Milestone 6 step 2 merged: #381 (`a5c3d90`) closes #159. `build.yml`'s `scope` job now diffs HEAD against the
-  commit of the newest `main` run whose `publish` job succeeded, and builds whenever that lookup fails.
-- The fresh-session architect review of #381 found no blocking issues. It reproduced the claims in a WSL sandbox,
-  and five of six planted mutations went red. The one survivor is the same-tree check in `image-scope.sh`, which
-  is unreachable by design. It filed #383: a dispatch on a tag named `main` older than b4a490b publishes old
-  images (pre-existing).
-- Critic pass on #381 (from its PR body):
-    2 rounds (architect + security-critic + docs-consistency), converged. All critics ran on their frontmatter
-    defaults; no second-opinion round.
+- Milestone 6 step 3 merged: #385 (`adc86df`) closes #309, #310, #327 and #297. The threat model now names
+  `restrict-updates-to-main` beside invariant 6, the bump-binaries App-token row is reworded from the owner's
+  live test (#327), and the immutable-release wording is corrected. `.ai/project.yml`'s comments record the
+  second ruleset as a stated residual.
+- The fresh-session architect review of #385 found no blocking issues. It checked every claim against the live
+  rulesets, `immutable-releases` and the tag objects, and confirmed in a WSL sandbox that the `.ai/project.yml`
+  change is comment-only. It filed #386 (the tag-ruleset entry's "negative test passed" covers only a `v*`
+  delete) and #387 (the DEVC-D7 paragraph omits `restrict-updates-to-main`).
+- Critic pass on #385 (from its PR body):
+    2 rounds (docs-consistency), converged. The critic ran on its frontmatter default; no second-opinion round.
 
-**Next:** task #309 — on **sonnet** (coder): build milestone 6 step 3 as one docs PR (`Closes #309, closes #310,
-closes #327, closes #297`). Each issue's body is the spec:
-- #309: name `restrict-updates-to-main` next to threat-model invariant 6. Give its one bypass actor (admin role,
-  `pull_request` mode), and say that `main-required-checks` has no bypass actors, so `--admin` never skips a
-  required check. The `ruleset:` schema takes one name, so record the second ruleset as a stated residual in
-  `.ai/project.yml`'s `ruleset:` comment. Resume's drift check does not watch it.
-- #310: reword the `.ai/project.yml` `.claude/` comment as "the plugin pin, the merge-guard hook, and the
-  force-push deny rules".
-- #327: the owner's live test (2026-10-07, recorded in #327) is done. All three App-token attempts were refused:
-  merge (`405`), a ref update of `main` (`422`), and deleting a `v*` tag (`422`). Reword the bump-binaries
-  credentials row from those results, naming `restrict-updates-to-main`'s bypass list as the control and keeping
-  the real residuals. Then drop "not tried" from the tag-deletion negative test in Known gaps.
-- #297: the immutable-release tag "cannot be moved; can be deleted only after deleting its release, and the name
-  can never be reused". Note that `immutable-releases` is `enforced_by_owner: false`. In DEVC-D8's Context,
-  write "`v1.0` and `v1.1` lightweight".
+**Next:** task #170 — on **sonnet** (coder): build milestone 6 step 4 as one PR in `.claude/hooks/merge-guard.sh`
+and `tools/tests/merge-guard-test.sh` (`Closes #170, closes #171, closes #311`). Each issue's body is the spec:
+- #170: make quoted, escaped, wrapper-led and keyword-led `gh pr merge` shapes block. Add every row of its
+  reproduction table as a must-block test case.
+- #171: detect a heredoc start only in unquoted text, and never on `<<<`. Add both of its cases as must-block.
+- #311: in the cursor-sync file check, require exactly one row, `.ai/next-steps.md` with status `modified`. Add
+  fixtures for `removed`, `renamed` and a mode-only change, then drop the residual line from the hook header.
 
-Then `/way-of-working:critic-gate` (docs-consistency) and `/way-of-working:ship`. `.ai/project.yml` is in
+Then `/way-of-working:critic-gate` (architect + security-critic) and `/way-of-working:ship`. `.claude/` is in
 `code_paths`, so the PR needs the architect review.
 
-**HITL Gate: NONE OPEN** — next gate: the owner's merge of the step 3 docs PR.
+**HITL Gate: NONE OPEN** — next gate: the owner's merge of the step 4 PR.
 
 **Open for the owner (non-blocking):**
 - Milestone 5 (Trivy renewal 2026-11) is due 2026-10-29. The #148 exceptions still expire 2026-11-01: if the
   tofu and tflint vendors have not shipped fixes by late October, re-scan and renew the rest at most 30 days out.
   #329 rides along.
 - #356 (regression test for the #349 pin guard) is on milestone 6 but not in the written build order. It fits
-  with step 9's test-only fixes. #377-#379 and #383 are unmilestoned.
+  with step 9's test-only fixes. #377-#379, #383, #386 and #387 are unmilestoned.
 - Any other repo that bumps way-of-working to `v0.17.0` reads `incomplete` until it answers `orchestration`,
   and needs the drive-letter mirror after `plugin update` (claude-workbench#347).
 - The pilots re-copy the gate and re-pin to `9153da1b6eb4ff2d845cb41efaabab3882529130 # v1.4`; tracked there.
