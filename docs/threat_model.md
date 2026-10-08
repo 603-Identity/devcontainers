@@ -54,7 +54,7 @@ at build and publish time, before any consumer pulls.
 | `GITHUB_TOKEN` with `actions: read` | `build.yml`'s scope job only (`verify-selftest.yml`'s `live` job holds the same read for its own purpose) | List `build.yml`'s runs on `main` and their jobs, to find the last run whose publish job succeeded (#159). Read-only, and it names no secret. The result only picks the commit `image-scope.sh` diffs against, so a wrong or forged answer can at worst make a publish run that was not needed or skip one that was; the lookup fails toward building, and the weekly schedule and manual dispatch always build. The commit id is checked as 40 hex, must be an ancestor of HEAD (a run on a tag named `main`, which `release-tags` does not cover, runs that tag's own workflow file and could fake a successful publish job; as an ancestor it can only carry a historical `build.yml` of main, which has guarded publish with `github.ref == 'refs/heads/main'` since b4a490b, so the tag run skips it. This relies on squash-only merges: with merge commits a PR branch's unreviewed commits would be ancestors too. A tag run at a commit older than that guard really publishes, which only widens the next diff and so builds), and is fetched before use. |
 | `GITHUB_TOKEN` with `statuses`, `contents` and `pull-requests: write` for the gate's `post` job only, and reads | `architect-review-gate.yml` | Post commit statuses on this repo. The two other write scopes are unused here (see the commit-status row above). The job has no `uses:`, `container:` or `services:`. |
 | A consuming repo's `GITHUB_TOKEN`: `contents: read` for `verify`; `statuses`, `contents` and `pull-requests: write` for the gate's `post` job only | the consumer's `devcontainer-image.yml` and gate, running this repo's reusable workflows | `verify` and `decide` hold no write token and read this repo's public attestations cross-org. `post` can post statuses and arm or disarm auto-merge on that consumer's own PRs, and holds the token in a job with no `uses:`, `container:` or `services:`, so no third-party action or image shares its GitHub-hosted runner (checked by `tools/check-consumer-workflows.sh` when it is run, not continuously). |
-| GitHub App installation token, `contents: write` + `pull-requests: write`, scoped to this repo only | `bump-binaries.yml` | **Can do more than the job uses it for**: push or delete any non-`main` branch, create tags and releases, and comment on or merge a PR -- `contents: write` is also what `PUT /pulls/{n}/merge` requires (a PR's own author cannot approve it, but this ruleset needs no approval at all; see Known gaps). The job only pushes a `bump/<tool>-<version>` branch and opens its PR; the rest is this credential's reach if ever leaked or (see Known gaps) if the write step's own untrusted input were ever to reach it. Needed at all because a PR opened with the ambient `GITHUB_TOKEN` never triggers the required-check workflows (GitHub's own anti-recursion rule) -- and on this repo a job-scoped `GITHUB_TOKEN` could not even open the PR in the first place ("Allow GitHub Actions to create and approve pull requests" is off; `can_approve_pull_request_reviews: false`), so a dedicated identity is the only way to get this PR opened at all, let alone checked. Revoked at job end (the token action's default). The app's private key is a secret of the `bump-binaries` Environment, restricted to deployments from `main` (the job declares `environment: bump-binaries`), so a workflow run on any other branch cannot read it; it is held outside any container. The job runs only when the repo-level variable `BUMP_BINARIES_CLIENT_ID` (the App's Client ID) is set (#87). |
+| GitHub App installation token, `contents: write` + `pull-requests: write`, scoped to this repo only | `bump-binaries.yml` | **Can do more than the job uses it for**: push or delete any non-`main` branch, create tags outside `v*` and `devc-automerge-*`, create releases, and comment on a PR. It cannot change `main` or the protected tags: in the owner's live test (2026-10-07, #327) the token was refused when it tried to merge a PR into `main` (`405`), to update the `main` ref (`422`), and to delete a `v*` tag (`422`). The controls are `restrict-updates-to-main` for `main` and `release-tags` for the tags; the Repository admin role is the only listed bypass actor of each, and the App is not on either list. `main-required-checks` has no bypass actors at all. Only deleting a `v*` tag was tried live; the other tag operations rest on the ruleset read-back. The real residuals are non-`main` branches, tags outside the protected patterns, releases, and PR comments. The job only pushes a `bump/<tool>-<version>` branch and opens its PR; the rest is this credential's reach if ever leaked or (see Known gaps) if the write step's own untrusted input were ever to reach it. Needed at all because a PR opened with the ambient `GITHUB_TOKEN` never triggers the required-check workflows (GitHub's own anti-recursion rule) -- and on this repo a job-scoped `GITHUB_TOKEN` could not even open the PR in the first place ("Allow GitHub Actions to create and approve pull requests" is off; `can_approve_pull_request_reviews: false`), so a dedicated identity is the only way to get this PR opened at all, let alone checked. Revoked at job end (the token action's default). The app's private key is a secret of the `bump-binaries` Environment, restricted to deployments from `main` (the job declares `environment: bump-binaries`), so a workflow run on any other branch cannot read it; it is held outside any container. The job runs only when the repo-level variable `BUMP_BINARIES_CLIENT_ID` (the App's Client ID) is set (#87). |
 | Per-repo fine-grained PAT | a consuming repo's container, in the `<repo>-home` volume | That repo only. The hub's token also covers the repos it coordinates. It expires after 90 days at most and is recorded in the owning org's credential ledger (603-Identity: infrastructure-core's; glunk-works: none yet, see Known gaps). Admin work (rulesets, repo settings) never uses a container token. |
 | Owner's org login | the host, outside any container | Admin. It is the only identity that merges PRs or changes rulesets and package visibility, which must stay public for consumers in other orgs. |
 
@@ -126,7 +126,14 @@ at build and publish time, before any consumer pulls.
 
 6. **Changes to `main` are reviewed.** The `main-required-checks` ruleset requires a pull
    request, the lint, build and smoke-test checks, and `architect-review` on any change to
-   `code_paths`. `architect-review` counts only a formal review, made against the PR's head SHA whose body also carries the line `Reviewed against head <that SHA>` (#278), from a
+   `code_paths`. `main-required-checks` has no bypass actors, so `gh pr merge --admin` never skips a
+   required check. A second ruleset, `restrict-updates-to-main` (rule `update`), refuses every
+   update of `main`, a PR merge included, except by its one bypass actor: the Repository admin
+   role, in mode `pull_request`, so an admin can merge a PR but cannot push to `main`; that is why
+   resume merges its cursor-sync PR with `--admin` (#262). `.ai/project.yml` names only
+   `main-required-checks`, because its `ruleset:` key takes one name, so resume's drift check does
+   not watch `restrict-updates-to-main`: deleting it, or widening its bypass mode to `always`,
+   would go unnoticed there (stated residual). `architect-review` counts only a formal review, made against the PR's head SHA whose body also carries the line `Reviewed against head <that SHA>` (#278), from a
    user ID in the gate's `REVIEWER_IDS` allowlist (today, only the owner's user ID), so a stranger on
    this public repo cannot turn it green by pasting the header and attestation strings. It is still an existence gate: it never reads
    what the review concluded, and the human's merge is the approval.
@@ -219,10 +226,12 @@ What each piece trusts, and what it leaves open:
 - **The tag ruleset** (`release-tags`) restricts creating, updating, deleting and moving
   `refs/tags/v*` and `refs/tags/devc-automerge-*`, with the Repository admin role as its only
   bypass. On 603-Identity, org owners and any admin team also bypass it. It was read back
-  through the API after creation. **The negative test is outstanding:** deleting a tag with the
-  bump-binaries App token has not been tried (see Known gaps). Releases are signed `vX.Y` tags, each published as an immutable GitHub Release from
-  `v1.3` on (DEVC-D8), with no release automation. Once a release is published, GitHub refuses
-  to move or delete its tag, admins included, which closes the admin bypass above for that tag;
+  through the API after creation. **The negative test passed:** deleting a `v*` tag with the
+  bump-binaries App token was refused (`422`, 2026-10-07, #327). Releases are signed `vX.Y` tags, each published as an immutable GitHub Release from
+  `v1.3` on (DEVC-D8), with no release automation. Once a release is published, its tag cannot be moved, and can be deleted only after
+  deleting its release (the name can never be reused), which closes the admin bypass above
+  against re-pointing that tag; `immutable-releases` is `enforced_by_owner: false`, so a repo
+  admin can turn the setting off before a future release (existing releases stay immutable);
   `v1.0`-`v1.2` predate it and keep only the ruleset. The owner checks
   `git merge-base --is-ancestor <sha> origin/main` before pushing one, and every consumer pins
   the release's commit SHA, never the tag.
@@ -386,10 +395,6 @@ These are stated plainly so nobody trusts the setup for more than it does:
   repo that has not copied `devcontainer-image.yml` and does not require `verify / verify`
   still takes whatever digest a Dependabot image bump proposes, including a branch-built
   one, unless a human runs the verify command. Only the two pilots have adopted them (#10).
-- **The tag ruleset's App-token negative test has not been run.** Deleting a `v*` or
-  `devc-automerge-*` tag with the `bump-binaries` App's token is the test; it can now be run, and
-  nothing has run it yet. Org owners and any admin team bypass the
-  ruleset by design.
 - **The shared tofu provider cache is checked at command start, not at exec.** tofu links a
   cached provider into the repo's data directory and runs it from the shared volume, so a
   hostile process in another container could swap the binary between the check and the
@@ -432,8 +437,8 @@ These are stated plainly so nobody trusts the setup for more than it does:
   `author_association`, because the owner's 603-Identity membership is private and the
   workflow's token reads it as `CONTRIBUTOR` (seen live on #89); IDs rather than logins,
   because a released login can be re-registered. The bump-binaries App token (above)
-  is not on the list, so a review it posts doesn't count. It can still merge a PR once the
-  gate is green. Comments no longer count, so editing an owner comment into a qualifying one
+  is not on the list, so a review it posts doesn't count. It cannot merge a PR to `main` at all
+  (refused with `405`, #327). Comments no longer count, so editing an owner comment into a qualifying one
   (#94) does nothing. A writer can edit someone else's formal review body (verified on #94),
   so a review with any editor not in `REVIEWER_IDS` does not count either (see below).
   Quoted lines (`> ...`) are ignored, so quote-replying someone else's pasted strings
