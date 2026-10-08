@@ -1,38 +1,43 @@
 # Next steps
 
-**Now:** Milestone 6, Internal hardening, in `implementing`.
+**Now:** Milestone 6, Internal hardening, in `implementing`. Step 4 is built and open as PR #389.
 
 **Just done:**
-- Milestone 6 step 3 merged: #385 (`adc86df`) closes #309, #310, #327 and #297. The threat model now names
-  `restrict-updates-to-main` beside invariant 6, the bump-binaries App-token row is reworded from the owner's
-  live test (#327), and the immutable-release wording is corrected. `.ai/project.yml`'s comments record the
-  second ruleset as a stated residual.
-- The fresh-session architect review of #385 found no blocking issues. It checked every claim against the live
-  rulesets, `immutable-releases` and the tag objects, and confirmed in a WSL sandbox that the `.ai/project.yml`
-  change is comment-only. It filed #386 (the tag-ruleset entry's "negative test passed" covers only a `v*`
-  delete) and #387 (the DEVC-D7 paragraph omits `restrict-updates-to-main`).
-- Critic pass on #385 (from its PR body):
-    2 rounds (docs-consistency), converged. The critic ran on its frontmatter default; no second-opinion round.
+- Milestone 6 step 4 built as #389 (branch `fix/merge-guard-step4`, `5f7507c`; `Closes #170, closes #171, closes #311`).
+  The first build followed the issues and fixed the hook's bash-lexer emulation shape by shape. Four critic
+  rounds did not converge: each fix opened a new parser gap, and some shapes the committed hook blocked came
+  through. An Opus design review concluded the hook can only be a seatbelt against mistakes, because the agent's
+  shell holds the owner's admin login. The owner chose the fail-closed tripwire: the hook now refuses any command
+  that holds `merge` as a word, unless it is the one admitted `/resume` cursor-sync shape. Mentions in commit
+  messages and PR bodies are blocked on purpose, so such text goes in a file (`git commit -F`,
+  `--body-file`, `gh api --input`). #311's status check and its fixtures are kept. Tests run in WSL.
+- The owner asked whether anything besides the cursor-sync merge needs the hook. A read of the workbench plans
+  found nothing else; the question is filed as claude-workbench#368 for a keep, drop or redesign decision.
+- Critic pass on #389 (this session):
+    Parser version: 4 rounds (architect, security-critic, docs-consistency), not converged, abandoned on the
+    owner's decision; its security-critic round 4 was stopped by a safety classifier twice and never ran.
+    Tripwire version: 2 rounds on the three critics; the last security-critic round found no reachable bypass
+    beyond the documented residuals. The final small fixes (brace and escape refusals, empty `$()`) were tested
+    but not re-read by a critic. All critics ran on their frontmatter defaults; no second-opinion round.
 
-**Next:** task #170 — on **sonnet** (coder): build milestone 6 step 4 as one PR in `.claude/hooks/merge-guard.sh`
-and `tools/tests/merge-guard-test.sh` (`Closes #170, closes #171, closes #311`). Each issue's body is the spec:
-- #170: make quoted, escaped, wrapper-led and keyword-led `gh pr merge` shapes block. Add every row of its
-  reproduction table as a must-block test case.
-- #171: detect a heredoc start only in unquoted text, and never on `<<<`. Add both of its cases as must-block.
-- #311: in the cursor-sync file check, require exactly one row, `.ai/next-steps.md` with status `modified`. Add
-  fixtures for `removed`, `renamed` and a mode-only change, then drop the residual line from the hook header.
+**Next:** on **opus** (architect), in a new window: `/way-of-working:architect-review 389`. `.claude/` is in
+`code_paths`, so #389 needs that fresh-session review before the owner's merge. Read the hook header's
+residuals first: it is a seatbelt, not a lock.
 
-Then `/way-of-working:critic-gate` (architect + security-critic) and `/way-of-working:ship`. `.claude/` is in
-`code_paths`, so the PR needs the architect review.
-
-**HITL Gate: NONE OPEN** — next gate: the owner's merge of the step 4 PR.
+**HITL Gate: NONE OPEN** — next gate: the architect review of #389, then the owner's merge.
 
 **Open for the owner (non-blocking):**
+- claude-workbench#368: should `/resume`'s cursor-sync `--admin` merge exist? If it is dropped, a later PR deletes
+  the hook for plain deny rules. No hook work until that is decided.
+- #170 and #171 were written for the parser approach; #389 meets their rows by a different mechanism and says
+  `Closes` on both. Rewrite #170 and close #171 as superseded first if preferred. The issue text and a new issue
+  for the agent-credential decision (the agent's shell should not hold a bypass login; may supersede #262's
+  `--admin` path; #172 tracks the threat-model half) have not been drafted or filed.
+- After #389: milestone 6 goes on with its written build order. #356 fits with step 9's test-only fixes;
+  #377-#379, #383, #386 and #387 are unmilestoned.
 - Milestone 5 (Trivy renewal 2026-11) is due 2026-10-29. The #148 exceptions still expire 2026-11-01: if the
   tofu and tflint vendors have not shipped fixes by late October, re-scan and renew the rest at most 30 days out.
   #329 rides along.
-- #356 (regression test for the #349 pin guard) is on milestone 6 but not in the written build order. It fits
-  with step 9's test-only fixes. #377-#379, #383, #386 and #387 are unmilestoned.
 - Any other repo that bumps way-of-working to `v0.17.0` reads `incomplete` until it answers `orchestration`,
   and needs the drive-letter mirror after `plugin update` (claude-workbench#347).
 - The pilots re-copy the gate and re-pin to `9153da1b6eb4ff2d845cb41efaabab3882529130 # v1.4`; tracked there.
@@ -44,6 +49,8 @@ Then `/way-of-working:critic-gate` (architect + security-critic) and `/way-of-wo
 - Use `GH_TOKEN="$(gh auth token --user JaredGroves-603)"` for `gh` calls on this repo, and run commits,
   pushes and PRs from the Windows host. Run tests in WSL, not Git Bash. `gh issue create` and `gh pr create`
   hang under Git Bash; `gh api ... --input -` with a timeout works. Write `Closes #A, closes #B`.
+- Once #389 is checked out, its hook refuses any command with the word `merge` in it: write commit messages
+  and PR bodies to a file with the Write tool and pass them by name.
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan:
 https://github.com/603-Identity/devcontainers/milestone/6
