@@ -99,8 +99,8 @@ COPY --chmod=0644 files/secret-scan/org.toml /usr/local/share/devc/secret-scan/o
 # published `.sha256` asset (also verifiable with `gh attestation verify --repo
 # astral-sh/uv`). uv provisions an older interpreter only for a repo whose
 # `.python-version` asks for one; the image itself carries no alternate interpreter.
-ARG UV_VERSION=0.12.23
-ARG UV_SHA256=9167d72b3319674b6303c4cbe071854bba13ebdf3d76b1a7cbdc175471fb66d6
+ARG UV_VERSION=0.13.1
+ARG UV_SHA256=eadd9d27c134ab5ac1ffd4473b97a741407f3ea238288f03121fc4deddf90220
 RUN curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" \
         -o /tmp/uv.tar.gz \
     && echo "${UV_SHA256}  /tmp/uv.tar.gz" | sha256sum -c - \
