@@ -78,8 +78,8 @@ RUN curl -fsSL "https://github.com/opentofu/opentofu/releases/download/v${TOFU_V
 
 # --- tflint, for pre-commit-terraform's terraform_tflint hook (language: script, so
 # it needs the binary on PATH). No CI job runs tflint, so there is no CI pin to match.
-ARG TFLINT_VERSION=0.64.0
-ARG TFLINT_SHA256=cca9d13e2e1d7a2c627af60ff899a3c9b74212899416aeb96ec764d2ef954537
+ARG TFLINT_VERSION=0.65.0
+ARG TFLINT_SHA256=d4c545ed2e29d6338604b586f34f544f380f70f243aa72f7b484713835eaec61
 RUN curl -fsSL "https://github.com/terraform-linters/tflint/releases/download/v${TFLINT_VERSION}/tflint_linux_amd64.zip" \
         -o /tmp/tflint.zip \
     && echo "${TFLINT_SHA256}  /tmp/tflint.zip" | sha256sum -c - \
