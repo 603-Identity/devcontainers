@@ -14,9 +14,12 @@ import (
 	"github.com/603-identity/devcontainers/tools/devc-verify/internal/image"
 )
 
-// CurrentSyntax is the template's current `# syntax=` value. A test asserts it equals the
-// first line of template/.devcontainer/Dockerfile, so a template bump without a tool
-// release fails CI.
+// CurrentSyntax is the newest allowed `# syntax=` value. A test asserts it equals the first
+// line of images/*/Dockerfile, and that template/.devcontainer/Dockerfile's first line is one of
+// AllowedSyntax. tools/check-self-pins.sh then asserts the template's line is allowed by the
+// verifier at the release the template pins, so a template bump without a tool release fails
+// CI (#125). That script reads both constants with sed: keep each one a single
+// `const X = "..."` line (PreviousSyntax may also be `= CurrentSyntax`).
 const CurrentSyntax = "docker/dockerfile:1.28@sha256:bb22d9815c728170f72750f4e5b0d672e06176142e1d602c7e66c050100b7e5b"
 
 // PreviousSyntax is the value the template carried before CurrentSyntax (dockerfile 1.27.1, the

@@ -45,9 +45,11 @@ is a `3`.
 ## Releasing and maintenance
 
 - `AllowedSyntax` is `{current, previous}`. A test asserts the current value equals the first
-  line of `template/.devcontainer/Dockerfile` and of `images/*/Dockerfile`, so bumping the
-  template's `# syntax=` without a tool release fails the tests. On a bump, move the old
-  current value into `PreviousSyntax`.
+  line of `images/*/Dockerfile`, and that the first line of `template/.devcontainer/Dockerfile`
+  is one of the two. `tools/check-self-pins.sh` (CI) asserts the template's line is allowed by
+  the verifier at the release the template's workflows pin, so bumping the template's
+  `# syntax=` without a tool release fails CI (#125). On a bump, move the old current value
+  into `PreviousSyntax`, and follow README.md "Cutting a release" for the template.
 - The `moby/buildkit` release must be the one that ships the frontend the allowed syntax pins;
   `TestBuildkitMatchesFrontend` asserts the mapping (see the comment there).
 - `testdata/` fixtures are hand-built, not recorded (see `testdata/README.md`).

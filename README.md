@@ -688,7 +688,7 @@ A human still has to:
    entry in the same PR.
 5. Merge -- the workflow never does.
 6. For betterleaks, accepting the bump also means cutting a `vX.Y` tag of this repo on the
-   merge commit (see "Secret scanning"): consuming repos' `secrets / scan` pins take the
+   merge commit (see "Secret scanning" and "Cutting a release"): consuming repos' `secrets / scan` pins take the
    scanner version and the org rules from the commit they pin, so the new scanner reaches
    them through the Dependabot pin bump, not before. The image and CI use one version: the
    same `BETTERLEAKS_*` ARGs.
@@ -699,7 +699,42 @@ the release notes, take the sha256 from the release's own checksum file (never
 
 The `# syntax=docker/dockerfile:...@sha256:...` line on line 1 of all four Dockerfiles is
 pinned by digest but no bot bumps it (Dependabot's docker updater reads only `FROM`
-lines). Move the four together, taking the digest from `docker buildx imagetools inspect
-docker/dockerfile:<tag>`.
+lines). Take the digest from `docker buildx imagetools inspect docker/dockerfile:<tag>`, and
+move it together with devc-verify's `CurrentSyntax` and vendored BuildKit
+(`tools/devc-verify/README.md`). The three image Dockerfiles move in that PR. The template's
+copy can move in that PR too, but `template self-pins match their release` then fails until
+the template pins a release whose verifier allows the new value, so the usual order is: the
+images and devc-verify first, then a release, then the template's line with the pin bump
+(see "Cutting a release").
 
 Dependabot handles the base image digest, the GitHub Actions pins, and the Python tool lock (`uv` ecosystem on `images/base/tools`).
+
+## Cutting a release
+
+A release is a `vX.Y` tag on a `main` commit. Consuming repos pin this repo's reusable
+workflows (verify, decide, secret-scan) by that commit's SHA, with the tag as a
+`# vX.Y` comment. Cut one when a change consumers run has landed: devc-verify, the
+reusable workflows, the gate template, or the org secret-scan rules and scanner pin.
+
+1. **Tag `main`.** Make an annotated, signed tag on the commit (`git tag -s vX.Y -m vX.Y
+   <sha>`), check it (`git tag -v vX.Y`), and push it. Tags matching `v*` sit under the
+   `release-tags` ruleset, so only the Repository admin role can create, move or delete them.
+   Never move a published tag: consumers' pins name the commit, and the lint checks that the
+   tag still peels to it.
+2. **Bump this repo's own pins to it, in one PR.** Dependabot never bumps these, because they
+   point at this repo's own releases (#125). There are five copies of one pin:
+   `tools/gate-template.yml.in` (the gate skeleton's `decide`), the two gates rendered from
+   it (`template/.github/workflows/architect-review-gate.yml`, regenerate it with
+   `tools/render-gate.sh`, and this repo's own `.github/workflows/architect-review-gate.yml`,
+   the same one-line edit; `render-gate-test.sh` checks both against the skeleton), and
+   `template/.github/workflows/devcontainer-image.yml` and `secret-scan.yml`. All five become
+   `@<sha> # vX.Y`. If the release changed
+   `CurrentSyntax`, move `template/.devcontainer/Dockerfile`'s line 1 in this PR too.
+3. **CI checks it.** `template self-pins match their release` (in `verify-selftest.yml`,
+   `tools/check-self-pins.sh`) fails when the five pins disagree, when a pin is not on
+   `main`'s first-parent line or its tag does not peel to it, or when the template's
+   `# syntax=` line is not allowed by the verifier at the pinned release. A newer tag than the
+   one pinned only warns, because a commit cannot pin its own release: between the tag and the
+   bump PR every branch pins the previous one.
+4. **Tell the pilots.** Adopters copy `template/` from `main`, so they get the new pins from
+   the next copy. Existing consumers move by their own Dependabot `github-actions` bump.
