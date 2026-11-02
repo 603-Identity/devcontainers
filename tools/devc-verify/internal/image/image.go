@@ -9,19 +9,24 @@ import (
 	"github.com/603-identity/devcontainers/tools/devc-verify/internal/check"
 )
 
-// BasePattern is the spec's base-image regex, verbatim.
-const BasePattern = `^ghcr\.io/603-identity/devcontainer-(base|tofu|node):([0-9]+)\.([0-9]+)@sha256:[0-9a-f]{64}$`
+// BasePattern is the spec's base-image regex, with the two dev-App images (#418) added. The
+// alternation is anchored by the `:` that follows it, so `devapp` never matches a prefix of
+// `devapp-tofu`.
+const BasePattern = `^ghcr\.io/603-identity/devcontainer-(base|tofu|node|devapp|devapp-tofu):([0-9]+)\.([0-9]+)@sha256:[0-9a-f]{64}$`
 
 var baseRE = regexp.MustCompile(BasePattern)
 
 // Ref is a parsed `repo:MAJOR.MINOR@sha256:digest` reference.
 type Ref struct {
-	Name   string // base, tofu or node
+	Name   string // base, tofu, node, devapp or devapp-tofu
 	Major  int
 	Minor  int
 	Digest string // "sha256:<64 hex>"
 	Raw    string // the exact input, which matched BasePattern
 }
+
+// DevApp reports whether the image is one of the dev-App flavour's two images.
+func (r Ref) DevApp() bool { return r.Name == "devapp" || r.Name == "devapp-tofu" }
 
 // Repo is the image repository without tag or digest.
 func (r Ref) Repo() string { return "ghcr.io/603-identity/devcontainer-" + r.Name }

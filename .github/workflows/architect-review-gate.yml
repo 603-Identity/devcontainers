@@ -5,6 +5,12 @@ name: Architect Review Gate
 # byte for byte; that repo's selftest fails when they differ. In a consuming repo, edit only
 # the PER-CONSUMER regions (marked `>>> CONSUMER` / `<<< CONSUMER`), never the logic.
 #
+# Who runs it (#418 owner decisions 6 and 7): this repo, and consuming repos on the legacy (PAT)
+# route. A dev-App repo runs the way-of-working plugin's review.ci_gate instead, copies only the
+# verify and secret-scan callers, and must NOT carry this file's content (the plugin's gate
+# ships under the same file name): the lint
+# (tools/check-consumer-workflows.sh) fails a dev-App repo where these jobs appear.
+#
 # Per-consumer values, and nothing else:
 #   * the `case` block in the `post` job's run block: this repo's code_paths, as globs.
 #     The `.github/` rule just above it is NOT consumer-editable: a changed file under

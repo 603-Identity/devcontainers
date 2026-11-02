@@ -19,9 +19,17 @@
 #     verifier AT THE PINNED RELEASE accepts (its CurrentSyntax or PreviousSyntax). That is what
 #     an adopter's `verify / verify` runs, so a template whose syntax line is newer than its
 #     pinned verifier fails every adoption PR (#422 shipped exactly that, fixed by the v1.5 bump).
+#   * tools/devc-verify/templates/previous.devcontainer.json, when it exists, is not byte for byte
+#     template/.devcontainer/devcontainer.json at the pinned release. That snapshot is what the
+#     next release's verifier accepts besides its own template (#418 owner decision 5), so it must
+#     be the template of the release `main` pins.
 # It only WARNS when a newer `v*` tag exists than the one pinned: a commit cannot pin its own
 # release, so right after a tag is cut every branch pins the previous one until the bump PR lands
-# (README.md, "Cutting a release"). Failing there would turn every open PR red at once.
+# (README.md, "Cutting a release"). Failing there would turn every open PR red at once. It also
+# only warns when the snapshot is missing (expected through v1.6; a security release may ship
+# without one, README.md "Cutting a release"), and while the checked-out template (`main`'s, on
+# a push to `main`) differs from the pinned release's (adopters copying it now get a template
+# the pinned verifier may reject).
 #
 # The release is read from one scratch clone of `main` (`--bare --single-branch --filter=tree:0`,
 # not shallow), with git hardened as tools/check-consumer-workflows.sh does it; a SHA is never
@@ -39,6 +47,8 @@ FILES=(
   template/.github/workflows/secret-scan.yml
 )
 TEMPLATE_DOCKERFILE=template/.devcontainer/Dockerfile
+TEMPLATE_JSON=template/.devcontainer/devcontainer.json
+SNAPSHOT=tools/devc-verify/templates/previous.devcontainer.json
 SYNTAX_GO=tools/devc-verify/internal/dockerfile/dockerfile.go
 
 [ "$#" -eq 0 ] || { echo "usage: check-self-pins.sh   (no arguments; run from the repo root)" >&2; exit 2; }
@@ -157,6 +167,24 @@ elif go_src="$(up_git -C "$up" show "$sha:$SYNTAX_GO" 2>&1)"; then
 else
   # The SHA is on main's first-parent line, so a failure here is the network, not the pin.
   cannot_check "$go_src"
+fi
+
+# The template snapshot (#418 owner decision 5), read the same way and only for a SHA on main's
+# first-parent line. `git show` into a file, not a variable, so the comparison is byte for byte
+# (command substitution would drop trailing newlines).
+if [ "$on_main" = true ]; then
+  if err="$(up_git -C "$up" show "$sha:$TEMPLATE_JSON" 2>&1 > "$scratch/pinned-template.json")"; then
+    if [ ! -f "$SNAPSHOT" ]; then
+      warn "$SNAPSHOT is missing, so the next release's verifier accepts only its own template (expected through v1.6; see README.md \"Cutting a release\")."
+    elif ! cmp -s "$SNAPSHOT" "$scratch/pinned-template.json"; then
+      finding "$SNAPSHOT is not $TEMPLATE_JSON at the pinned $tag ($sha), byte for byte. Copy it from that release: git show $tag:$TEMPLATE_JSON > $SNAPSHOT"
+    fi
+    if ! cmp -s "$TEMPLATE_JSON" "$scratch/pinned-template.json"; then
+      warn "$TEMPLATE_JSON differs from the pinned $tag's. Adopters copy it from main, and the verifier at $tag may reject it until the next release is cut and pinned."
+    fi
+  else
+    cannot_check "$err"
+  fi
 fi
 
 # Staleness only warns (see the header).

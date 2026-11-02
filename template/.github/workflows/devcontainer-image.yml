@@ -14,8 +14,9 @@ name: Devcontainer image
 #     repo's ruleset, pinned to integration_id 15368 (GitHub Actions).
 #   * The pin is a full commit SHA plus a version comment, `@<sha> # vX.Y`. A bare tag fails
 #     the called workflow's own SHA check, because job.workflow_ref would end in the tag.
-#     Dependabot's github-actions ecosystem bumps it as a reviewed PR. Keep it equal to the
-#     `decide` pin in architect-review-gate.yml.
+#     Dependabot's github-actions ecosystem bumps it as a reviewed PR. On the legacy route,
+#     keep it equal to the `decide` pin in architect-review-gate.yml (a dev-App repo has no
+#     such gate: its review gate is the way-of-working plugin's).
 #   * No write permission, no other job in this file, and no job key besides `permissions:`
 #     and `uses:`. `tools/check-consumer-workflows.sh`
 #     in that repo lints it.

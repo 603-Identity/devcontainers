@@ -1,0 +1,36 @@
+// FIXTURE, not the template: a dev-App template shaped as the #418 design (section 2)
+// describes it, for devc-verify's own tests. PR D writes the real one in template/.
+// DEVC-D9.
+{
+  "name": "${localWorkspaceFolderBasename}",
+  "build": { "dockerfile": "Dockerfile" },
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+  "remoteUser": "app",
+  "updateRemoteUserUID": false,
+  "runArgs": [
+    "--cap-drop=ALL", "--security-opt=no-new-privileges",
+    "--read-only", "--tmpfs=/run", "--tmpfs=/var/tmp"
+  ],
+  "init": true,
+  "mounts": [
+    "source=${localEnv:USERPROFILE}/.gitconfig.d,target=/home/app/.gitconfig.d,type=bind,readonly",
+    "source=${localWorkspaceFolderBasename}-home,target=/home/app,type=volume",
+    "source=${localWorkspaceFolderBasename}-tmp,target=/tmp,type=volume",
+    "source=${localWorkspaceFolderBasename}-node_modules,target=/workspace/node_modules,type=volume",
+    "source=${localWorkspaceFolderBasename}-venv,target=/workspace/.venv,type=volume",
+    // The token directory: OWNER/REPO is this repo's github.repository, in its canonical case.
+    "source=${localEnv:USERPROFILE}/.config/glunk-identity/tokens/OWNER/REPO,target=/run/wow,type=bind,readonly"
+  ],
+  "postStartCommand": "rm -f /tmp/vscode-remote-containers-*.js; sh /usr/local/share/devc/owner-check.sh; sh /usr/local/share/devc/devapp-check.sh; sh /usr/local/share/devc/git-identity.sh",
+  "postCreateCommand": "if [ -f .pre-commit-config.yaml ]; then pre-commit install; fi",
+  "postAttachCommand": "echo 'devapp: open this repo through the launcher only' >&2",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "dev.containers.copyGitConfig": false,
+        "remote.containers.gitCredentialHelperConfigLocation": "none"
+      }
+    }
+  }
+}

@@ -772,6 +772,111 @@ PATH="$UPROOT/bin:$PATH" lint_up; expect "three pins at one commit" 0
 assert_eq "three pins at one commit clone once" 1 "$(grep -c ' clone ' "$UPROOT/git.log")"
 rm -rf "$SCRATCH" "$UPROOT"
 
+# --- the dev-App profile (#418, owner decisions 6 and 7) -----------------------------------------
+# new_devapp [json|dockerfile|none]: a repo whose .devcontainer/ is dev-App (by a marker in that
+# file; `none` writes no marker), with the template's two callers and a review gate shaped like
+# the way-of-working plugin's (v0.28.0: the same file name as the template gate, one `gate` job,
+# run: steps on ubuntu-latest, statuses its only write), and no template gate.
+PLUGIN_GATE=$GATE
+ZEROS=0000000000000000000000000000000000000000
+new_devapp() {
+  SCRATCH="$(mktemp -d)"
+  REPO="$SCRATCH/repo"; WF="$REPO/.github/workflows"
+  mkdir -p "$WF" "$REPO/.devcontainer"
+  cp "$TEMPLATE_DIR/$CALLER" "$TEMPLATE_DIR/$SCAN" "$WF/"
+  case "${1:-json}" in
+    json) echo '{"mounts": ["source=x,target=/run/wow,type=bind,readonly"]}' > "$REPO/.devcontainer/devcontainer.json" ;;
+    dockerfile) echo 'FROM ghcr.io/603-identity/devcontainer-devapp:4.1@sha256:x' > "$REPO/.devcontainer/Dockerfile" ;;
+    none) echo '{}' > "$REPO/.devcontainer/devcontainer.json" ;;
+  esac
+  cat > "$WF/$PLUGIN_GATE" <<'Y'
+name: Review gate
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  pull_request_review:
+    types: [submitted]
+permissions:
+  contents: read
+jobs:
+  gate:
+    name: review gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: write
+      pull-requests: read
+    steps:
+      - run: true
+Y
+}
+# add_decide_job ID: append a job calling the template gate's decide workflow.
+add_decide_job() {
+  printf '  %s:\n    permissions: {}\n    uses: 603-Identity/devcontainers/.github/workflows/devcontainer-bump-decision.yml@%s # v1.5\n' "$1" "$ZEROS" >> "$WF/$PLUGIN_GATE"
+}
+# gate_sed SCRIPT: edit the plugin gate in place.
+gate_sed() { sed -i "$1" "$WF/$PLUGIN_GATE"; }
+
+new_devapp; lint; expect "a dev-App repo with the plugin gate" 0 "dev-App profile"; rm -rf "$SCRATCH"
+new_devapp dockerfile; lint; expect "dev-App detected from the Dockerfile" 0 "dev-App profile"; rm -rf "$SCRATCH"
+
+new_devapp; cp "$TEMPLATE_DIR/$GATE" "$WF/$GATE"
+lint; expect "the template gate in a dev-App repo" 1 "job 'resolve' is a job of the template gate"; rm -rf "$SCRATCH"
+
+new_devapp; gate_sed 's|^  gate:$|  post:|'
+lint; expect "a job named post in a dev-App repo" 1 "job 'post' is a job of the template gate"; rm -rf "$SCRATCH"
+
+new_devapp; add_decide_job decide
+lint; expect "the decide job in a dev-App repo" 1 "job 'decide' is a job of the template gate"; rm -rf "$SCRATCH"
+
+new_devapp; add_decide_job bump
+lint; expect "a renamed decide caller in a dev-App repo" 1 "job 'bump' calls 603-Identity/devcontainers/.github/workflows/devcontainer-bump-decision.yml"; rm -rf "$SCRATCH"
+
+new_devapp; sed 's|^  gate:$|  second-gate:|' "$WF/$PLUGIN_GATE" > "$WF/other-gate.yml"
+lint; expect "two status writers in a dev-App repo" 1 "is already the one status writer"; rm -rf "$SCRATCH"
+
+new_devapp; gate_sed 's|      contents: read|      contents: write|'
+lint; expect "a status writer that also writes contents" 1 "holds contents, statuses: write"; rm -rf "$SCRATCH"
+
+new_devapp; gate_sed 's|      statuses: write|      checks: write|'
+lint; expect "a checks writer is not the status writer" 1 "holds checks: write"; rm -rf "$SCRATCH"
+
+new_devapp; gate_sed '/^    permissions:$/,/pull-requests: read/c\    permissions: write-all'
+lint; expect "a write-all status writer" 1 "has write-all"; rm -rf "$SCRATCH"
+
+# The status writer is held to the template post job's shape, and to the plugin gate's triggers.
+new_devapp; gate_sed 's|^      - run: true$|      - uses: someone/action@main|'
+lint; expect "a status writer with a uses:" 1 "it contains a uses:"; rm -rf "$SCRATCH"
+
+new_devapp; gate_sed 's|^    runs-on: ubuntu-latest$|    runs-on: ubuntu-latest\n    container: ghcr.io/someone/img:latest|'
+lint; expect "a status writer in a container" 1 "it has container: or services:"; rm -rf "$SCRATCH"
+
+new_devapp; gate_sed 's|^    runs-on: ubuntu-latest$|    runs-on: [self-hosted]|'
+lint; expect "a self-hosted status writer" 1 "GitHub-hosted runner"; rm -rf "$SCRATCH"
+
+new_devapp; gate_sed 's|^    runs-on: ubuntu-latest$|    runs-on: ubuntu-latest\n    needs: prep|'
+lint; expect "a status writer with needs:" 1 "it has needs:"; rm -rf "$SCRATCH"
+
+new_devapp; gate_sed 's|^  pull_request_review:$|  pull_request_target:\n  pull_request_review:|'
+lint; expect "a status writer on pull_request_target" 1 "an event besides pull_request"; rm -rf "$SCRATCH"
+
+new_devapp; gate_sed 's|^  pull_request_review:$|  push:\n  pull_request_review:|'
+lint; expect "a status writer on push" 1 "an event besides pull_request"; rm -rf "$SCRATCH"
+
+new_devapp; sed -i 's|^  pull_request:$|  pull_request:\n    paths: [".devcontainer/**"]|' "$WF/$CALLER"
+lint; expect "the caller rules still apply in a dev-App repo" 1 "no paths:"; rm -rf "$SCRATCH"
+
+new_devapp; rm "$WF/$SCAN"
+lint; expect "the secret-scan caller is still required" 1 "secret-scan.yml is missing"; rm -rf "$SCRATCH"
+
+# Without a dev-App marker, the plugin gate's file is read as the template gate: it lacks the
+# three jobs, and its status writer is an ordinary write-token finding.
+new_devapp none; lint
+expect "a plain repo with only the plugin gate" 1 "must define the gate's three jobs"
+if [[ "$ERR" == *"job 'gate' holds statuses: write"* ]]; then pass; else fail "a plain repo's status writer is a finding" "$ERR"; fi
+rm -rf "$SCRATCH"
+
 # The two template pins agree (the lint only warns on a mismatch; this repo's template must not).
 caller_sha="$(grep -oE 'verify-devcontainer-image\.yml@[0-9a-f]{40}' "$TEMPLATE_DIR/$CALLER" | cut -d@ -f2)"
 gate_sha="$(grep -oE 'devcontainer-bump-decision\.yml@[0-9a-f]{40}' "$TEMPLATE_DIR/$GATE" | cut -d@ -f2)"
