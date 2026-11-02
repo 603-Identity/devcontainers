@@ -3,7 +3,7 @@ module github.com/603-identity/devcontainers/tools/devc-verify
 go 1.26.8
 
 require (
-	github.com/moby/buildkit v0.33.1
+	github.com/moby/buildkit v0.34.1
 	github.com/tailscale/hujson v0.0.0-20260727124030-b80ff77dac4f
 )
 
