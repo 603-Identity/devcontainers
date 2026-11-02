@@ -222,8 +222,10 @@ What each piece trusts, and what it leaves open:
   breaks a rule is caught by review alone. The gate defends against Dependabot-shaped
   forgeries, outsiders and wrong images, and against forks only to the extent that auto-merge
   never acts on a fork PR. DEVC-D7 records this split: human writers are trusted, while the
-  bump-binaries App is not and is bounded by its permissions plus the head-SHA binding (#92) plus the review-editor check (#94, see Known gaps). Before auto-merge goes on, the gate's result must come from a reviewer App's check run
-  that a PR's own workflows cannot post (#267); a ruleset-required workflow was rejected
+  bump-binaries App is not and is bounded by its permissions plus the head-SHA binding (#92) plus the review-editor check (#94, see Known gaps). The reviewer-App check run that was to be required
+  before auto-merge went on (#267) is superseded, and nothing replaces it for this repo's own gate
+  (see the auto-merge bullet below). Dev-App repos run the way-of-working plugin's gate (DEVC-D9).
+  The other route to a non-forgeable status, a ruleset-required workflow, was rejected
   because it needs GitHub Team.
 - **Forks and same-named checks.** A fork PR from a returning contributor needs no approval to
   run. It can add a job named `architect-review`, or a `verify`/`verify` pair, whose check runs
@@ -240,9 +242,13 @@ What each piece trusts, and what it leaves open:
   switch makes "not created yet" the off state. When it is on, this repo's `main`, then the
   publish, then a consumer merge becomes an unattended chain whose only human control is this
   repo's own `architect-review`, an existence gate with known gaps (#93, and the skill half of #278). The owner
-  creates `devc-automerge-on` only when #139's preconditions are met: among them a pilot that
-  has taken real bumps through the review path, the reviewer App check (#267), and `disarm()`
-  in every row (#126, #132). Docs-only pushes no longer publish: a push
+  creates `devc-automerge-on` only when #396's preconditions are met (#396 absorbs #139; #267 is
+  superseded): among them a pilot that has taken real bumps through the review path, a private
+  repo that confirms the arming, and `disarm()` in every row (#126, #132). Nothing in #396 closes
+  #93 or F9b, which #267 was to close: turning the switch on accepts them at the root of the chain,
+  and what stands behind a forgeable `architect-review` is a writer's merge to this repo's `main`
+  (by practice the owner's), which the ruleset does not enforce. No dev-App bump is
+  ever armed, because `decide` refuses those images. Docs-only pushes no longer publish: a push
   to `main` publishes only when an image-affecting path changed since the last successful
   publish (#124, #159), so a docs-only merge ships no new tag set. The base is the commit of the
   newest `main` run whose publish *job* succeeded, not the push's own `before`: a pending run
@@ -279,8 +285,8 @@ What each piece trusts, and what it leaves open:
   vendored and standard-library packages do use `unsafe`, so "no `unsafe` anywhere" is not
   claimed.
 - **Private consumers.** A Dependabot-triggered `pull_request` run raising its token and
-  arming auto-merge was observed on a public repo only. A private pilot has to confirm it
-  before auto-merge is turned on; with the switch off, no pilot can show it.
+  arming auto-merge was observed on a public repo only. A private throwaway repo has to confirm it
+  before auto-merge is turned on (#396).
 - **Triggers the lint does not watch.** `workflow_run` and `merge_group` run files from the default
   branch or after approval. `deployment` and `deployment_status` run the file at the deployed commit,
   so a repo whose integrations create a deployment for every branch would let Dependabot's branch
@@ -491,7 +497,7 @@ These are stated plainly so nobody trusts the setup for more than it does:
   printed only when it matches the `org/repo` grammar.
 - **glunk-works has no credential ledger yet**, so its tokens have no recorded home.
 - **The broad OAuth token** that containers used before this model can still be live
-  until every repo has moved to the template (#6).
+  until it is revoked (#439), which waits for every container that used it to be rebuilt on a shared image or retired.
 - **The `main` ruleset's `pull_request` rule requires 0 approvals**, and
   `architect-review-gate.yml` counts a formal review only from a user ID in its
   `REVIEWER_IDS` allowlist (#14): today the owner's user ID alone. It is an ID list, not
@@ -546,8 +552,9 @@ These are stated plainly so nobody trusts the setup for more than it does:
   (only `issue_comment` uses `main`'s), so a branch that edits the gate, or its
   `REVIEWER_IDS`, is checked by the edited gate. Pushing a branch already takes write
   access, and the edit shows in the diff the human reads before merging (#93). Accepted under
-  DEVC-D7: the gate does not defend against human writers. The reviewer App check (#267) closes
-  it before auto-merge goes on.
+  DEVC-D7: the gate does not defend against human writers. The reviewer-App check (#267) that was to
+  close it is superseded (DEVC-D9) with no replacement; the gap stays accepted for this repo and the
+  legacy route, including if auto-merge is ever turned on. #396 holds that switch's preconditions.
 - **`bump-binaries.yml` is skipped until `BUMP_BINARIES_CLIENT_ID` is set** (#87, #102): the job's
   `if:` on that variable skips it. The variable must stay a repo-level one, never an Environment
   one: a job-level `if:` cannot see Environment variables, so the job would skip forever. The App's

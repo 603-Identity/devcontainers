@@ -1,8 +1,14 @@
 # Adopting the devcontainer template in a repo
 
+> **Frozen: this is the legacy PAT route (DEVC-D9, #418).** Do not start a new adoption from it.
+> The dev-App flavour and its template ship in v1.6, and PR D rewrites this runbook for them (#392).
+> The two pilots keep their copies of the legacy template until their own cutover, and the
+> 603-Identity rows of #26 to #28 wait for 603-Identity's dev-App cutover. Step 0's "A token" below describes the
+> route being replaced.
+
 One ordered procedure for moving a repo onto the shared images. It is built from what the two
 pilots did (terraform-cloudflare-dns and terraform-microsoft365-entra, #10) and it is the
-procedure the waves follow (#26, #27, #28). Each step says what to do and in what order, and
+procedure the waves (#26, #27, #28) were to follow, before the freeze above. Each step says what to do and in what order, and
 links the README section that holds the detail and the reason.
 
 The adoption PR is one PR per repo. Never merge your own adoption PR: the review gate, and the
@@ -20,7 +26,7 @@ login, never from the container token.
   ([Consuming from another org](../README.md#consuming-from-another-org), step 3). If it is
   not, rename it first. Every volume below is named after that folder, not the repo.
 - **A token.** The container gets a per-repo fine-grained token with no Workflows permission
-  ([Credentials](../README.md#credentials), #6). Create it now and record its name, scope
+  ([Credentials](../README.md#credentials); #439 tracks revoking the broad OAuth token it replaces). Create it now and record its name, scope
   and expiry (never the value) in the org's credential ledger.
 - **Is the repo on the exceptions list?** If it is in
   [Exceptions](threat_model.md#exceptions), stop: it gets no container.
