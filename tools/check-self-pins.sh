@@ -120,7 +120,10 @@ err="$(up_git clone -q --bare --single-branch --branch main --filter=tree:0 --no
 err="$(up_git -C "$up" rev-list --first-parent main 2>&1 > "$scratch/first-parent")" || cannot_check "$err"
 tags="$(up_git -C "$up" ls-remote --tags origin 2>&1)" || cannot_check "$tags"
 
-if ! grep -Fxq "$sha" "$scratch/first-parent"; then
+on_main=false
+if grep -Fxq "$sha" "$scratch/first-parent"; then
+  on_main=true
+else
   finding "the pinned $sha is not on 603-Identity/devcontainers main's first-parent line."
 fi
 # An annotated tag lists its commit on the `^{}` line, a lightweight one on its own.
@@ -136,8 +139,13 @@ elif [ "$peeled" != "$sha" ]; then
 fi
 
 # The verifier at the pinned commit: the two Go string constants, where PreviousSyntax may be
-# `= CurrentSyntax`. The blob is fetched lazily from the filtered clone.
-if go_src="$(up_git -C "$up" show "$sha:$SYNTAX_GO" 2>&1)"; then
+# `= CurrentSyntax`. Read only for a SHA already on main's first-parent line: the clone is
+# filtered (`tree:0`), so `git show` lazily fetches the commit's trees and blob from origin by
+# object ID, and for a pin off `main` that would be fetching a SHA by name (a fork's commit is
+# served too). An off-`main` pin is already a finding, so its syntax is not read at all.
+if [ "$on_main" = false ]; then
+  :
+elif go_src="$(up_git -C "$up" show "$sha:$SYNTAX_GO" 2>&1)"; then
   current="$(printf '%s\n' "$go_src" | sed -n 's/^const CurrentSyntax = "\(.*\)"$/\1/p')"
   previous="$(printf '%s\n' "$go_src" | sed -n 's/^const PreviousSyntax = "\(.*\)"$/\1/p')"
   printf '%s\n' "$go_src" | grep -qx 'const PreviousSyntax = CurrentSyntax' && previous="$current"
@@ -147,8 +155,8 @@ if go_src="$(up_git -C "$up" show "$sha:$SYNTAX_GO" 2>&1)"; then
     finding "$TEMPLATE_DOCKERFILE line 1 ('$syntax_line') is not accepted by the verifier at the pinned $tag ($sha), which allows only '$current'$([ "$previous" = "$current" ] || echo " and '$previous'"). Cut a release with the new syntax first, then bump the pins and the template together."
   fi
 else
-  # The SHA passed the first-parent check above, so a failure here is the network, not the pin.
-  grep -Fxq "$sha" "$scratch/first-parent" && cannot_check "$go_src"
+  # The SHA is on main's first-parent line, so a failure here is the network, not the pin.
+  cannot_check "$go_src"
 fi
 
 # Staleness only warns (see the header).

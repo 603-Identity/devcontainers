@@ -109,6 +109,10 @@ run_check; expect "a pin off main's first-parent line" 1 "not on 603-Identity/de
 
 new_tree; pin_all "$F1" v1.1; set_syntax "$SYN_B"
 run_check; expect "a fork-only pin" 1 "not on 603-Identity/devcontainers main's first-parent line"
+# f1 branched from c1, whose verifier allows only A, so reading its syntax would add an "is not
+# accepted" finding. It must not be read at all: in the filtered clone that read would fetch
+# the fork's commit from origin by object ID.
+refute_msg "a fork-only pin's syntax is never read" "is not accepted by the verifier"
 
 run_check "$UPROOT/does-not-exist.git"; expect "an unreachable upstream" 3 "never ok"
 run_check "https://example.invalid/x.git"; expect "a network override" 2 "absolute local path"

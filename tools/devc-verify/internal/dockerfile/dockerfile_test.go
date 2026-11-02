@@ -46,7 +46,9 @@ func TestTemplateWithPlaceholdersIsRejected(t *testing.T) {
 	}
 }
 
-// A template bump without a tool release must fail here.
+// The images must carry CurrentSyntax, and the template one of AllowedSyntax. Whether the
+// template's value is allowed by the release its workflows pin is tools/check-self-pins.sh's
+// check (#125), not this test's.
 func TestCurrentSyntaxIsTheTemplates(t *testing.T) {
 	// The template may still carry PreviousSyntax: a syntax bump releases the verifier first,
 	// and the template moves with the pin bump to that release (tools/check-self-pins.sh, #125).
