@@ -14,7 +14,12 @@
 # CI runs it against every image before anything is pushed; run it locally the same
 # way:
 #
-#   docker run --rm -v "$PWD/tests:/tests:ro" <image> sh /tests/smoke.sh <base|tofu|node>
+#   docker run --rm -v "$PWD/tests:/tests:ro" <image> sh /tests/smoke.sh <base|tofu|node|devapp|devapp-tofu>
+#
+# The dev-App flavours (devapp, devapp-tofu) run this file too, for everything they share with
+# base; the assertions that assume the stock gh credential helper or a signing identity are
+# gated on $devapp. Their own layer (dev-token, the gh wrapper, claude, no gpg) is asserted by
+# tests/smoke-devapp.sh, once per /run/wow the host could present.
 #
 # Expected versions are read from the Dockerfiles' own ARG lines by the CI step and
 # passed in as environment variables. That keeps one source of truth: a version
@@ -23,7 +28,9 @@
 # system Python's major.minor (the standard for consuming repos; apt moves the patch).
 set -eu
 
-flavor="${1:?usage: smoke.sh <base|tofu|node>}"
+flavor="${1:?usage: smoke.sh <base|tofu|node|devapp|devapp-tofu>}"
+devapp=0
+case "$flavor" in devapp|devapp-tofu) devapp=1 ;; esac
 fail=0
 check() { # check <label> <expected> <actual>
     if [ "$2" = "$3" ]; then
@@ -36,7 +43,10 @@ check() { # check <label> <expected> <actual>
 
 check "uid" 1000 "$(id -u)"
 check "user" app "$(id -un)"
-check "gh" "$EXPECT_GH" "$(gh --version | awk 'NR==1{print $3}')"
+# In the dev-App flavours `gh` is a wrapper that refuses without /run/wow; the binary it runs
+# is asserted here directly.
+if [ "$devapp" = 1 ]; then ghbin=/usr/local/libexec/gh-real; else ghbin=gh; fi
+check "gh" "$EXPECT_GH" "$("$ghbin" --version | awk 'NR==1{print $3}')"
 check "yq" "v$EXPECT_YQ" "$(yq --version | awk '{print $NF}')"
 check "uv" "$EXPECT_UV" "$(uv --version | awk '{print $2}')"
 check "zizmor" "$EXPECT_ZIZMOR" "$(zizmor --version | awk '{print $2}')"
@@ -176,8 +186,21 @@ cred_probe() { # cred_probe <label>
         | env -u GIT_ASKPASS -u SSH_ASKPASS GIT_TERMINAL_PROMPT=0 GIT_TRACE="$trace" \
             timeout 10 git credential fill >/dev/null 2>&1 || true
     check "credential helpers run ($1)" 1 "$(grep -c 'run_command:' "$trace" || true)"
-    check "credential helper is gh's ($1)" 1 \
-        "$(grep -c "run_command: '/usr/local/bin/gh auth git-credential get'\$" "$trace" || true)"
+    if [ "$devapp" = 0 ]; then
+        check "credential helper is gh's ($1)" 1 \
+            "$(grep -c "run_command: '/usr/local/bin/gh auth git-credential get'\$" "$trace" || true)"
+    else
+        # The dev-App flavours' one helper is dev-token (it answers quit=1 here: there is no
+        # /run/wow, which tests/smoke-devapp.sh supplies for the served case).
+        check "credential helper is dev-token ($1)" 1 \
+            "$(grep -c 'run_command:.*/usr/local/libexec/dev-token get' "$trace" || true)"
+        # dev-token answers quit=1 here, so git never reaches a helper configured after it: the
+        # configured list itself, every credential.*helper key in every scope (URL-scoped
+        # ones too), is what shows one.
+        check "configured credential helpers, every key and scope ($1)" \
+            "credential.helper |credential.helper /usr/local/libexec/dev-token|" \
+            "$(git config --get-regexp '^credential\..*helper$' | tr '\n' '|')"
+    fi
     rm -f "$trace"
 }
 
@@ -233,8 +256,10 @@ restore_a() {
 cred_probe "before the script"
 # The system helper names gh by absolute path, so an accidental `gh` in ~/.local/bin (which
 # leads PATH) cannot shadow it.
-check "system credential helper is absolute gh" "!/usr/local/bin/gh auth git-credential" \
-    "$(git config --system --get-all credential.https://github.com.helper | tail -n 1)"
+if [ "$devapp" = 0 ]; then
+    check "system credential helper is absolute gh" "!/usr/local/bin/gh auth git-credential" \
+        "$(git config --system --get-all credential.https://github.com.helper | tail -n 1)"
+fi
 
 fx=$(mktemp -d); outside=$(mktemp -d); repo=$(mktemp -d); keep=$(mktemp -d)
 cat >"$outside/extra.cfg" <<EOF
@@ -338,7 +363,11 @@ restore_a; setorigin "$POS_URL"; run_fx "live after restore"; expect_id "live af
 # every commit in the container fail.
 git config -f "$fx/a.gitconfig" commit.gpgsign maybe
 setorigin "$POS_URL"; run_fx "bad boolean"; expect_id "bad boolean"
-check "commit.gpgsign skipped" "" "$(git config -f "$OUT" --get commit.gpgsign || true)"
+# (In the dev-App flavours signing is projected off whatever the host file says, so the
+# value is `false` there and asserted in tests/smoke-devapp.sh.)
+if [ "$devapp" = 0 ]; then
+    check "commit.gpgsign skipped" "" "$(git config -f "$OUT" --get commit.gpgsign || true)"
+fi
 cred_probe "after the identity runs"
 
 # ~/.gitconfig is written by the script at every start, and only ever holds the include.
@@ -545,8 +574,8 @@ rm -rf "$ofile"
 setorigin "$POS_URL"
 
 case "$flavor" in
-  base) ;;
-  tofu)
+  base|devapp) ;;
+  tofu|devapp-tofu)
     check "tofu" "v$EXPECT_TOFU" "$(tofu version | awk 'NR==1{print $2}')"
     check "tflint" "$EXPECT_TFLINT" "$(tflint --version | awk 'NR==1{print $3}')"
     check "TF_DATA_DIR" .terraform-devcontainer "${TF_DATA_DIR:-}"

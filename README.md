@@ -9,6 +9,24 @@ costs almost no disk, because the image layers are stored once per machine.
 | `ghcr.io/603-identity/devcontainer-base` | Ubuntu, non-root `app` (uid 1000), git, gh, jq, yq, Python (system), uv, pre-commit, betterleaks, zizmor |
 | `ghcr.io/603-identity/devcontainer-tofu` | base + OpenTofu + tflint |
 | `ghcr.io/603-identity/devcontainer-node` | base + Node.js + npm |
+| `ghcr.io/603-identity/devcontainer-devapp` | base + the dev-App identity layer (below) + `claude` |
+| `ghcr.io/603-identity/devcontainer-devapp-tofu` | tofu + the same layer + `claude` |
+
+**The dev-App flavour** (`devcontainer-devapp`, `devcontainer-devapp-tofu`; DEVC-D9, recorded through #393; #418) is
+base or tofu with a different GitHub identity: a per-repository dev App installation token, and
+nothing else. `gh` is a wrapper and git's credential helper is `dev-token`; both read only
+`/run/wow/dev-token` (a host-mounted file, `token` on line 1, `expires_at` on line 2) and
+refuse when it is absent, malformed, expired or within 60 s of expiring, so the flavour **fails closed without
+`/run/wow`**. It never reads `admin-token`, or any other file in that directory. There is no
+gpg, gpg-agent, gpgconf, gpg-connect-agent or gpgsm (`gpgv` stays), so nothing can sign:
+`git-identity.sh` projects `commit.gpgsign=false` and `tag.gpgsign=false`, and a repo-local
+`commit.gpgsign=true` makes commits fail. `claude` is installed at `/usr/local/bin/claude`, root-owned, from a
+binary verified against Anthropic's signed manifest before anything is pushed; root-owned managed
+settings turn its updater off and pin its version. The GNU coreutils replace Ubuntu 26.04's
+Rust ones on `PATH`. `base`, `tofu` and `node` are unchanged, and the plain template keeps
+working on them. [Git identity](#git-identity) and the
+[threat model](docs/threat_model.md) say what this changes. Nothing in this repo consumes the
+flavour yet: the template and the verifier's dev-App mode are separate changes (#392).
 
 Exact versions live in one place each, not here: the Dockerfile `ARG`s for the downloaded
 binaries and [`images/base/tools/uv.lock`](images/base/tools/uv.lock) for the Python tools.
@@ -20,8 +38,10 @@ The pilots (terraform-cloudflare-dns and terraform-microsoft365-entra, #10) have
 them. To adopt them in another repo, follow [`docs/adopting.md`](docs/adopting.md). The
 waves are tracked in #26 to #28.
 
-Local sizes measured on 2026-09-28: base 445 MB, tofu 664 MB, node 752 MB. Shared layers
-are stored only once, so all three together take about 0.95 GB.
+Local sizes measured on 2026-11-02 (`docker images`): base 589 MB, tofu 812 MB, node 899 MB,
+devapp 1.13 GB, devapp-tofu 1.35 GB. Shared layers are stored only once, so all five together
+take about 2.2 GB. The devapp images add the `claude` binary (about 330 MB, the bulk of the
+difference) and the GNU coreutils to base or tofu.
 
 Work on these images is planned on this repo's issues and milestones. See
 [`docs/roadmap.md`](docs/roadmap.md) for status, next action and decisions. This repo has
@@ -137,6 +157,22 @@ What a healthy container looks like (from the terraform-cloudflare-dns pilot):
   `gh api repos/<owner>/<repo>/branches/main/protection` must return 403 (it needs
   `administration=read`). Do not use `GET .../rulesets` (any token with `metadata=read` gets a
   200) or `.permissions` on `GET /repos/<owner>/<repo>` (it shows your role, not the token's scope).
+
+### Comparing two tags
+
+The devapp images carry an `org.opencontainers.image.revision` label with the commit they
+were built from. The commit is what the build compiled, so it is what to diff when asking what
+changed between two tags (base, tofu and node carry no such label; their tags map to commits
+through the attestation). Resolve each tag's digest first, then read the label:
+
+```sh
+rev() { docker buildx imagetools inspect "ghcr.io/603-identity/devcontainer-devapp:$1" --format '{{json .Image}}' |
+          jq -r '.config.Labels["org.opencontainers.image.revision"]'; }
+git diff "$(rev <older tag>)" "$(rev <newer tag>)" -- images/ tests/ .github/scripts/
+```
+
+A local build (`build-and-test.sh local`) carries the local `HEAD`, possibly with uncommitted
+edits on top, or `unknown` if git cannot say; only a commit that CI built is a published image.
 
 ### What the consuming repo needs
 
@@ -556,6 +592,14 @@ and the container still starts.
 - Edits to the host files apply on the **next container start**.
 - Signing goes through VS Code's forwarded GPG agent. SSH signing is out of scope. See
   [Host signing policy](#host-signing-policy) for the host cache TTL.
+- **The dev-App flavour has no signing.** `devcontainer-devapp` and `devcontainer-devapp-tofu`
+  ship no gpg (`gpgv`, which only verifies, stays) and mark themselves with
+  `/usr/local/share/devc/unsigned`. There `git-identity.sh` still projects `user.name` and
+  `user.email`, but never `user.signingkey`, and projects `commit.gpgsign=false` and
+  `tag.gpgsign=false` whatever the host file says. A repo-local `commit.gpgsign=true` then makes
+  commits fail ("cannot run gpg"), which fails closed; remove the setting, don't install gpg.
+  `gpg-check.sh` is removed from that layer only: base keeps it, because the v1.5 pilots'
+  `postStartCommand` still calls it from base.
 
 ## Host signing policy
 
@@ -586,7 +630,10 @@ which key a repo uses.
 
 ## Repairing Claude Code plugin state
 
-No image ships the `claude` CLI (DEVC-D4). When a container keeps loading an old plugin
+`base`, `tofu` and `node` ship no `claude` CLI (DEVC-D4); the devapp images do, at
+`/usr/local/bin/claude` (see the table at the top). In a devapp container run the commands
+below with plain `claude` in place of `"$claude"`, and skip the `ls`. In the others, when a
+container keeps loading an old plugin
 version, the documented fix (refresh the marketplace, then reinstall the plugin) still
 works: the Claude Code extension the template installs carries its own native `claude`
 binary, the same release as the extension, with no node or npm needed. Close the Claude
@@ -647,7 +694,8 @@ WSL integration for it (Settings, Resources, WSL integration).
 ## Updating a pinned tool
 
 `bump-binaries.yml` runs weekly, and on manual dispatch, for gh, yq, uv, tofu, tflint,
-node, npm and betterleaks. It needs a GitHub App (the private key is a secret of the `bump-binaries`
+node, npm and betterleaks. **`claude` is not covered yet** (`images/devapp/Dockerfile`): bump it by hand,
+see "Bumping `claude`" below. It needs a GitHub App (the private key is a secret of the `bump-binaries`
 Environment, restricted to `main`; docs/threat_model.md). Until the repo-level variable
 `BUMP_BINARIES_CLIENT_ID` (the App's Client ID) is set, the job is skipped (#87), and the fallback
 below is how to bump a tool. Set the variable last, after the Environment secret: with the variable
@@ -693,15 +741,39 @@ A human still has to:
    them through the Dependabot pin bump, not before. The image and CI use one version: the
    same `BETTERLEAKS_*` ARGs.
 
+**Bumping `claude`.** Its two `ARG`s, `CLAUDE_VERSION` and `CLAUDE_SHA256` in
+`images/devapp/Dockerfile`, move together, and the new release must be newer: this is a manual
+review until `bump-binaries.sh` gains the same check plus a downgrade refusal. Read the release
+notes, then take the sha256 from the release's **signed** manifest, never from hashing a download
+(`claude-fetch.sh` refuses a pin the manifest does not carry, but a pin read from the wrong place
+fails only later):
+
+```sh
+v=<new version>
+base=https://downloads.claude.ai/claude-code-releases
+curl -fsSL "$base/$v/manifest.json" -o manifest.json
+curl -fsSL "$base/$v/manifest.json.sig" -o manifest.json.sig
+gpg --dearmor < images/devapp/files/claude-release.asc > claude-release.gpg   # gpgv needs a real file, not a pipe
+gpgv --keyring ./claude-release.gpg manifest.json.sig manifest.json
+jq -r '.version, .platforms["linux-x64"].checksum' manifest.json
+```
+
+The key in `images/devapp/files/claude-release.asc` is Anthropic's release key, fingerprint
+`31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE` as published in the Claude Code setup docs. Replacing
+the file changes what the build trusts, so a PR that touches it needs the fingerprint re-checked
+against that page by a human. The next build proves the new pin end to end, and the managed
+settings, which pin `requiredMinimumVersion` and `requiredMaximumVersion` to the same version, are
+generated from `CLAUDE_VERSION`.
+
 To bump a tool the workflow doesn't cover, or while it's down, do the same by hand: read
 the release notes, take the sha256 from the release's own checksum file (never
 `sha256sum` a download and paste the result), and change the Dockerfile's `ARG`s.
 
-The `# syntax=docker/dockerfile:...@sha256:...` line on line 1 of all four Dockerfiles is
+The `# syntax=docker/dockerfile:...@sha256:...` line on line 1 of all five Dockerfiles is
 pinned by digest but no bot bumps it (Dependabot's docker updater reads only `FROM`
 lines). Take the digest from `docker buildx imagetools inspect docker/dockerfile:<tag>`, and
 move it together with devc-verify's `CurrentSyntax` and vendored BuildKit
-(`tools/devc-verify/README.md`). The three image Dockerfiles move in that PR. The template's
+(`tools/devc-verify/README.md`). The four image Dockerfiles move in that PR. The template's
 copy can move in that PR too, but `template self-pins match their release` then fails until
 the template pins a release whose verifier allows the new value, so the usual order is: the
 images and devc-verify first, then a release, then the template's line with the pin bump

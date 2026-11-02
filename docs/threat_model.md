@@ -11,11 +11,18 @@ from one of these images, so an image is trusted with:
 
 - **the repo's source**, bind-mounted read-write at `/workspace`;
 - **the repo's GitHub credential**, a fine-grained PAT in the per-repo `<repo>-home` volume;
-- **commit signing**, through VS Code's forwarded GPG agent;
+- **commit signing**, through VS Code's forwarded GPG agent. (The dev-App flavour, below, has
+  none: no key, no agent, no gpg.)
+- **in the dev-App flavour, the repo's dev token** (`/run/wow/dev-token`, a GitHub App
+  installation token the host's broker mints for that one repository and mounts read-only) and
+  the verified `claude` binary. These replace the PAT and the signing agent for repos on that
+  flavour (DEVC-D9, #418);
 - **the toolchain that validates infrastructure** (OpenTofu, tflint, pre-commit,
   betterleaks, zizmor). A tampered tool could report a clean result that CI would not.
 
-A compromised image reaches every repo that adopts it, in every consuming org, which is why the controls below sit
+The dev-App flavour (`images/devapp`, published as `devcontainer-devapp` and
+`devcontainer-devapp-tofu`) is a layer on base or tofu; everything below holds for it unless
+a row says otherwise. A compromised image reaches every repo that adopts it, in every consuming org, which is why the controls below sit
 at build and publish time, before any consumer pulls.
 
 ## Untrusted inputs
@@ -30,6 +37,8 @@ at build and publish time, before any consumer pulls.
 | npm, and the `undici` copy replaced inside it | the node image | Each checked against the registry's sha512 `integrity` value, pinned as an `ARG`; the replaced version is asserted after the swap. |
 | Pull-request content | `pull_request` runs of `build.yml` and `lint.yml` | The PR job holds `contents: read` only, never a write token, and pushes nothing. |
 | Issue, PR and review text | `architect-review-gate.yml`, on every trigger (`pull_request`, `issue_comment`, `pull_request_review`) | Read as data by a substring match. Event values reach the shell through `env`, never inline expressions. The repo is **public**, so anyone can post a comment, but no comment counts toward the gate: only a formal review on the head SHA whose author's numeric user ID is in the gate's `REVIEWER_IDS` allowlist does. A comment from an allowlisted author only re-runs the gate; any other author, or a missing ID, is ignored. |
+| Anthropic's `claude` release, and the release signing key | `images/devapp/Dockerfile`, build time, in the `claude-fetch` stage (`images/devapp/files/claude-fetch.sh`) | The binary, its version and its sha256 are pinned (`CLAUDE_VERSION`, `CLAUDE_SHA256`), and before ANYTHING is pushed `gpgv` must report exactly one good signature on Anthropic's `manifest.json`, by the committed key (`images/devapp/files/claude-release.asc`, one primary key, fingerprint `31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE` as published in Anthropic's setup docs), with the status stream parsed and none of BADSIG, ERRSIG, EXPKEYSIG, REVKEYSIG or NO_PUBKEY; the manifest's version and linux-x64 checksum must equal the pins and the downloaded file's sha256. A download or signature failure stops `build-and-test.sh` before the first push. Stated limits: a committed key cannot learn that Anthropic revoked it; a session can always fetch its own binary (a copy in `~/.local/bin` leads `PATH`, which `devapp-check.sh` warns about but cannot prevent); and the organisation settings Anthropic's servers push to a logged-in `claude` are not verified here. |
+| The token directory `/run/wow` | the host's broker, mounted read-only into a dev-App container | `dev-token` reads the one file `/run/wow/dev-token` (two lines, LF, `ghs_` installation token then UTC `expires_at`, replaced by atomic rename; refused from 60 s before `expires_at`, so the broker must replace it earlier), refuses a symlink, a malformed or oversized file, a wrong kind of token and an expired one, and answers `quit=1` to every host and protocol except https github.com. Nothing else in the directory is read: `admin-token` is the elevated token and the flavour never opens it. A missing or empty directory fails closed. |
 | Linter and scanner images | `lint.yml` and `build-and-test.sh` | Pinned by digest, the same rule the images follow. |
 | Upstream release metadata and checksum files (GitHub releases, nodejs.org, the npm registry) | `bump-binaries.sh`, run by `bump-binaries.yml`, holding the write token below while it parses this | The sha256 (or npm's registry `integrity`) is read from that release's own published file, never computed from a first download, then checked against a strict shape (a plain `X.Y.Z` version, or `X.Y.Z-rc.N` for betterleaks, which the resolver considers only while its pin is itself an rc (#208); 64 lowercase hex, or `sha512-...` for npm) before it is ever written to a file, a branch name or a commit message -- closing the path a crafted tag or checksum line would otherwise have into the Dockerfile rewrite. A resolved version older than the current pin is rejected rather than opened as a downgrade PR. The resulting PR still goes through every ordinary gate, including `architect-review`, before merge (see Known gaps for what that gate does and does not check). |
 | Other repos' and orgs' code, through the shared cache volume | `devc-tofu-plugins` at `~/.cache/tofu-plugins` | Only the tofu provider cache lives there: the volume is mounted at that one directory, not over `~/.cache`, so a tool that hard-codes `~/.cache` writes into the per-repo home volume. `tofu` verifies each cached provider against the consuming repo's lock when a command starts, but runs it from the shared, writable path (see Known gaps). npm's cache is per repo, because `npx` runs packages from it without a check; pre-commit, pip, uv and every other XDG-aware cache are per repo too, in the home volume (`XDG_CACHE_HOME=~/.local/cache`). A modified `.devcontainer/` is outside this control (boundary 5). |
@@ -56,6 +65,10 @@ at build and publish time, before any consumer pulls.
 | A consuming repo's `GITHUB_TOKEN`: `contents: read` for `verify`; `statuses`, `contents` and `pull-requests: write` for the gate's `post` job only | the consumer's `devcontainer-image.yml` and gate, running this repo's reusable workflows | `verify` and `decide` hold no write token and read this repo's public attestations cross-org. `post` can post statuses and arm or disarm auto-merge on that consumer's own PRs, and holds the token in a job with no `uses:`, `container:` or `services:`, so no third-party action or image shares its GitHub-hosted runner (checked by `tools/check-consumer-workflows.sh` when it is run, not continuously). |
 | GitHub App installation token, `contents: write` + `pull-requests: write`, scoped to this repo only | `bump-binaries.yml` | **Can do more than the job uses it for**: push or delete any non-`main` branch, create tags outside `v*` and `devc-automerge-*`, create releases, and comment on a PR. It cannot change `main` or the protected tags: in the owner's live test (2026-10-07, #327) the token was refused when it tried to merge a PR into `main` (`405`), to update the `main` ref (`422`), and to delete a `v*` tag (`422`). The controls are `restrict-updates-to-main` for `main` and `release-tags` for the tags; the Repository admin role is the only listed bypass actor of each, and the App is not on either list. `main-required-checks` has no bypass actors at all. Only deleting a `v*` tag was tried live; the other tag operations rest on the ruleset read-back. The real residuals are non-`main` branches, tags outside the protected patterns, releases, and PR comments. The job only pushes a `bump/<tool>-<version>` branch and opens its PR; the rest is this credential's reach if ever leaked or (see Known gaps) if the write step's own untrusted input were ever to reach it. Needed at all because a PR opened with the ambient `GITHUB_TOKEN` never triggers the required-check workflows (GitHub's own anti-recursion rule) -- and on this repo a job-scoped `GITHUB_TOKEN` could not even open the PR in the first place ("Allow GitHub Actions to create and approve pull requests" is off; `can_approve_pull_request_reviews: false`), so a dedicated identity is the only way to get this PR opened at all, let alone checked. Revoked at job end (the token action's default). The app's private key is a secret of the `bump-binaries` Environment, restricted to deployments from `main` (the job declares `environment: bump-binaries`), so a workflow run on any other branch cannot read it; it is held outside any container. The job runs only when the repo-level variable `BUMP_BINARIES_CLIENT_ID` (the App's Client ID) is set (#87). |
 | Per-repo fine-grained PAT | a consuming repo's container, in the `<repo>-home` volume | That repo only. The hub's token also covers the repos it coordinates. It expires after 90 days at most and is recorded in the owning org's credential ledger (603-Identity: infrastructure-core's; glunk-works: none yet, see Known gaps). Admin work (rulesets, repo settings) never uses a container token. |
+| The dev token, `/run/wow/dev-token` (dev-App flavour) | the host's broker mints it per repository; the container reads it | A GitHub App installation token for that one repository, short-lived (the `expires_at` on line 2). It lives on a host-side read-only mount, never in a volume, so it is not in `<repo>-home`. Only `/usr/local/libexec/dev-token` reads it, for `git` and the `gh` wrapper; code running as `app` can read the file too (it is the same uid), so this is scoping and expiry, not secrecy from the container. |
+| The elevated token, `/run/wow/admin-token` (dev-App host mounts) | the host's broker, for an elevated window | Never read by anything in the image. It shares the mount with the dev token, so a process in the container that opens it directly can: the flavour keeps its own tools from reading it and tests that they do not (decoy files in `tests/smoke-devapp.sh`), and anything an elevated window leaves in the home volume persists into later windows: nothing in this image clears it. |
+| The Claude login (dev-App flavour) | `claude`, in the home volume | The user's own login, kept in `~/.claude`. It is not scanned and not covered by the dev token's expiry. |
+| A leftover PAT or `gh` login (dev-App flavour) | `~/.config/gh/hosts.yml`, `~/.git-credentials` in a home volume that outlived the image | From an earlier non-dev-App run of the same repo. The `gh` wrapper ignores it (`GH_TOKEN` wins) and `devapp-check.sh` deletes both files at every start. |
 | Owner's org login | the host, outside any container | Admin. It is the only identity that merges PRs or changes rulesets and package visibility, which must stay public for consumers in other orgs. |
 
 ## Boundaries meant to hold
@@ -65,7 +78,9 @@ at build and publish time, before any consumer pulls.
 
    | Check | Where | Fails the build when |
    |---|---|---|
-   | Smoke test ([`tests/smoke.sh`](../tests/smoke.sh)) | before push | a tool version differs from its pin (a Dockerfile `ARG`, or `images/base/tools/uv.lock` for the Python tools); the user isn't uid 1000; any setuid/setgid binary exists; a volume mount point isn't app-owned; any credential helper other than gh's runs; the projected identity holds a non-allowlisted key; a token from the origin URL appears in output; an identity is left in place after a failed selection (no origin, a non-github or lookalike origin, an ambiguous, unreadable or missing identity file); the system Python isn't the expected major.minor; the tools venv or a cache path isn't where the image documents it; a mount point (`/home/app`, `~/.cache/tofu-plugins`, `/workspace/.venv`, `/workspace/node_modules`) or `~/.cache` isn't app-owned; any cache variable points into the shared `~/.cache/tofu-plugins` except tofu's; the image ships a `~/.gitconfig`; `git-identity.sh` fails to rewrite a stale, symlinked or directory `~/.gitconfig`, or to remove a planted `~/.config/git/config`; `owner-check.sh` fails to write the lowercase owner marker, to warn on a different owner or leave that marker unchanged, to replace a symlinked, directory or junk marker without echoing its content or following a link; a token from the origin URL appears in its output; a `url.*.insteadOf` planted in the home volume's global git config changes the origin it reads, or one planted in `~/.gitconfig-identity` changes the origin `git-identity.sh` reads; or its origin grammar disagrees with `git-identity.sh`'s on a table of URLs |
+   | Smoke test ([`tests/smoke.sh`](../tests/smoke.sh)) | before push | a tool version differs from its pin (a Dockerfile `ARG`, or `images/base/tools/uv.lock` for the Python tools); the user isn't uid 1000; any setuid/setgid binary exists; a volume mount point isn't app-owned; any credential helper other than gh's runs; the projected identity holds a non-allowlisted key; a token from the origin URL appears in output; an identity is left in place after a failed selection (no origin, a non-github or lookalike origin, an ambiguous, unreadable or missing identity file); the system Python isn't the expected major.minor; the tools venv or a cache path isn't where the image documents it; a mount point (`/home/app`, `~/.cache/tofu-plugins`, `/workspace/.venv`, `/workspace/node_modules`) or `~/.cache` isn't app-owned; any cache variable points into the shared `~/.cache/tofu-plugins` except tofu's; the image ships a `~/.gitconfig`; `git-identity.sh` fails to rewrite a stale, symlinked or directory `~/.gitconfig`, or to remove a planted `~/.config/git/config`; `owner-check.sh` fails to write the lowercase owner marker, to warn on a different owner or leave that marker unchanged, to replace a symlinked, directory or junk marker without echoing its content or following a link; a token from the origin URL appears in its output; a `url.*.insteadOf` planted in the home volume's global git config changes the origin it reads, or one planted in `~/.gitconfig-identity` changes the origin `git-identity.sh` reads; or its origin grammar disagrees with `git-identity.sh`'s on a table of URLs. For the dev-App flavours the file asserts dev-token (not gh) as the one helper that runs and the only one configured, and the served and fail-closed cases are [`tests/smoke-devapp.sh`](../tests/smoke-devapp.sh) |
+   | Dev-App smoke ([`tests/smoke-devapp.sh`](../tests/smoke-devapp.sh)) | before push, once per `/run/wow` | with a valid token (decoys beside it): `dev-token get` does not serve the dev token for `http`, `github.com:443`, an upper-case or lookalike host, a second host or protocol line or any other host; `git credential fill` does not run exactly one helper, `dev-token`; the `gh` wrapper or `gh auth token` yields anything but the dev token (including with `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` or a `hosts.yml` set to the decoy); a decoy token appears in any output; an ssh remote form is not rewritten to https; a gpg program, `gpg-check.sh`, or the `unsigned` marker's absence; the projected identity carries a signing key or `gpgsign` other than false; `claude` is not root-owned, mode 0755, the pinned version and sha256, or its managed settings are not root-owned, 0444 and carry the pins and the updater switches; `timeout`, `date`, or the package is not GNU's; a setuid binary. With no `/run/wow`, an empty one, an expired token, CRLF line endings or a token of the wrong kind: `dev-token` answers anything but `quit=1`, the `gh` wrapper runs, or a credential fill succeeds. `devapp-check.sh` fails to remove `hosts.yml` or `.git-credentials`, follows a symlink out of the volume, or misses an agent or a shadowing `claude` |
+   | `claude` signature ([`images/devapp/files/claude-fetch.sh`](../images/devapp/files/claude-fetch.sh)) | before any push (the `claude-verify` stage, built right after base) | the committed key file is not one primary key with the pinned fingerprint; `gpgv` does not report exactly one GOODSIG and one VALIDSIG on the manifest, or reports BADSIG, ERRSIG, EXPKEYSIG, REVKEYSIG or NO_PUBKEY; VALIDSIG's primary-key fingerprint is not the pinned one; the manifest's version is not `CLAUDE_VERSION`; the manifest's linux-x64 checksum, `CLAUDE_SHA256` and the downloaded file's sha256 are not all equal |
    | Template proof ([`tests/template-proof.sh`](../tests/template-proof.sh)) | pull request | a container brought up from `template/.devcontainer/` with the pinned devcontainer CLI is not uid 1000, has a non-empty capability bounding set or `NoNewPrivs` 0, has no init as PID 1, has a writable root filesystem (a write to `/usr/local` succeeds instead of failing with `EROFS`), lacks any of the `<repo>-home`, `-tmp`, `-node_modules`, `-venv`, `devc-tofu-plugins` or read-only identity mounts, cannot write the home, `/tmp`, `.venv` or shared cache paths, has no `~/.gitconfig` or fixture identity after start, has no owner marker after start, prints the collision banner for a first checkout, prints no banner (or changes the marker) when a second checkout with the same folder name and another origin shares its `-home` volume, runs a credential helper other than gh's, has a `tofu` other than the image's pin, or skips `pre-commit install` |
    | Trivy image scan | before push | there's a HIGH/CRITICAL vulnerability **with a fix available**, or a secret is baked into a layer |
    | hadolint and Trivy config | lint | there's a Dockerfile anti-pattern |
@@ -113,6 +128,13 @@ at build and publish time, before any consumer pulls.
    hostile `.devcontainer/` can simply drop the flag (boundary 5). The template's
    `init: true` gives the container a real PID 1. GitHub's SSH host key is pinned
    system-wide.
+   In the dev-App flavour the identity layer sits in the same read-only image: the `gh`
+   wrapper (`/usr/local/bin/gh`), `gh-real` and `dev-token` (`/usr/local/libexec`), the
+   verified `claude` (`/usr/local/bin/claude`) and its managed settings
+   (`/etc/claude-code/managed-settings.json`, root-owned, 0444), so `app` cannot replace
+   them. `~/.local/bin` still leads `PATH`: a `claude` or `gh` planted there shadows the
+   image's, which `devapp-check.sh` warns about for `claude` and the wrapper avoids for
+   everything it runs by fixing its own `PATH`.
 
 5. **Repos stay apart; identity files do not.** Repos stay apart under their own,
    unmodified template, and only while every checkout on the host has a unique folder
@@ -153,6 +175,14 @@ at build and publish time, before any consumer pulls.
    This is narrower than "nothing can change the helper": code running in the container
    can still edit `~/.gitconfig`, and `/workspace/.git/config` is host-checkout config that
    the projection doesn't touch.
+   **In the dev-App flavour the helper is `dev-token`**, by absolute path
+   (`/usr/local/libexec/dev-token`), after the helper list is reset and base's gh helper
+   removed from `/etc/gitconfig`. It reads only `/run/wow/dev-token`, serves https github.com
+   and nothing else (`quit=1` otherwise, so git neither tries another helper nor prompts at a
+   terminal: `GIT_TERMINAL_PROMPT=0`; an askpass program is a separate path, see Known gaps), and the listed ssh forms of a github.com remote are rewritten to https so
+   an ssh clone lands on it (other spellings, such as another case of the host, are not). The same local-config qualification applies: code running
+   as `app` can add a helper to `~/.gitconfig` or a repo's `.git/config`, and nothing in the
+   image can stop that; `git-identity.sh` rewrites `~/.gitconfig` at every start.
 
 ## Consumer verification and the bump gate (#30)
 
@@ -330,6 +360,37 @@ Every repo in both orgs gets a container from these images unless one of these a
 ## Known gaps
 
 These are stated plainly so nobody trusts the setup for more than it does:
+
+- **A failed dev-App step leaves earlier images published, and publishing needs Anthropic's CDN.**
+  `build-and-test.sh` pushes base, tofu and node before it builds, smoke-tests and scans the
+  devapp images (each image is checked before its own push, not before every push). If a devapp
+  step fails, every image pushed before it is already on GHCR (devapp is pushed before
+  devapp-tofu is built), and `build.yml` still attests each of them (an image's attest steps run
+  whenever the push step produced its digest); the images after the failure are simply not
+  published until the next run. And because `claude` is verified before the first
+  push, every run, the Monday security rebuild of the plain images included, fails if
+  `downloads.claude.ai` is unreachable or stops serving the pinned release; the fix is a
+  deliberate bump of `CLAUDE_VERSION` and `CLAUDE_SHA256`.
+- **The dev-App flavour's credential path can be bypassed by code running as `app`.** `dev-token`
+  is a helper in system git config, so `git -c credential.helper= ...`, `GIT_CONFIG_NOSYSTEM=1`,
+  runs without it; git then asks `GIT_ASKPASS` if one is set. (Git started by `gh` also resets the
+  helper list, but `gh` adds its own helper, which uses the wrapper's `GH_TOKEN`: the dev token
+  for github.com, not askpass.) VS Code sets one in its terminals and tasks, and its GitHub
+  authentication can answer for github.com with the host's VS Code GitHub session, a token that
+  reaches every repo its owner can. `GIT_TERMINAL_PROMPT=0` does not stop askpass, and the image
+  cannot override an environment `GIT_ASKPASS`; the template (PR D) must switch
+  `git.terminalAuthentication` and `github.gitAuthentication` off. The same uid can also use an
+  ssh key left in `~/.ssh`, or a forwarded agent (`devapp-check.sh` only warns about the latter, and only about an agent already present when it runs at start, which a VS Code attach that follows may not be).
+- **The dev-App flavour's `claude` trust is a committed key, a pin and a build-time check.**
+  The check proves the binary is the one Anthropic signed for exactly `CLAUDE_VERSION`
+  (`images/devapp/files/claude-fetch.sh`), but: a committed key cannot learn of a revocation
+  (if Anthropic revokes it, builds keep trusting it until a human changes the file); a
+  session can fetch its own `claude` (the stock installer writes to `~/.local/bin`, which leads
+  `PATH`), and `devapp-check.sh` only warns; the organisation settings Anthropic's servers push
+  to a logged-in `claude` are not verified, so a managed-settings file here pins the version but
+  cannot stop what the server adds; and the version is bumped by hand (a replayed older manifest is
+  refused, because the signed version must equal the pin; a deliberate bump of the pin to an older
+  release is not checked).
 
 - **Checksum files are trusted without their signatures.** Each release binary's sha256
   comes from that release's own checksum file, which comes from the same release page as
