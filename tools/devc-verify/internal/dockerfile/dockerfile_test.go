@@ -46,16 +46,19 @@ func TestTemplateWithPlaceholdersIsRejected(t *testing.T) {
 	}
 }
 
-// The images must carry CurrentSyntax, and the template one of AllowedSyntax. Whether the
-// template's value is allowed by the release its workflows pin is tools/check-self-pins.sh's
-// check (#125), not this test's.
-func TestCurrentSyntaxIsTheTemplates(t *testing.T) {
-	// The template may still carry PreviousSyntax: a syntax bump releases the verifier first,
-	// and the template moves with the pin bump to that release (tools/check-self-pins.sh, #125).
+// The template's line 1 must be one of AllowedSyntax, and may still be PreviousSyntax: a syntax
+// bump releases the verifier first, and the template moves with the pin bump to that release
+// (README.md "Cutting a release"). Whether the value is allowed by the release the template's
+// workflows pin is tools/check-self-pins.sh's check (#125), not this test's.
+func TestTemplateSyntaxIsAllowed(t *testing.T) {
 	first, _, _ := strings.Cut(templateText(t), "\n")
 	if first != "# syntax="+CurrentSyntax && first != "# syntax="+PreviousSyntax {
 		t.Fatalf("template first line %q is not an allowed syntax %q", first, AllowedSyntax)
 	}
+}
+
+// The images build with this repo's own frontend pin, so they must carry CurrentSyntax.
+func TestImagesCarryCurrentSyntax(t *testing.T) {
 	for _, g := range []string{"base", "tofu", "node"} {
 		b, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "images", g, "Dockerfile"))
 		if err != nil {
