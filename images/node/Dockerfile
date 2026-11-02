@@ -19,8 +19,8 @@ USER 0
 # Residual risk: that file is fetched over TLS but its detached GPG signature
 # (SHASUMS256.txt.asc) is not verified here. Doing that needs the Node release team's
 # keyring pinned in this repo; tracked in docs/threat_model.md § "Known gaps".
-ARG NODE_VERSION=24.21.0
-ARG NODE_SHA256=fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6
+ARG NODE_VERSION=24.22.2
+ARG NODE_SHA256=48cc0e21e048790e54c0cf5749c2725005313d652651c40b7a21feb9697aaf75
 RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" \
         -o /tmp/node.tar.xz \
     && echo "${NODE_SHA256}  /tmp/node.tar.xz" | sha256sum -c - \
@@ -29,37 +29,32 @@ RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-l
     && rm /tmp/node.tar.xz \
     && node --version && npm --version
 
-# --- npm 12. Node 24.21.0 bundles npm 11.19.0; we move to npm 12, the standard the
+# --- npm 12. Node 24.22.2 bundles npm 11.19.1; we move to npm 12, the standard the
 # fleet is taking (#27). This is a major above what Node 24 bundles, so consuming
 # repos' CI (`setup-node`, `node-version: 24`, npm 11 bundled) no longer matches the
 # image until each takes npm 12 in CI (#27). The tarball is verified against the
 # registry's published sha512 `integrity`, the same check `npm ci` applies to every
 # package.
-# Drop this block once the image's Node major bundles npm >= 12.2.0.
-ARG NPM_VERSION=12.2.0
-ARG NPM_INTEGRITY=sha512-ZsJjKpTnlmSXOLLXiU1xDCzC4Wlok4IwZmh/aw2KUuXytU7q6qMv/cUT7MoeSf95Slwuw/lRXYefGzGCspHPNQ==
+# Drop this block once the image's Node major bundles npm >= 12.2.1.
+ARG NPM_VERSION=12.2.1
+ARG NPM_INTEGRITY=sha512-bKCmFRVT/BB+YPEYbZwQ1XUI3N5t4xKSpU1MxOjo7z3iWzKBJ0ZXRC1xFdEN+TC7N5TdywaBzf2dMXGJq/e2PQ==
 RUN curl -fsSL "https://registry.npmjs.org/npm/-/npm-${NPM_VERSION}.tgz" -o /tmp/npm.tgz \
     && test "sha512-$(openssl dgst -sha512 -binary /tmp/npm.tgz | base64 -w0)" = "${NPM_INTEGRITY}" \
     && npm install -g --no-audit --no-fund /tmp/npm.tgz \
     && rm /tmp/npm.tgz \
     && test "$(npm --version)" = "${NPM_VERSION}"
 
-# --- Two packages bundled inside npm 12.2.0 carry HIGH CVEs, and no npm release bundles
-# fixed copies yet, so each is replaced in place with a fixed registry release, checked
+# --- A package bundled inside npm 12.2.1 carries HIGH CVEs, and no npm release bundles a
+# fixed copy yet, so it is replaced in place with a fixed registry release, checked
 # against that release's published sha512 `integrity` exactly as the npm tarball is.
-#   brace-expansion 5.0.9 -> 5.0.12 (CVE-2026-102276, fixed in 5.0.10;
-#     CVE-2026-102278, fixed in 5.0.11). The bundled minimatch requires ^5.0.5.
-#   undici 6.28.0 -> 6.29.1 (CVE-2026-19534, fixed in 6.28.1; CVE-2026-87018,
-#     CVE-2026-109383 and CVE-2026-109869, fixed in 6.29.1). The bundled node-gyp
-#     requires ^6.25.0; 6.29.1 is the newest 6.x.
-# brace-expansion's one dependency (balanced-match ^4.0.2) is already bundled; undici has
-# none. The replaced versions are asserted after the swap, and brace-expansion is loaded
-# once so a missing dependency fails the build.
+#   undici 6.29.0 -> 6.29.1 (CVE-2026-87018, CVE-2026-109383 and CVE-2026-109869, fixed
+#     in 6.29.1). The bundled node-gyp requires ^6.25.0; 6.29.1 is the newest 6.x.
+# undici has no dependencies. The replaced version is asserted after the swap.
+# (npm 12.2.1 bundles brace-expansion 5.0.12, the version this block used to swap in, so
+# that swap was removed with the npm 12.2.0 -> 12.2.1 bump.)
 # Once npm bundles a package at or above its pin here, the build fails rather than let the
 # swap downgrade it: remove that package's swap line and ARGs, and the whole block when
-# neither remains.
-ARG BRACE_EXPANSION_VERSION=5.0.12
-ARG BRACE_EXPANSION_INTEGRITY=sha512-YovQ3rzhaLMIrDjNDMkNS01tea93qhEhG5xy8f6+R0l+dw3Ki+5sCoIoI942iuLZTHWogWktgwVDhU09iNEimQ==
+# none remains.
 ARG UNDICI_VERSION=6.29.1
 ARG UNDICI_INTEGRITY=sha512-EvRlUt/QqAEvXdQeRMYUfwOQsfzpDztykrG2owGEE/rBOBoYv9uF39ZzsNDh4lTFHhTr2XOZjKkYgueD12ZmGA==
 RUN set -eu; \
@@ -83,9 +78,7 @@ RUN set -eu; \
         rm /tmp/pkg.tgz; \
         test "$(node -p "require('${npm_modules}/${name}/package.json').version")" = "${version}"; \
     }; \
-    swap brace-expansion "${BRACE_EXPANSION_VERSION}" "${BRACE_EXPANSION_INTEGRITY}"; \
     swap undici "${UNDICI_VERSION}" "${UNDICI_INTEGRITY}"; \
-    node -e "require('${npm_modules}/brace-expansion').expand('a{b,c}')"; \
     test "$(npm --version)" = "${NPM_VERSION}"
 
 # npm's download cache lives in the per-repo home volume (~/.local/npm-cache), NOT in the
