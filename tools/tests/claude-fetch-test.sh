@@ -77,6 +77,14 @@ fixture() { # fixture: a valid release, signed by key a
 
 # Expire c, revoke d, then export both (an expired or revoked key signs nothing new, so the
 # signatures are made before).
+# A fixture that did not take must stop the suite, not read as a broken check: the case below it
+# would otherwise go on to test a perfectly good key and report that as a failure of claude-fetch.sh.
+setup_failed() { echo "claude-fetch-test: SETUP FAILED: $1" >&2; exit 1; }
+key_state() { # key_state <armored key file> <r|e> <message>: the primary key's validity field
+  local got
+  got=$(gpg --batch --show-keys --with-colons "$1" | awk -F: '$1 == "pub" { print $2; exit }')
+  [ "$got" = "$2" ] || setup_failed "$3 (validity '$got')"
+}
 sign_with() { # sign_with <fpr> <manifest> <sig>
   rm -f "$3"; gpg --batch --quiet --local-user "$1" --detach-sign -o "$3" "$2"
 }
@@ -111,12 +119,17 @@ gpg --batch --quiet --passphrase '' --quick-gen-key "c <c@example.test>" ed25519
 FPR_C=$(gpg --batch --with-colons --list-keys c@example.test | awk -F: '$1 == "fpr" { print $10; exit }')
 fixture; sign_with "$FPR_C" "$FIX/manifest.json" "$FIX/manifest.json.sig"; sleep 4
 gpg --batch --armor --export "$FPR_C" >"$W/c.asc"
+key_state "$W/c.asc" e "key c has not expired in the exported key file"
 run "a manifest signed by an expired key is refused" fail "gpgv rejected|GOODSIG status|EXPKEYSIG" "$VERSION" "$SHA" "$W/c.asc" "$FPR_C"
 
 fixture; sign_with "$FPR_D" "$FIX/manifest.json" "$FIX/manifest.json.sig"
-printf 'y\n0\n\ny\n' | gpg --quiet --yes --command-fd 0 --output "$W/d.rev" --gen-revoke "$FPR_D" >/dev/null 2>&1
+# GnuPG writes a revocation certificate when it makes a key (openpgp-revocs.d/<fpr>.rev, behind a ':'
+# guard on its armor header). Importing that is not interactive, so it does not depend on how a
+# given gpg phrases its prompts.
+sed 's/^://' "$GNUPGHOME/openpgp-revocs.d/$FPR_D.rev" >"$W/d.rev" || setup_failed "no revocation certificate for key d"
 gpg --batch --quiet --import "$W/d.rev" 2>/dev/null
 gpg --batch --armor --export "$FPR_D" >"$W/d.asc"
+key_state "$W/d.asc" r "key d is not revoked in the exported key file"
 run "a manifest signed by a revoked key is refused" fail "gpgv rejected|GOODSIG status|REVKEYSIG" "$VERSION" "$SHA" "$W/d.asc" "$FPR_D"
 
 fixture; : >"$FIX/manifest.json.sig"
