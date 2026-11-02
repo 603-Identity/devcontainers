@@ -13,7 +13,7 @@ import (
 var hunkRE = regexp.MustCompile(`^@@ -[0-9]+(,[0-9]+)? \+[0-9]+(,[0-9]+)? @@`)
 
 // Predicate returns nil when patch changes exactly one line, a base image bump from
-// the old FROM to newBase (the image `files` found at the head SHA), and a *check.Failure
+// the old FROM to newBase (never a dev-App image, #418) (the image `files` found at the head SHA), and a *check.Failure
 // otherwise. Unchanged context lines, hunk headers and the "\ No newline" marker are
 // ignored; any other changed line is a failure.
 func Predicate(patch string, newBase image.Ref) error {
@@ -50,6 +50,8 @@ func Predicate(patch string, newBase image.Ref) error {
 		return check.Failf("patch adds %q but the head Dockerfile builds from %q", newRef.Raw, newBase.Raw)
 	}
 	switch {
+	case oldRef.DevApp() || newRef.DevApp():
+		return check.Failf("decide refuses dev-App image bumps (%q to %q)", oldRef.Raw, newRef.Raw)
 	case oldRef.Name != newRef.Name:
 		return check.Failf("image changed from %q to %q", oldRef.Name, newRef.Name)
 	case oldRef.Major != newRef.Major:

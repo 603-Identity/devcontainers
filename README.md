@@ -26,7 +26,8 @@ settings turn its updater off and pin its version. The GNU coreutils replace Ubu
 Rust ones on `PATH`. `base`, `tofu` and `node` are unchanged, and the plain template keeps
 working on them. [Git identity](#git-identity) and the
 [threat model](docs/threat_model.md) say what this changes. Nothing in this repo consumes the
-flavour yet: the template and the verifier's dev-App mode are separate changes (#392).
+flavour yet: the verifier's dev-App mode is in `tools/devc-verify` (from v1.6), and the
+dev-App template is a separate change (#392).
 
 Exact versions live in one place each, not here: the Dockerfile `ARG`s for the downloaded
 binaries and [`images/base/tools/uv.lock`](images/base/tools/uv.lock) for the Python tools.
@@ -203,10 +204,33 @@ settings the adoption PR records, and review.
   `# syntax=` line, no `COPY --from` or `ONBUILD`) and `devcontainer.json` has no top-level `image`,
   `features`, `dockerComposeFile`, `dockerfile` or `context` key (any letter case), a `build` holding only
   `dockerfile: "Dockerfile"` and, optionally, `context: "."`, and no second `devcontainer.json` anywhere in the
-  repo (a symlink or a case-variant path also fails). A
+  repo (a symlink or a case-variant path also fails), and no `LABEL devcontainer.metadata` in the
+  Dockerfile. A Dockerfile still on the previous `# syntax=` (dockerfile 1.27) may not contain
+  `<<` (a heredoc), in a line or split across a line continuation: move it to the current line
+  first. A
   repo that needs Dev Container Features, or keeps a fixture `devcontainer.json`, cannot adopt the
   template as it stands. An image built by a re-run of `build.yml` (attempt 2) fails too: use a digest from
-  a first-attempt run.
+  a first-attempt run. From v1.6 (#418) it also reads the repo's **mode**: dev-App when the PR
+  head, the PR base or the default branch's tip is (the base and tip are read leniently, as raw
+  bytes, so a broken base never wedges its repair; an API error is red).
+  - **Plain mode** (the legacy template) is an allowlist: `runArgs`, `workspaceFolder` and
+    `workspaceMount` exactly the legacy template's; each mount a legacy mount or a per-repo
+    `${localWorkspaceFolderBasename}-<name>` volume; no `${localEnv:`, `${env:` or
+    `${localWorkspaceFolder}` outside those exact strings (`containerEnv` and `remoteEnv`
+    included); and no `appPort`, `privileged`, `capAdd`, `securityOpt` or `initializeCommand`.
+    So no host bind, `~/.aws` included, can be added.
+  - **Dev-App mode** compares `devcontainer.json` exactly with the template at the pin (or the
+    previous release's snapshot) outside four per-repo surfaces, two in each file: the token
+    mount's `tokens/<owner>/<repo>`, which must equal the repository's own name in GitHub's case,
+    and an optional loopback-only `appPort`; the Dockerfile's `FROM` (`devcontainer-devapp` or
+    `devcontainer-devapp-tofu`, not older than the base's) and its extras between `FROM` and a
+    final `USER 1000:1000`, with a filter that catches accidents, not attacks (no `ENV` of
+    `GIT_*`, a proxy or `ANTHROPIC_BASE_URL`, nothing that names or writes the identity layer's
+    paths, no local `ADD`). A plain repo's `Dockerfile` and `devcontainer.json` must name none of the dev-App
+    markers, comments included. It also reads the default branch's
+    rules and fails unless a `pull_request` rule requires at least 1 approval and code-owner
+    review. `decide` never exempts a dev-App image bump. The full list is in
+    [`tools/devc-verify/README.md`](tools/devc-verify/README.md).
 - **The caller stays unfiltered.** `pull_request` with no `paths:` or `branches:` filter, one
   job `verify` with no `name:` or `if:` and no key besides `permissions:` and `uses:`. A filtered required check never reports and blocks
   every other PR.
@@ -804,11 +828,22 @@ reusable workflows, the gate template, or the org secret-scan rules and scanner 
    `template/.github/workflows/devcontainer-image.yml` and `secret-scan.yml`. All five become
    `@<sha> # vX.Y`. If the release changed
    `CurrentSyntax`, move `template/.devcontainer/Dockerfile`'s line 1 in this PR too.
+   **Rotate the template snapshot in the same PR** (#418 owner decision 5): copy the template
+   the new pin names, `git show vX.Y:template/.devcontainer/devcontainer.json >
+   tools/devc-verify/templates/previous.devcontainer.json`. The next release embeds it, so its
+   verifier accepts a dev-App consumer on either its own template or this one (release N
+   accepts N and N-1). **Who may skip it:** the release maintainer, for a security release
+   whose point is that the previous template must stop verifying. Then delete the snapshot
+   instead of rotating it, and say so in the PR; the next release accepts only its own template.
 3. **CI checks it.** `template self-pins match their release` (in `verify-selftest.yml`,
    `tools/check-self-pins.sh`) fails when the five pins disagree, when a pin is not on
-   `main`'s first-parent line or its tag does not peel to it, or when the template's
-   `# syntax=` line is not allowed by the verifier at the pinned release. A newer tag than the
+   `main`'s first-parent line or its tag does not peel to it, when the template's
+   `# syntax=` line is not allowed by the verifier at the pinned release, or when the snapshot
+   is there but is not, byte for byte, the template at the pinned release. A newer tag than the
    one pinned only warns, because a commit cannot pin its own release: between the tag and the
-   bump PR every branch pins the previous one.
+   bump PR every branch pins the previous one. It also only warns when the snapshot is missing
+   (expected through v1.6, and after a skipped rotation), and while the checked-out template
+   (`main`'s, on a push to `main`) differs from the pinned release's: an adopter copying it now
+   may get a template the pinned verifier rejects.
 4. **Tell the pilots.** Adopters copy `template/` from `main`, so they get the new pins from
    the next copy. Existing consumers move by their own Dependabot `github-actions` bump.

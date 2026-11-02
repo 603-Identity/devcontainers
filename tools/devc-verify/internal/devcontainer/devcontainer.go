@@ -33,7 +33,7 @@ func Check(data []byte) error {
 	if len(data) > maxSize {
 		return check.Failf("devcontainer.json is larger than %d bytes", maxSize)
 	}
-	std, err := hujson.Standardize(data)
+	std, err := hujson.Standardize(bytes.Clone(data)) // a copy: Standardize blanks comments in place
 	if err != nil {
 		return check.Failf("devcontainer.json is not valid JSON with comments: %q", err.Error())
 	}

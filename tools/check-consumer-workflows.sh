@@ -58,6 +58,23 @@
 # It also checks the gate's `decide` pin has that same shape, and warns when the two pins
 # name different commits.
 #
+# The dev-App profile (#418, owner decisions 6 and 7). When the repo's `.devcontainer/`
+# (<dir>/../../.devcontainer/Dockerfile or devcontainer.json) holds a raw dev-App marker
+# (`devcontainer-devapp`, `glunk-identity` or `/run/wow`, the markers `devc-verify` reads), the
+# repo's review gate is the way-of-working plugin's, not this repo's template gate. Then:
+#   * the template gate must NOT be there: a job named resolve, decide or post, or a job calling
+#     the decide workflow, is a finding (not the file name, which the plugin's gate shares);
+#   * the gate rules above (the post exemption, the triggers, the decide pin, the code_paths
+#     block) do not apply;
+#   * one job is exempt from the write rule instead: the plugin gate's status writer, read
+#     generically as a job whose only write scope is statuses (reads are allowed), in a
+#     workflow triggered by pull_request and pull_request_review alone, held to the template
+#     post job's shape (no uses:, container: or services:, a GitHub-hosted runner) and with no
+#     needs: (another job's outputs would reach its run: script). Such a job
+#     shaped otherwise, or a second one, is a finding;
+#   * the verify and secret-scan caller rules, and the write rule for every other job, apply
+#     unchanged.
+#
 # Any workflow file in the directory that uses a YAML merge key (`<<:`), an anchor or an alias
 # also fails (#255): the rules read the file through `yq -o=json`, which drops a merge key, so
 # a key merged into a job would pass every rule. The template uses none of them. A mapping with
@@ -113,6 +130,15 @@ done
 yq --version 2> /dev/null | grep -q 'mikefarah' \
   || { echo "check-consumer-workflows: yq must be mikefarah/yq (v4)" >&2; exit 2; }
 [ -d "$dir" ] || { echo "usage: check-consumer-workflows.sh [--no-provenance] [WORKFLOW_DIR] ($dir is not a directory)" >&2; exit 2; }
+
+# The dev-App profile's detection (above): raw bytes, as devc-verify reads a base or a tip.
+devapp=false
+root="$(CDPATH="" cd -- "$dir/../.." 2> /dev/null && pwd -P)" || root=""
+if [ -n "$root" ]; then
+  for f in "$root/.devcontainer/Dockerfile" "$root/.devcontainer/devcontainer.json"; do
+    if [ -f "$f" ] && grep -qF -e devcontainer-devapp -e glunk-identity -e /run/wow -- "$f"; then devapp=true; fi
+  done
+fi
 
 findings=0
 # A message can carry a consumer's file name or path, and a name with a newline in it would start
@@ -214,6 +240,22 @@ GATE_ON_JQ='{pull_request: ["opened","synchronize","reopened"], issue_comment: [
         end
     end'
 
+# True when one job's effective permissions write statuses and nothing else: the dev-App
+# profile's one exemption, the plugin gate's status writer.
+# shellcheck disable=SC2016
+STATUS_ONLY_JQ='(.permissions // null) as $wf
+  | (.jobs[$j] | if has("permissions") then .permissions else $wf end) as $p
+  | ($p | type) == "object" and $p.statuses == "write"
+    and ([$p | to_entries[] | select(.key != "statuses" and .value == "write")] | length == 0)'
+
+# True when one job has a `needs:`.
+# shellcheck disable=SC2016
+NEEDS_JQ='.jobs[$j] | has("needs")'
+
+# The ids of the jobs that call the decide workflow ($wf is its path plus `@`).
+# shellcheck disable=SC2016
+DECIDE_USES_JQ='(.jobs // {}) | to_entries[] | select((.value.uses // "") | startswith($wf)) | .key'
+
 # True when the gate's `post` job holds exactly the scopes spec section 0 gives it.
 POST_PERMS_JQ='(.jobs.post.permissions // null)
   | (type == "object")
@@ -226,6 +268,8 @@ files=("$dir"/*.yml "$dir"/*.yaml)
 
 gate="$dir/$GATE_NAME"
 gate_json=""
+status_writer=""   # dev-App profile: the one job exempt from rule 1, as "<file>: <job>"
+[ "$devapp" = false ] || say "dev-App profile: $root/.devcontainer/ is dev-App, so the review gate is the way-of-working plugin's."
 for f in "${files[@]}"; do
   if ! json="$(yq -o=json '.' "$f" 2> /dev/null)"; then
     finding "$f: not parseable YAML"
@@ -250,7 +294,18 @@ for f in "${files[@]}"; do
   # of the same names: the `post` exemption below must not be one a decoy can claim.
   shaped="$(printf '%s' "$json" | j '(.jobs // {}) | (has("resolve") and has("decide") and has("post"))')"
   is_gate=false
-  if [ "$f" = "$gate" ]; then
+  if [ "$devapp" = true ]; then
+    # The dev-App profile: the template gate's jobs must not be here at all (owner decision 7).
+    # Not the file name: the plugin's own gate ships under the same name.
+    while IFS= read -r id; do
+      [ -n "$id" ] || continue
+      finding "$f: job '$id' is a job of the template gate (resolve, decide, post), which a dev-App repo does not run."
+    done < <(printf '%s' "$json" | j '(.jobs // {}) | keys[] | select(IN("resolve", "decide", "post"))')
+    while IFS= read -r id; do
+      [ -n "$id" ] || continue
+      finding "$f: job '$id' calls $DECIDE_WF, the template gate's bump decision, which a dev-App repo does not use."
+    done < <(printf '%s' "$json" | j --arg wf "$DECIDE_WF@" "$DECIDE_USES_JQ")
+  elif [ "$f" = "$gate" ]; then
     is_gate=true
     gate_json="$json"
     [ "$shaped" = "true" ] || finding "$f: must define the gate's three jobs (resolve, decide, post)."
@@ -264,13 +319,37 @@ for f in "${files[@]}"; do
     while IFS=$'\t' read -r id why; do
       [ -n "$id" ] || continue
       if [ "$is_gate" = true ] && [ "$id" = "post" ]; then continue; fi
+      if [ "$devapp" = true ] && [ "$(printf '%s' "$json" | j --arg j "$id" "$STATUS_ONLY_JQ")" = true ]; then
+        if [ -n "$status_writer" ]; then
+          finding "$f: job '$id' writes statuses too, but $status_writer is already the one status writer a dev-App repo's plugin gate may have."
+          continue
+        fi
+        # The same shape the template gate's post job is held to, so no action, image or
+        # persistent runner shares the status token, and only the plugin gate's own triggers.
+        shape=""
+        [ -z "$(printf '%s' "$json" | j --arg j "$id" "$USES_JQ")" ] || shape+=" it contains a uses:;"
+        [ "$(printf '%s' "$json" | j --arg j "$id" "$IMAGES_JQ")" = false ] || shape+=" it has container: or services:;"
+        [ "$(printf '%s' "$json" | j --arg j "$id" "$HOSTED_JQ")" = true ] || shape+=" it does not run on a GitHub-hosted runner;"
+        # A `needs:` could hand it outputs from a job that runs action code.
+        [ "$(printf '%s' "$json" | j --arg j "$id" "$NEEDS_JQ")" = false ] || shape+=" it has needs:, so another job's outputs reach it;"
+        [ "$(printf '%s' "$json" | j "[$EVENTS_JQ] | all(IN(\"pull_request\", \"pull_request_review\"))")" = true ] \
+          || shape+=" its workflow runs on an event besides pull_request and pull_request_review;"
+        if [ -n "$shape" ]; then
+          finding "$f: job '$id' writes statuses but is not shaped like the plugin gate's status writer:${shape%;}."
+          continue
+        fi
+        status_writer="$f: $id"
+        continue
+      fi
       finding "$f: job '$id' $why on a workflow that a pull request or a branch push triggers. Only the gate's post job may hold a write token there."
     done < <(printf '%s' "$json" | j "$PERM_JQ")
   fi
 done
 
-# Rules 2 and 3: the gate.
-if [ ! -f "$gate" ]; then
+# Rules 2 and 3: the gate (not in the dev-App profile, whose gate is the plugin's).
+if [ "$devapp" = true ]; then
+  :
+elif [ ! -f "$gate" ]; then
   finding "$gate is missing. Copy template/.github/workflows/$GATE_NAME."
 elif [ -n "$gate_json" ]; then
   for job in resolve post; do
@@ -309,7 +388,6 @@ elif [ -n "$gate_json" ]; then
   # code_paths. A block copied from another adopter fails silently in the unsafe direction: a
   # missing glob reads as "No code_paths touched -- no review required", never as a red check.
   # Runs only when `.ai/project.yml` sits next to `.github/` (dir/../../.ai/project.yml).
-  root="$(CDPATH="" cd -- "$dir/../.." 2> /dev/null && pwd -P)" || root=""
   project="$root/.ai/project.yml"
   if [ -n "$root" ] && [ -f "$project" ]; then
     region="$(printf '%s' "$gate_json" | j '.jobs.post.steps[]? | .run? // empty' \
