@@ -79,8 +79,8 @@ RUN curl -fsSL "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}
 # (signer: betterleaks/betterleaks release.yml at refs/tags/v<version>, issuer
 # https://token.actions.githubusercontent.com) before taking it.
 # /usr/local/bin/betterleaks is an absolute path on purpose: ~/.local/bin leads PATH.
-ARG BETTERLEAKS_VERSION=2.0.0-rc.1
-ARG BETTERLEAKS_SHA256=ccbbf68d0a403af44ed5d118c495d20c06bbf39d09129d2ae733d69aa9242404
+ARG BETTERLEAKS_VERSION=2.0.0-rc.6
+ARG BETTERLEAKS_SHA256=fa1f6713c56251d1f75f503cc0a3132392277ab4238810a7e60b8791eecd51f0
 RUN curl -fsSL "https://github.com/betterleaks/betterleaks/releases/download/v${BETTERLEAKS_VERSION}/betterleaks_${BETTERLEAKS_VERSION}_linux_x64.tar.gz" \
         -o /tmp/betterleaks.tar.gz \
     && echo "${BETTERLEAKS_SHA256}  /tmp/betterleaks.tar.gz" | sha256sum -c - \
