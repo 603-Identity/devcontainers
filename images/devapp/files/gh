@@ -1,0 +1,28 @@
+#!/bin/sh
+# The dev-App flavour's `gh`. The real binary is /usr/local/libexec/gh-real; this wrapper
+# takes /usr/local/bin/gh and hands it the dev token and nothing else. Without a readable,
+# unexpired /run/wow/dev-token it refuses, so there is no way to run gh in this flavour
+# on a credential the host did not mint for this repository.
+#
+# The token comes from dev-token, the one reader of /run/wow/dev-token. It is exported as
+# GH_TOKEN, which gh prefers over any stored credential, and every other credential
+# variable is cleared, so neither a leftover ~/.config/gh/hosts.yml nor an environment
+# variable set by a repo's remoteEnv can be what authenticates. devapp-check.sh also
+# removes hosts.yml at every start.
+#
+# PATH is fixed for the same reason as dev-token's: ~/.local/bin leads the container's PATH
+# and must not be able to stand in for anything gh runs.
+PATH=/usr/local/bin:/usr/bin:/bin
+export PATH
+set -u
+
+token=$(/usr/local/libexec/dev-token token) || exit 1
+
+unset GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN GH_HOST GH_REPO \
+    GH_CONFIG_DIR GH_PATH GH_BROWSER GH_PAGER GH_EDITOR GH_ASKPASS
+GH_TOKEN=$token
+GH_PROMPT_DISABLED=1
+GH_NO_UPDATE_NOTIFIER=1
+GH_NO_EXTENSION_UPDATE_NOTIFIER=1
+export GH_TOKEN GH_PROMPT_DISABLED GH_NO_UPDATE_NOTIFIER GH_NO_EXTENSION_UPDATE_NOTIFIER
+exec /usr/local/libexec/gh-real "$@"

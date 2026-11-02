@@ -123,6 +123,8 @@ RUN UV_PYTHON_DOWNLOADS=never UV_PROJECT_ENVIRONMENT=/opt/devc/tools \
 
 # --- Start-up scripts, shipped in the image so repos do not each carry a copy.
 # A repo's devcontainer.json runs them from postStartCommand; see README.md.
+# The dev-App flavour (images/devapp) deletes gpg-check.sh from ITS layer only: the v1.5
+# pilots' postStartCommand still calls it from this image, so base keeps shipping it.
 COPY --chmod=0755 files/owner-check.sh files/git-identity.sh files/gpg-check.sh /usr/local/share/devc/
 
 # --- git config layout. ~/.gitconfig (an include of ~/.gitconfig-identity) is NOT in the
@@ -168,7 +170,8 @@ RUN install -d -o app -g app -m 0755 /home/app/.gitconfig.d /home/app/.local \
 # System-level git settings, so they survive a rebuilt home directory and work from
 # the first command in a fresh shell:
 #   * GitHub HTTPS credentials come from gh, whose credential lives in the
-#     per-repo volume above. The helper is an absolute path because ~/.local/bin
+#     per-repo volume above. (The dev-App flavour, images/devapp, replaces this helper
+#     with dev-token and unsets this entry; base and the plain template keep it.) The helper is an absolute path because ~/.local/bin
 #     (writable by app) leads PATH, so a bare `gh` could be shadowed by accident, e.g. a
 #     `uv tool install` entry point named gh. This is hygiene, not a boundary against
 #     code running as app (see docs/threat_model.md, boundary 8);

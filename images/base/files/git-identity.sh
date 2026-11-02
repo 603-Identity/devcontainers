@@ -21,6 +21,9 @@
 # git-credential`, which broke every HTTPS fetch and push. gpg.* is left out for the
 # same reason (host paths and commands), so SSH signing is out of scope. Includes are
 # never followed. Host edits take effect at the next container start.
+# In the dev-App flavour (the marker /usr/local/share/devc/unsigned exists) only user.name
+# and user.email are read from the host file, and commit.gpgsign and tag.gpgsign are
+# projected as false: there is no gpg to sign with.
 #
 # Failing closed: any problem (no origin, a foreign or lookalike origin, no file or
 # several files claiming the org, an unreadable file) removes ~/.gitconfig-identity,
@@ -163,14 +166,26 @@ done
 [ "$n" -le 1 ] || deny "several files claim $org" "files:$names"
 
 # --- project the allowlist. Never --includes.
+# The dev-App flavour (images/devapp) has no gpg and no signing agent, and marks itself with a
+# file only root can write. There signing is projected OFF and no signing key is projected,
+# whatever the host file says: a host file written for a signing setup must not make every
+# commit in the container fail (README, "Git identity"). A regular file, not a link.
+unsigned=0
+if [ -f /usr/local/share/devc/unsigned ] && [ ! -L /usr/local/share/devc/unsigned ]; then unsigned=1; fi
 for k in user.name user.email user.signingkey; do
+    [ "$unsigned" = 0 ] || [ "$k" != user.signingkey ] || continue
     if v=$(git config -f "$match" --get "$k" 2>/dev/null); then w "$k" "$v"; fi
 done
-for k in commit.gpgsign tag.gpgsign; do
-    # An invalid boolean (exit 128) skips the key: `commit.gpgsign = maybe` would
-    # make every commit in the container fail.
-    if v=$(git config -f "$match" --type=bool --get "$k" 2>/dev/null); then w "$k" "$v"; fi
-done
+if [ "$unsigned" = 1 ]; then
+    w commit.gpgsign false
+    w tag.gpgsign false
+else
+    for k in commit.gpgsign tag.gpgsign; do
+        # An invalid boolean (exit 128) skips the key: `commit.gpgsign = maybe` would
+        # make every commit in the container fail.
+        if v=$(git config -f "$match" --type=bool --get "$k" 2>/dev/null); then w "$k" "$v"; fi
+    done
+fi
 
 email=$(git config -f "$tmp" --get user.email 2>/dev/null) || email='no user.email set'
 printf 'git-identity: %s -> %s (%s)\n' "$org" "${match##*/}" "$email" >&2
