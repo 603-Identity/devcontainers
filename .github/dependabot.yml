@@ -5,9 +5,11 @@ version: 2
 #     Dockerfiles have no fixed FROM to bump (it is a build arg, set by CI).
 #   * uv: images/base/tools/pyproject.toml -> uv.lock (hashes kept).
 # NOT bumped by Dependabot: the ARG-pinned binaries (gh, yq, uv, tofu, tflint, node,
-# npm), and the `# syntax=docker/dockerfile:...@sha256:...` line in all four
-# Dockerfiles (the docker updater reads only FROM lines; bump the four together,
-# digest from `docker buildx imagetools inspect`, see README.md). The binaries are
+# npm), and the `# syntax=docker/dockerfile:...@sha256:...` line on line 1 of the
+# Dockerfiles (the docker updater reads only FROM lines). That line moves in two steps:
+# the three image Dockerfiles with devc-verify's CurrentSyntax and vendored BuildKit,
+# then, after a release, template/.devcontainer/Dockerfile with the self-pin bump
+# (README.md "Updating a pinned tool" and "Cutting a release"). The binaries are
 # proposed instead by .github/workflows/bump-binaries.yml (see README.md §
 # Updating a pinned tool); fall back to a manual PR, same section, only while that
 # workflow is down or for a tool it doesn't cover. A consuming repo moves its
