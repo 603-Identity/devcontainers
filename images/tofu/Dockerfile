@@ -39,12 +39,17 @@ USER 0
 # Compatibility notes: base64gzip output is equivalent but not byte-identical, and WinRM
 # provisioners are removed; no consuming repo uses either (checked 2026-10-01).
 #
-# The checksum file itself was verified for 1.13.0 only (2026-10-02, #58), by hand,
-# with cosign v3.1.3 against the release's keyless signature (the .sig and .pem beside
-# tofu_1.13.0_SHA256SUMS), checked against the Rekor transparency log:
+# 1.13.2 (from 1.13.1, 2026-11-02): the newest release (2026-10-21), a patch bump. Trivy:
+# 5 HIGH findings, all allowlisted in .trivyignore.yaml (CVE-2026-56864, CVE-2026-56865,
+# CVE-2026-84445, plus CVE-2026-78669 and CVE-2026-116587, published since 1.13.0).
+#
+# The checksum file itself was verified for 1.13.2 (2026-11-02), by hand, with cosign
+# v3.1.3 against the release's keyless signature (the .sig and .pem beside
+# tofu_1.13.2_SHA256SUMS), checked against the Rekor transparency log; 1.13.0 was
+# verified the same way on 2026-10-02 (#58):
 #   signer identity: https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/heads/v1.13
 #   OIDC issuer:     https://token.actions.githubusercontent.com
-#   source commit:   2b6193043d500dcfef1f3b4f4819b938b667099f (the v1.13.0 tag)
+#   source commit:   765062032c46cacab116b36d714db098b806dede (the v1.13.2 tag)
 # The image does not check this, and bump-binaries.sh does not either: it rewrites the
 # two ARGs below and leaves this comment alone. A pin at any other version is
 # unverified until someone repeats the check and updates this record (see
@@ -67,8 +72,8 @@ USER 0
 # grep is what ties the verified file to the pin: a valid signature on one copy of
 # SHA256SUMS says nothing about a sha taken from another. Record the resolved sha as the
 # source commit above.
-ARG TOFU_VERSION=1.13.1
-ARG TOFU_SHA256=8ccbc6f8ee21d2827715f3c6e08a9b3e0209b1e62057c05067ef117e047c1a80
+ARG TOFU_VERSION=1.13.2
+ARG TOFU_SHA256=723bebb0df8411daff1e5fc3862e28ff5581fe5634087f4c29a9aa41d78208b5
 RUN curl -fsSL "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.zip" \
         -o /tmp/tofu.zip \
     && echo "${TOFU_SHA256}  /tmp/tofu.zip" | sha256sum -c - \
@@ -78,8 +83,8 @@ RUN curl -fsSL "https://github.com/opentofu/opentofu/releases/download/v${TOFU_V
 
 # --- tflint, for pre-commit-terraform's terraform_tflint hook (language: script, so
 # it needs the binary on PATH). No CI job runs tflint, so there is no CI pin to match.
-ARG TFLINT_VERSION=0.64.0
-ARG TFLINT_SHA256=cca9d13e2e1d7a2c627af60ff899a3c9b74212899416aeb96ec764d2ef954537
+ARG TFLINT_VERSION=0.65.0
+ARG TFLINT_SHA256=d4c545ed2e29d6338604b586f34f544f380f70f243aa72f7b484713835eaec61
 RUN curl -fsSL "https://github.com/terraform-linters/tflint/releases/download/v${TFLINT_VERSION}/tflint_linux_amd64.zip" \
         -o /tmp/tflint.zip \
     && echo "${TFLINT_SHA256}  /tmp/tflint.zip" | sha256sum -c - \

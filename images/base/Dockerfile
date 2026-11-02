@@ -17,7 +17,7 @@
 # Ubuntu 26.04. Its system Python 3.14 is the Python standard for consuming repos. The
 # major tracks GitHub's `ubuntu-latest` runner. Re-pin it deliberately, together with
 # tests/smoke.sh's Python check.
-FROM ubuntu:26.04@sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78
+FROM ubuntu:26.04@sha256:6a06111c3b0a8600feadb270aec771dc239bf407b25625f93f44ab00e11f4d3c
 
 LABEL org.opencontainers.image.source="https://github.com/603-Identity/devcontainers" \
       org.opencontainers.image.description="Shared devcontainer base: git, gh, jq, yq, uv, pre-commit, betterleaks, zizmor, non-root app user" \
@@ -52,8 +52,8 @@ RUN apt-get update \
 
 # --- gh CLI, from the release tarball rather than the apt repo so the version is
 # pinned and checksum-verified like every other binary here.
-ARG GH_VERSION=2.102.0
-ARG GH_SHA256=bb766f710eef8ede859c18578c72c327597cd4c8a85b06001b1f3843c6019386
+ARG GH_VERSION=2.103.2
+ARG GH_SHA256=62ccf747115ddc61237efffdde66a3c8f70ba249433dc64f70801089b59c59c8
 RUN curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" \
         -o /tmp/gh.tar.gz \
     && echo "${GH_SHA256}  /tmp/gh.tar.gz" | sha256sum -c - \

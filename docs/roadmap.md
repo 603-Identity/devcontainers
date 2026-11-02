@@ -31,8 +31,8 @@ The next piece of work is set by the open milestone on this repo, since
 `/way-of-working:plan-sprint` to triage the open issues into one.
 
 Two dates are fixed:
-- #148: the `tofu` and `tflint` Trivy exceptions expire on 2026-11-01. Renew or retire them
-  before then; each renewal extends at most 30 days.
+- The `.trivyignore.yaml` exceptions (yq, betterleaks, tofu, tflint) expire on 2026-12-01.
+  Renew or retire them before then; each renewal extends at most 30 days.
 - GitHub's `ubuntu-latest` moves to 26.04 between 2026-10-19 and 2026-11-19. Until then CI
   runners (24.04) and the images (26.04) differ.
 

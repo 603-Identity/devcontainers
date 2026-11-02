@@ -24,7 +24,7 @@ at build and publish time, before any consumer pulls.
 |---|---|---|
 | Ubuntu base image | `FROM` in `images/base/Dockerfile` | Pinned by digest. Dependabot proposes new digests as reviewed PRs. |
 | apt packages | `apt-get install` in the base image | **Not version-pinned** (see [Known gaps](#known-gaps)). Bounded by the base digest and the weekly rebuild. |
-| Release binaries (gh, yq, uv, tofu, tflint, node, betterleaks) | `curl` in each Dockerfile | Pinned by version and sha256. Each sha256 comes from that release's own published checksum file, never from a first download. Neither the build nor the automated bump checks that file's signature or the binary's provenance. Only tofu 1.13.0's checksum file was checked, by hand (see Known gaps). The exception is betterleaks: `bump-binaries.sh` verifies its sigstore bundle before taking the checksum (see Org secret scanning). |
+| Release binaries (gh, yq, uv, tofu, tflint, node, betterleaks) | `curl` in each Dockerfile | Pinned by version and sha256. Each sha256 comes from that release's own published checksum file, never from a first download. Neither the build nor the automated bump checks that file's signature or the binary's provenance. Only tofu's checksum file was checked, by hand, for 1.13.0 and 1.13.2 (see Known gaps). The exception is betterleaks: `bump-binaries.sh` verifies its sigstore bundle before taking the checksum (see Org secret scanning). |
 | uv-provisioned interpreters | `uv` at run time, when a repo's `.python-version` asks for an older Python | Not part of the image: uv downloads the interpreter from upstream on demand, into the per-repo home volume (`~/.local/share/uv`, kept across rebuilds, never the shared cache volume). uv checks it against a sha256 built into the pinned uv binary; the build's Trivy gate never scans it. Only a repo that cannot use the system 3.14 does this. |
 | Python tools | `uv sync --locked` in the base image | Installed only from `images/base/tools/uv.lock`, which carries hashes; `--locked` fails on any drift from `pyproject.toml`. |
 | npm, and the `brace-expansion` and `undici` copies replaced inside it | the node image | Each checked against the registry's sha512 `integrity` value, pinned as an `ARG`; the replaced versions are asserted after the swap. |
@@ -345,8 +345,8 @@ These are stated plainly so nobody trusts the setup for more than it does:
   - Node.js signs `SHASUMS256.txt` with GPG. Verifying it means pinning the Node release
     team's keyring here.
 
-  The one exception is tofu 1.13.0's checksum file, verified by hand when it was pinned
-  (#58). The verified signer identity is recorded beside `TOFU_SHA256` in
+  The one exception is tofu's checksum file, verified by hand for 1.13.0 when it was
+  pinned (#58) and again for 1.13.2. The verified signer identity is recorded beside `TOFU_SHA256` in
   `images/tofu/Dockerfile`. No build checks a signature, and `bump-binaries.sh` doesn't
   either (#29). An automated bump rewrites the pin and leaves the hand-written record
   untouched, so the record covers only the version it names. Nothing in a bump PR

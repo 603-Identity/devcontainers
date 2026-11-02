@@ -49,8 +49,9 @@ RUN curl -fsSL "https://registry.npmjs.org/npm/-/npm-${NPM_VERSION}.tgz" -o /tmp
 # against that release's published sha512 `integrity` exactly as the npm tarball is.
 #   brace-expansion 5.0.9 -> 5.0.12 (CVE-2026-102276, fixed in 5.0.10;
 #     CVE-2026-102278, fixed in 5.0.11). The bundled minimatch requires ^5.0.5.
-#   undici 6.28.0 -> 6.29.0 (CVE-2026-19534, fixed in 6.28.1). The bundled node-gyp
-#     requires ^6.25.0; 6.29.0 is the newest 6.x.
+#   undici 6.28.0 -> 6.29.1 (CVE-2026-19534, fixed in 6.28.1; CVE-2026-87018,
+#     CVE-2026-109383 and CVE-2026-109869, fixed in 6.29.1). The bundled node-gyp
+#     requires ^6.25.0; 6.29.1 is the newest 6.x.
 # brace-expansion's one dependency (balanced-match ^4.0.2) is already bundled; undici has
 # none. The replaced versions are asserted after the swap, and brace-expansion is loaded
 # once so a missing dependency fails the build.
@@ -59,8 +60,8 @@ RUN curl -fsSL "https://registry.npmjs.org/npm/-/npm-${NPM_VERSION}.tgz" -o /tmp
 # neither remains.
 ARG BRACE_EXPANSION_VERSION=5.0.12
 ARG BRACE_EXPANSION_INTEGRITY=sha512-YovQ3rzhaLMIrDjNDMkNS01tea93qhEhG5xy8f6+R0l+dw3Ki+5sCoIoI942iuLZTHWogWktgwVDhU09iNEimQ==
-ARG UNDICI_VERSION=6.29.0
-ARG UNDICI_INTEGRITY=sha512-R+RODBqp6i2pPflGdq+xIOUkl+RNfGgHwoinecKu/JCuf2uO06cOKoDbI2P7Dn6KcswdKwrczbU6IYJ6K8X+wg==
+ARG UNDICI_VERSION=6.29.1
+ARG UNDICI_INTEGRITY=sha512-EvRlUt/QqAEvXdQeRMYUfwOQsfzpDztykrG2owGEE/rBOBoYv9uF39ZzsNDh4lTFHhTr2XOZjKkYgueD12ZmGA==
 RUN set -eu; \
     npm_modules=/usr/local/lib/node_modules/npm/node_modules; \
     swap() { \
