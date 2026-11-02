@@ -48,9 +48,11 @@ func TestTemplateWithPlaceholdersIsRejected(t *testing.T) {
 
 // A template bump without a tool release must fail here.
 func TestCurrentSyntaxIsTheTemplates(t *testing.T) {
+	// The template may still carry PreviousSyntax: a syntax bump releases the verifier first,
+	// and the template moves with the pin bump to that release (tools/check-self-pins.sh, #125).
 	first, _, _ := strings.Cut(templateText(t), "\n")
-	if first != "# syntax="+AllowedSyntax[0] {
-		t.Fatalf("template first line %q does not carry the tool's current syntax %q", first, AllowedSyntax[0])
+	if first != "# syntax="+CurrentSyntax && first != "# syntax="+PreviousSyntax {
+		t.Fatalf("template first line %q is not an allowed syntax %q", first, AllowedSyntax)
 	}
 	for _, g := range []string{"base", "tofu", "node"} {
 		b, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "images", g, "Dockerfile"))

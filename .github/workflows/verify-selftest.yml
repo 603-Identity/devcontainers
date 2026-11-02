@@ -89,6 +89,12 @@ jobs:
         run: jq --version && yq --version
       - name: run-gate-tests
         run: bash tools/tests/run-gate-tests.sh
+      # The template's self-pins must name a real release on main, and that release's verifier
+      # must accept the template's own `# syntax=` line (#125). It reads the release from a
+      # scratch clone of github.com, so unlike the suites above it needs the network. A newer
+      # release than the one pinned only warns.
+      - name: template self-pins match their release
+        run: bash tools/check-self-pins.sh
       # The Linux runner honours the mode bit; Git Bash on Windows does not, so check it here.
       - name: test shims are executable
         run: |

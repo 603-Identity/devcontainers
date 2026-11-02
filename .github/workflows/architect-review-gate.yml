@@ -248,7 +248,7 @@ jobs:
     # the pin is hygiene, not correctness. It must still name a real commit, because GitHub
     # resolves it when the run starts. Bump it by hand after a tag (Dependabot's github-actions
     # ecosystem may also propose it). A bump edits only .github/, so it always needs a review.
-    uses: 603-Identity/devcontainers/.github/workflows/devcontainer-bump-decision.yml@9153da1b6eb4ff2d845cb41efaabab3882529130 # v1.4
+    uses: 603-Identity/devcontainers/.github/workflows/devcontainer-bump-decision.yml@4baf61c7aaacfd30ca5c6feb83cb27ace7953c1c # v1.5
     # <<< CONSUMER: decide pin
     with:
       head_sha: ${{ needs.resolve.outputs.head_sha }}
