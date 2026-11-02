@@ -35,8 +35,9 @@ The images are **linux/amd64 only**: every downloaded binary is amd64, so the ba
 image's first build step fails with a clear message on any other architecture.
 
 The pilots (terraform-cloudflare-dns and terraform-microsoft365-entra, #10) have adopted
-them. To adopt them in another repo, follow [`docs/adopting.md`](docs/adopting.md). The
-waves are tracked in #26 to #28.
+them. [`docs/adopting.md`](docs/adopting.md) is the procedure built from what they did. It is **frozen**
+(DEVC-D9): the legacy PAT route takes no new adoptions, and the dev-App template that replaces
+it ships in v1.6. The waves are tracked in #26 to #28.
 
 Local sizes measured on 2026-11-02 (`docker images`): base 589 MB, tofu 812 MB, node 899 MB,
 devapp 1.13 GB, devapp-tofu 1.35 GB. Shared layers are stored only once, so all five together
@@ -55,7 +56,8 @@ org profile, archived and demo repos) are listed under
 
 ## Using an image in a repo
 
-The ordered adoption procedure, with its rollback, is [`docs/adopting.md`](docs/adopting.md).
+The ordered adoption procedure, with its rollback, is [`docs/adopting.md`](docs/adopting.md)
+(frozen to the legacy route until v1.6, DEVC-D9).
 This section and the ones after it hold the detail it links to.
 
 Open the repo with VS Code and its Dev Containers extension. Commit signing depends on its
@@ -244,7 +246,7 @@ settings the adoption PR records, and review.
 
 **Auto-merge is off.** The gate can merge a verified, same-MAJOR Dependabot image bump on its
 own, but only while the tag `devc-automerge-on` exists in *this* repo, and nobody has created
-it. Until the owner does (a separate decision with preconditions, tracked in #30), every bump
+it. Until the owner does (a separate decision with preconditions, tracked in #396), every bump
 takes the review path and a human merges it. The tags `v*` and `devc-automerge-*` are
 protected by a tag ruleset here: creating, moving or deleting one needs the Repository admin
 role.
