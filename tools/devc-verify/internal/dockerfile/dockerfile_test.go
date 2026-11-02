@@ -67,11 +67,12 @@ func TestCurrentSyntaxIsTheTemplates(t *testing.T) {
 // `# syntax=` pins (security L2). frontendToBuildkit maps a frontend minor series to the
 // release whose frontend/dockerfile/{parser,instructions} code it was cut from.
 //
-// dockerfile/1.27.1 (the pinned digest sha256:4edf...) is v0.33.1 plus one commit that only
-// bumps the version string, so v0.33.1 is the release it was cut from. (dockerfile/1.27.0 is the
-// tag of v0.33.0; v0.33.0..v0.33.1 changes nothing under frontend/dockerfile/{parser,instructions}.)
-// v0.33.1 needs go 1.26.8; go.mod and every setup-go go-version must agree (verify-selftest.yml checks this).
-var frontendToBuildkit = map[string]string{"1.27": "v0.33.1"}
+// dockerfile/1.28.0 (the pinned digest sha256:bb22...) and v0.34.0 and v0.34.1 are the same
+// commit (f5b59a1f): v0.34.1 re-tags it, rebuilt with Go 1.26.10 for CVE-2026-111943, with no
+// functional change, so v0.34.1 is the release the frontend was cut from. (The previous pin,
+// dockerfile/1.27.1, is v0.33.1 plus a version-string commit.)
+// v0.34.1 needs go 1.26.8; go.mod and every setup-go go-version must agree (verify-selftest.yml checks this).
+var frontendToBuildkit = map[string]string{"1.28": "v0.34.1"}
 
 func TestBuildkitMatchesFrontend(t *testing.T) {
 	m := regexp.MustCompile(`^docker/dockerfile:([0-9]+\.[0-9]+)@sha256:[0-9a-f]{64}$`).FindStringSubmatch(CurrentSyntax)

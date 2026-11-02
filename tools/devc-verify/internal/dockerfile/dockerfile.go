@@ -17,13 +17,12 @@ import (
 // CurrentSyntax is the template's current `# syntax=` value. A test asserts it equals the
 // first line of template/.devcontainer/Dockerfile, so a template bump without a tool
 // release fails CI.
-const CurrentSyntax = "docker/dockerfile:1.27@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e"
+const CurrentSyntax = "docker/dockerfile:1.28@sha256:bb22d9815c728170f72750f4e5b0d672e06176142e1d602c7e66c050100b7e5b"
 
-// PreviousSyntax is the value the template carried before CurrentSyntax. No earlier PINNED
-// value exists yet (before 0ab872e the template used the floating `docker/dockerfile:1`,
-// which is never accepted), so it duplicates CurrentSyntax: fail closed. At the next
-// template bump, set it to the value being retired.
-const PreviousSyntax = CurrentSyntax
+// PreviousSyntax is the value the template carried before CurrentSyntax (dockerfile 1.27.1, the
+// release cut from BuildKit v0.33.1), kept so a consumer one bump behind still verifies.
+// At the next template bump, set it to the value being retired.
+const PreviousSyntax = "docker/dockerfile:1.27@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e"
 
 // AllowedSyntax is the allowlist of `# syntax=` values.
 var AllowedSyntax = [2]string{CurrentSyntax, PreviousSyntax}
