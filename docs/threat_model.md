@@ -190,7 +190,7 @@ at build and publish time, before any consumer pulls.
    a setting nobody tests would be copied into every adopter as if it were a control.) An attach brings
    back what the template keeps out: the host's git config and credential helper, an askpass program
    for the terminal's git, and the host's VS Code GitHub session. The supported entry is the launcher
-   (planned, glunk-works/claude-workbench#1276); until it ships, the devcontainer CLI from PowerShell.
+   (planned, glunk-works/claude-workbench#1339); until it ships, the devcontainer CLI from PowerShell.
    `tests/template-proof.sh` runs that CLI, which injects no VS Code helper. The `postStartCommand`
    `rm` removes only the helper scripts already in `/tmp` at start (a cutover repo's legacy `<folder>-tmp`
    volume can hold them), and the `postAttachCommand` warning is a notice of an attach (a log line nobody watches): the devcontainer CLI's `up` runs
@@ -666,7 +666,7 @@ These are stated plainly so nobody trusts the setup for more than it does:
   run it as another user. A checkout a container has written to is no longer "a clone you reviewed"
   after the first `up`.
   `verify / verify` sees only what is pushed. Until the
-  launcher ships and is the only way in (planned, tracked at glunk-works/claude-workbench#1276),
+  launcher ships and is the only way in (planned, tracked at glunk-works/claude-workbench#1339),
   only the convention "enter through the launcher (interim: the devcontainer CLI; stop the container and
   inspect the config before any `up`, from a PowerShell outside the checkout with no secrets in its environment); never run the host's Dev Containers extension or git on a mounted checkout" holds this.
 - **"No extensions" holds for a fresh home volume only.** The VS Code server loads every

@@ -431,7 +431,7 @@ repo from editing around either.
 - **VS Code is unsupported for dev-App containers.** *Amended 2026-11-02 (#456), before the v1.6 tag.* The template
   sets no `customizations.vscode` settings: the four it first carried were unverified, and a
   setting nobody tests would be copied into every adopter as if it were a control. The only
-  supported entry is the launcher (glunk-works/claude-workbench#1276); until it ships, the
+  supported entry is the launcher (glunk-works/claude-workbench#1339); until it ships, the
   devcontainer CLI from PowerShell (`devcontainer up --skip-post-attach --workspace-folder <path>`, then `devcontainer exec --workspace-folder <path> claude`, run from outside the checkout). Attaching VS Code brings
   back the host's git config and credential helper, an askpass program and the host's VS Code
   GitHub session. The template keeps the `postStartCommand` `rm` of VS Code's helper scripts and

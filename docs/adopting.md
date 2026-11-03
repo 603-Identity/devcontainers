@@ -19,7 +19,7 @@ login, never from the container.
 
 - **Host: Windows only.** The template reads the host broker's token directory from
   `%USERPROFILE%`, and says so in its header. The repo is opened through the launcher only
-  (planned, tracked at glunk-works/claude-workbench#1276). Until it ships, the interim entry is the
+  (planned, tracked at glunk-works/claude-workbench#1339). Until it ships, the interim entry is the
   devcontainer CLI from PowerShell: `devcontainer up --skip-post-attach --workspace-folder <absolute path>`, then
   `devcontainer exec --workspace-folder <absolute path> claude`, run from a directory outside the checkout (untested by this repo; the README's "Using an image in a repo" has the
   stop-inspect-`up` rule for a written-to checkout and the secret-free-shell rule). VS Code attach is unsupported in a dev-App
