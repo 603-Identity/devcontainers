@@ -4,7 +4,8 @@
 
 **Just done:**
 - Milestone 9 archived: its roadmap entry merged as `bfaf673` (#482), and its final cursor is snapshotted in `.ai/archive/M9-next-steps.md`.
-- Backlog triaged with `/way-of-working:plan-sprint` (2026-11-03). Filed #484 (the December `.trivyignore.yaml` renewal) on milestone 5. Placed #459 and #477 on milestone 5, #463 and #475 on milestone 3, and #443, #446, #452, #460 and #479 on milestone 6. Left #126, #132, #444 (a duplicate of #446) and #480 unmilestoned on purpose. Milestone 5's description now has the build order #484, #427, #329, then #477 + #459.
+- Backlog triaged with `/way-of-working:plan-sprint` (2026-11-03). Filed #484 (the December `.trivyignore.yaml` renewal) on milestone 5. Placed #459 and #477 on milestone 5, #463 and #475 on milestone 3, and #443, #446, #452, #460 and #479 on milestone 6. Left #126, #132 and #480 unmilestoned on purpose, and closed #444 as a duplicate of #446. Milestone 5's description now has the build order #484, #427, #329, then #477 + #459.
+- Filed #486, the design for cutting releases through a dispatched, reviewed workflow as claude-workbench does. Owner decisions: tags are created by a dedicated GitHub App, unsigned. #486 is on new milestone 10, "Release workflow", due 2026-12-18, after milestone 5.
 
 **Milestone close:** closed, milestone 9 "Image bumps: node 26 and betterleaks rc.6" (read-back `closed`, 0 open issues).
 
