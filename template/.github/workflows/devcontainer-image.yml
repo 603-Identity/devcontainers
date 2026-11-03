@@ -29,4 +29,4 @@ jobs:
   verify:
     permissions:
       contents: read
-    uses: 603-Identity/devcontainers/.github/workflows/verify-devcontainer-image.yml@4baf61c7aaacfd30ca5c6feb83cb27ace7953c1c # v1.5
+    uses: 603-Identity/devcontainers/.github/workflows/verify-devcontainer-image.yml@58d54dd63228e3640327bfcd34d91f64fcc88e60 # v1.6

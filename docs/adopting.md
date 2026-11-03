@@ -38,8 +38,6 @@ login, never from the container.
 - **The checkout folder name** must be unique across every checkout on the host, in every org
   ([Consuming from another org](../README.md#consuming-from-another-org), step 3). If it is
   not, rename it first. Every volume below is named after that folder, not the repo.
-- **The callers in `template/` must pin v1.6.** They pin the v1.5 verifier until PR E, and v1.5
-  rejects a devapp `FROM`. Do not adopt before then.
 - **Is the repo on the exceptions list?** If it is in
   [Exceptions](threat_model.md#exceptions), stop: it gets no container.
 - **Does the repo need Dev Container Features, or a second `devcontainer.json`?** Then it
