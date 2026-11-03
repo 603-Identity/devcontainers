@@ -25,9 +25,12 @@ Repo hardening: review gate and CI (milestone 4) is done. Its last change merged
 (#365, consumer pin provenance). The skill half of #278 moved to the way-of-working plugin
 (glunk-works/claude-workbench#346).
 
-Dev-App flavour and template (milestone 8, #418) shipped in v1.6 (DEVC-D9). The images are built and published (#442), the
+Dev-App flavour and template (milestone 8, #418) is done. It shipped in v1.6 (DEVC-D9), and its last change merged as
+`9ea6119` (#471, for #445). The images are built and published (#442), the
 consumer-verification lint (PR C, #451) and the template (PR D, #392) are merged, v1.6 is tagged, and PR E moved the template's
-pins to it. The legacy PAT route is frozen: the two pilots keep their copies until their cutover.
+pins to it. The leftovers closed after it: #470 recorded the `appPort` reach measurement in the threat model (#457) and corrected
+two of its claims (#386, #387). The flaky consumer-workflows test (#446) moved to the backlog. The legacy PAT route is frozen:
+the two pilots keep their copies until their cutover.
 
 ## Next action
 
