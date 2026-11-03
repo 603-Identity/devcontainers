@@ -94,7 +94,7 @@ Both pilots' real files pass it (`testdata/pilot.devcontainer.json`).
    the last instruction), plus the files they copy from `.devcontainer/`. `fetch-consumer.sh`
    fetches the regular files there, at most 64 of at most 1 MiB each; anything else marks the
    tree, and dev-App mode rejects the mark. **The filter catches accidents, not attacks**:
-   - no `ENV` of `ANTHROPIC_BASE_URL`, `HTTP_PROXY`, `HTTPS_PROXY` or `GIT_*` (any case), and no
+   - no `ENV` of `ANTHROPIC_BASE_URL`, `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` or `GIT_*` (any case), and no
      `ENV` key holding `$`;
    - nothing names an identity path (`/run/wow` and `/var/run/wow`, `/usr/local/libexec`,
      `/usr/local/bin/gh`, `/usr/local/bin/claude`, `/etc/gitconfig`, `/etc/claude-code`,

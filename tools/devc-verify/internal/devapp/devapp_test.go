@@ -275,6 +275,8 @@ func TestCheckDockerfileRejects(t *testing.T) {
 		"ENV git_ lower case":      "ENV git_dir=x\nUSER 1000:1000\n",
 		"ENV proxy":                "ENV HTTPS_PROXY=http://p\nUSER 1000:1000\n",
 		"ENV proxy lower case":     "ENV http_proxy=http://p\nUSER 1000:1000\n",
+		"ENV all proxy":            "ENV ALL_PROXY=http://p\nUSER 1000:1000\n",
+		"ENV all proxy lower case": "ENV all_proxy=http://p\nUSER 1000:1000\n",
 		"ENV Anthropic":            "ENV ANTHROPIC_BASE_URL=http://p\nUSER 1000:1000\n",
 		"RUN replaces gh":          "USER 0\nRUN cp /bin/true /usr/local/bin/gh\nUSER 1000:1000\n",
 		"RUN under libexec":        "USER 0\nRUN rm /usr/local/libexec/dev-token\nUSER 1000:1000\n",
