@@ -9,8 +9,8 @@
 #     and the weekly rebuild goes red until someone re-reviews it: extends it with a
 #     fresh reason, or removes it because the fix has shipped.
 #
-# Current entries (all re-reviewed 2026-11-02 against a local build of this commit, and
-# set to expire 2026-12-01). Every one is a Go module or stdlib CVE compiled into an
+# Current entries (the betterleaks ones re-reviewed 2026-11-03 against a local build of the
+# rc.6 base image, the rest 2026-11-02; all set to expire 2026-12-01). Every one is a Go module or stdlib CVE compiled into an
 # upstream release binary. Fixing it needs a new upstream build: we cannot rebuild these
 # ourselves without giving up the upstream checksum verification that is the point of
 # pinning them. The previous set expired 2026-11-01 (#148); this commit's bumps (gh
@@ -18,16 +18,24 @@
 #   * yq 4.54.1 is the newest yq release (checked 2026-11-02), built with Go 1.27.1.
 #     yq reads local files and opens no network connection, so the net/http, crypto/tls
 #     and crypto/x509 findings have no caller in it.
-#   * betterleaks stays at 2.0.0-rc.1 (Go 1.25.12, 13 findings). rc.2 to rc.6 are built
-#     with Go 1.26.0 and carry 26, so none of them is a fix (#402 and #416 declined).
-#     Reachability, as this file asks for a scanner that reads repository content:
+#   * betterleaks is 2.0.0-rc.6 (Go 1.26.0, 26 findings; rc.1 had 13 on Go 1.25.12). rc.3
+#     removed `git --log-opts` and `--staged`; the scan now chooses its commits with a caller-side
+#     `git log` (our choice, over rc.6's own `git --revision`), so tools/secret-scan.sh
+#     and tests/smoke.sh now feed `git log -p` to `stdin --git-diff`, which rc.1 does not
+#     have (#449). Keeping rc.1 would mean keeping a `--log-opts` path that rc.3 and later
+#     reject; the owner chose to take rc.6 with these exceptions instead (#449, superseding
+#     #438). Every release that has the flag is on Go 1.26.0, so the bump trades 13 findings
+#     for 26 (#402 and #416 declined it when it bought nothing). Reachability, as
+#     this file asks for a scanner that reads repository content:
 #     tools/secret-scan.sh scans a local git history only, refuses BETTERLEAKS_VALIDATE
 #     and BETTERLEAKS_ANALYZE, and never passes -v or -a, so betterleaks opens no network
-#     connection there; the net/http, net/url, crypto/tls, crypto/x509 and x/net/idna
-#     findings have no caller on that path. encoding/xml, encoding/asn1, html/template,
-#     x/text and klauspost/compress may see repository content; each is a denial of
-#     service, and the wrapper treats a scan that does not complete as an error, so it
-#     fails closed. A user who runs `betterleaks --validate` by hand does reach net/http.
+#     connection there; the net, net/http, net/url, net/mail, crypto/tls, crypto/x509 and
+#     x/net http2 findings have no caller on that path (net/mail is parsed only for a mail-format
+#     patch header, which the pinned `--pretty=medium` never produces). encoding/xml, encoding/asn1, html/template,
+#     mime, os.Root and the x/net/idna and dnsmessage parsers may see repository content;
+#     each is a denial of service or needs an attacker-controlled name or path the scan never
+#     builds, and the wrapper treats a scan that does not complete as an error, so it fails
+#     closed. A user who runs `betterleaks --validate` by hand does reach net/http.
 #   * tofu 1.13.2 is the newest release (2026-10-21) and carries 5. tofu does make
 #     network calls (registries, module sources, backends); none of the 5 is fixed
 #     upstream yet. (1.13.2 cleared the 1.13.1 crypto/x509 finding.)
@@ -51,55 +59,107 @@ vulnerabilities:
     expired_at: 2026-12-01
   - id: CVE-2026-111943
     paths: ["usr/local/bin/betterleaks"]
-    statement: "HIGH in crypto/x509 compiled into upstream betterleaks 2.0.0-rc.1 (Go 1.25.12); later rcs are built with Go 1.26.0 and carry more."
+    statement: "HIGH in crypto/x509 compiled into upstream betterleaks 2.0.0-rc.6 (Go 1.26.0); the pinned release; rc.1 has no `stdin --git-diff`, which tools/secret-scan.sh needs (#449)."
+    expired_at: 2026-12-01
+  - id: CVE-2026-25679
+    paths: ["usr/local/bin/betterleaks"]
+    statement: "HIGH in net/url compiled into upstream betterleaks 2.0.0-rc.6 (Go 1.26.0); the pinned release; rc.1 has no `stdin --git-diff`, which tools/secret-scan.sh needs (#449)."
+    expired_at: 2026-12-01
+  - id: CVE-2026-27137
+    paths: ["usr/local/bin/betterleaks"]
+    statement: "HIGH in crypto/x509 compiled into upstream betterleaks 2.0.0-rc.6 (Go 1.26.0); the pinned release; rc.1 has no `stdin --git-diff`, which tools/secret-scan.sh needs (#449)."
+    expired_at: 2026-12-01
+  - id: CVE-2026-27145
+    paths: ["usr/local/bin/betterleaks"]
+    statement: "HIGH in crypto/x509 compiled into upstream betterleaks 2.0.0-rc.6 (Go 1.26.0); the pinned release; rc.1 has no `stdin --git-diff`, which tools/secret-scan.sh needs (#449)."
+    expired_at: 2026-12-01
+  - id: CVE-2026-32280
+    paths: ["usr/local/bin/betterleaks"]
+    statement: "HIGH in crypto/x509 compiled into upstream betterleaks 2.0.0-rc.6 (Go 1.26.0); the pinned release; rc.1 has no `stdin --git-diff`, which tools/secret-scan.sh needs (#449)."
+    expired_at: 2026-12-01
+  - id: CVE-2026-32281
+    paths: ["usr/local/bin/betterleaks"]
+    statement: "HIGH in crypto/x509 compiled into upstream betterleaks 2.0.0-rc.6 (Go 1.26.0); the pinned release; rc.1 has no `stdin --git-diff`, which tools/secret-scan.sh needs (#449)."
+    expired_at: 2026-12-01
+  - id: CVE-2026-32283
+    paths: ["usr/local/bin/betterleaks"]
+    statement: "HIGH in crypto/tls compiled into upstream betterleaks 2.0.0-rc.6 (Go 1.26.0); the pinned release; rc.1 has no `stdin --git-diff`, which tools/secret-scan.sh needs (#449)."
+    expired_at: 2026-12-01
+  - id: CVE-2026-33810
+    paths: ["usr/local/bin/betterleaks"]
+    statement: "HIGH in crypto/x509 compiled into upstream betterleaks 2.0.0-rc.6 (Go 1.26.0); the pinned release; rc.1 has no `stdin --git-diff`, which tools/secret-scan.sh needs (#449)."
+    expired_at: 2026-12-01
+  - id: CVE-2026-33811
+    paths: ["usr/local/bin/betterleaks"]
+    statement: "HIGH in net compiled into upstream betterleaks 2.0.0-rc.6 (Go 1.26.0); the pinned release; rc.1 has no `stdin --git-diff`, which tools/secret-scan.sh needs (#449)."
+    expired_at: 2026-12-01
+  - id: CVE-2026-33814
+    paths: ["usr/local/bin/betterleaks"]
+    statement: "HIGH in golang.org/x/net http2 compiled into upstream betterleaks 2.0.0-rc.6 (Go 1.26.0); the pinned release; rc.1 has no `stdin --git-diff`, which tools/secret-scan.sh needs (#449)."
     expired_at: 2026-12-01
   - id: CVE-2026-33818
     paths: ["usr/local/bin/betterleaks"]
-    statement: "HIGH in encoding/asn1 compiled into upstream betterleaks 2.0.0-rc.1 (Go 1.25.12); later rcs are built with Go 1.26.0 and carry more."
+    statement: "HIGH in encoding/asn1 compiled into upstream betterleaks 2.0.0-rc.6 (Go 1.26.0); the pinned release; rc.1 has no `stdin --git-diff`, which tools/secret-scan.sh needs (#449)."
+    expired_at: 2026-12-01
+  - id: CVE-2026-39820
+    paths: ["usr/local/bin/betterleaks"]
+    statement: "HIGH in net/mail compiled into upstream betterleaks 2.0.0-rc.6 (Go 1.26.0); the pinned release; rc.1 has no `stdin --git-diff`, which tools/secret-scan.sh needs (#449)."
     expired_at: 2026-12-01
   - id: CVE-2026-39821
     paths: ["usr/local/bin/betterleaks"]
-    statement: "HIGH in golang.org/x/net/idna compiled into upstream betterleaks 2.0.0-rc.1 (Go 1.25.12); later rcs are built with Go 1.26.0 and carry more."
+    statement: "HIGH in golang.org/x/net/idna compiled into upstream betterleaks 2.0.0-rc.6 (Go 1.26.0); the pinned release; rc.1 has no `stdin --git-diff`, which tools/secret-scan.sh needs (#449)."
     expired_at: 2026-12-01
-  - id: CVE-2026-56851
+  - id: CVE-2026-39822
     paths: ["usr/local/bin/betterleaks"]
-    statement: "HIGH in golang.org/x/text compiled into upstream betterleaks 2.0.0-rc.1 (Go 1.25.12); later rcs are built with Go 1.26.0 and carry more."
+    statement: "HIGH in os.Root compiled into upstream betterleaks 2.0.0-rc.6 (Go 1.26.0); the pinned release; rc.1 has no `stdin --git-diff`, which tools/secret-scan.sh needs (#449)."
+    expired_at: 2026-12-01
+  - id: CVE-2026-39836
+    paths: ["usr/local/bin/betterleaks"]
+    statement: "HIGH in net compiled into upstream betterleaks 2.0.0-rc.6 (Go 1.26.0); the pinned release; rc.1 has no `stdin --git-diff`, which tools/secret-scan.sh needs (#449)."
+    expired_at: 2026-12-01
+  - id: CVE-2026-42499
+    paths: ["usr/local/bin/betterleaks"]
+    statement: "HIGH in net/mail compiled into upstream betterleaks 2.0.0-rc.6 (Go 1.26.0); the pinned release; rc.1 has no `stdin --git-diff`, which tools/secret-scan.sh needs (#449)."
+    expired_at: 2026-12-01
+  - id: CVE-2026-42504
+    paths: ["usr/local/bin/betterleaks"]
+    statement: "HIGH in mime compiled into upstream betterleaks 2.0.0-rc.6 (Go 1.26.0); the pinned release; rc.1 has no `stdin --git-diff`, which tools/secret-scan.sh needs (#449)."
+    expired_at: 2026-12-01
+  - id: CVE-2026-46600
+    paths: ["usr/local/bin/betterleaks"]
+    statement: "HIGH in golang.org/x/net/dns/dnsmessage compiled into upstream betterleaks 2.0.0-rc.6 (Go 1.26.0); the pinned release; rc.1 has no `stdin --git-diff`, which tools/secret-scan.sh needs (#449)."
     expired_at: 2026-12-01
   - id: CVE-2026-56853
     paths: ["usr/local/bin/betterleaks"]
-    statement: "HIGH in net/http compiled into upstream betterleaks 2.0.0-rc.1 (Go 1.25.12); later rcs are built with Go 1.26.0 and carry more."
+    statement: "HIGH in net/http compiled into upstream betterleaks 2.0.0-rc.6 (Go 1.26.0); the pinned release; rc.1 has no `stdin --git-diff`, which tools/secret-scan.sh needs (#449)."
     expired_at: 2026-12-01
   - id: CVE-2026-56858
     paths: ["usr/local/bin/betterleaks"]
-    statement: "HIGH in html/template compiled into upstream betterleaks 2.0.0-rc.1 (Go 1.25.12); later rcs are built with Go 1.26.0 and carry more."
+    statement: "HIGH in html/template compiled into upstream betterleaks 2.0.0-rc.6 (Go 1.26.0); the pinned release; rc.1 has no `stdin --git-diff`, which tools/secret-scan.sh needs (#449)."
     expired_at: 2026-12-01
   - id: CVE-2026-56859
     paths: ["usr/local/bin/betterleaks"]
-    statement: "HIGH in encoding/xml compiled into upstream betterleaks 2.0.0-rc.1 (Go 1.25.12); later rcs are built with Go 1.26.0 and carry more."
+    statement: "HIGH in encoding/xml compiled into upstream betterleaks 2.0.0-rc.6 (Go 1.26.0); the pinned release; rc.1 has no `stdin --git-diff`, which tools/secret-scan.sh needs (#449)."
     expired_at: 2026-12-01
   - id: CVE-2026-56860
     paths: ["usr/local/bin/betterleaks"]
-    statement: "HIGH in net/url compiled into upstream betterleaks 2.0.0-rc.1 (Go 1.25.12); later rcs are built with Go 1.26.0 and carry more."
+    statement: "HIGH in net/url compiled into upstream betterleaks 2.0.0-rc.6 (Go 1.26.0); the pinned release; rc.1 has no `stdin --git-diff`, which tools/secret-scan.sh needs (#449)."
     expired_at: 2026-12-01
   - id: CVE-2026-56862
     paths: ["usr/local/bin/betterleaks"]
-    statement: "HIGH in crypto/tls compiled into upstream betterleaks 2.0.0-rc.1 (Go 1.25.12); later rcs are built with Go 1.26.0 and carry more."
-    expired_at: 2026-12-01
-  - id: CVE-2026-63209
-    paths: ["usr/local/bin/betterleaks"]
-    statement: "HIGH in github.com/klauspost/compress compiled into upstream betterleaks 2.0.0-rc.1 (Go 1.25.12); later rcs are built with Go 1.26.0 and carry more."
+    statement: "HIGH in crypto/tls compiled into upstream betterleaks 2.0.0-rc.6 (Go 1.26.0); the pinned release; rc.1 has no `stdin --git-diff`, which tools/secret-scan.sh needs (#449)."
     expired_at: 2026-12-01
   - id: CVE-2026-78667
     paths: ["usr/local/bin/betterleaks"]
-    statement: "HIGH in net/http compiled into upstream betterleaks 2.0.0-rc.1 (Go 1.25.12); later rcs are built with Go 1.26.0 and carry more."
+    statement: "HIGH in net/http compiled into upstream betterleaks 2.0.0-rc.6 (Go 1.26.0); the pinned release; rc.1 has no `stdin --git-diff`, which tools/secret-scan.sh needs (#449)."
     expired_at: 2026-12-01
   - id: CVE-2026-78669
     paths: ["usr/local/bin/betterleaks"]
-    statement: "HIGH in net/http compiled into upstream betterleaks 2.0.0-rc.1 (Go 1.25.12); later rcs are built with Go 1.26.0 and carry more."
+    statement: "HIGH in net/http (stdlib and golang.org/x/net http2) compiled into upstream betterleaks 2.0.0-rc.6 (Go 1.26.0); the pinned release; rc.1 has no `stdin --git-diff`, which tools/secret-scan.sh needs (#449)."
     expired_at: 2026-12-01
   - id: CVE-2026-97031
     paths: ["usr/local/bin/betterleaks"]
-    statement: "HIGH in crypto/tls compiled into upstream betterleaks 2.0.0-rc.1 (Go 1.25.12); later rcs are built with Go 1.26.0 and carry more."
+    statement: "HIGH in crypto/tls compiled into upstream betterleaks 2.0.0-rc.6 (Go 1.26.0); the pinned release; rc.1 has no `stdin --git-diff`, which tools/secret-scan.sh needs (#449)."
     expired_at: 2026-12-01
   - id: CVE-2026-116587
     paths: ["usr/local/bin/tofu"]

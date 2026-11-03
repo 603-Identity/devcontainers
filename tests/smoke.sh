@@ -72,10 +72,21 @@ printf 'cf = "%s"\n' "$bl_tok" > "$bl/a.tf"
 git -C "$bl" add -A
 git -C "$bl" commit -qm leak
 bl_leak=$(git -C "$bl" rev-parse HEAD)
-bl_scan() { # bl_scan <head sha>: the flags the reusable workflow uses
-    /usr/local/bin/betterleaks git "$bl" -c /usr/local/share/devc/secret-scan/org.toml \
+bl_scan() { # bl_scan <rev or range> [repo]: the invocation tools/secret-scan.sh uses (git log -p into stdin --git-diff)
+    # The patch goes through a file, not a pipe: this shell has no pipefail, and a failed git
+    # must not read as an empty, clean stream.
+    bl_patch=$(mktemp)
+    if ! git -C "${2:-$bl}" --no-replace-objects log -p --root --diff-merges=separate --text --no-renames \
+        --no-ext-diff --no-textconv --no-color --no-show-signature --no-abbrev-commit --no-decorate \
+        --no-notes --no-relative --date=default --encoding=UTF-8 --pretty=medium --src-prefix=a/ --dst-prefix=b/ "$1" > "$bl_patch"; then
+        rm -f "$bl_patch"; return 125
+    fi
+    /usr/local/bin/betterleaks stdin --git-diff -c /usr/local/share/devc/secret-scan/org.toml \
         --ignore-file /dev/null --no-allow-signatures --redact --no-banner --no-color --jsonl \
-        --log-opts="-m --text $1" 2>/dev/null
+        < "$bl_patch" 2>/dev/null
+    bl_scan_rc=$?
+    rm -f "$bl_patch"
+    return "$bl_scan_rc"
 }
 bl_rc=0
 bl_out=$(bl_scan "$bl_clean") || bl_rc=$?
@@ -129,7 +140,48 @@ bl_rc=0
 bl_out=$(bl_scan "$bl_two..$bl_two2") || bl_rc=$?
 check "betterleaks comma-separated Entra secrets both found" 2 \
     "$(printf '%s\n' "$bl_out" | jq -rs '[.[] | select(has("finding")) | select(.finding.rule_id == "org-azure-ad-client-secret")] | length')"
-rm -rf "$bl"
+# Coverage that only the git side of the pipeline provides (a stream with no `diff --git` header
+# reads as "nothing to scan", and most unparseable ones only end the scan incomplete): a secret that exists only in a merge's
+# resolution, and one in the root commit under log.showRoot=false.
+bl2=$(mktemp -d)
+git -C "$bl2" init -q -b main
+git -C "$bl2" config user.email t@example.test
+git -C "$bl2" config user.name t
+git -C "$bl2" config commit.gpgsign false
+git -C "$bl2" config log.showRoot false
+git -C "$bl2" config log.diffMerges dense-combined
+git -C "$bl2" config log.abbrevCommit true
+printf 'cf = "%s"\n' "$bl_tok" > "$bl2/root.tf"
+git -C "$bl2" add -A
+git -C "$bl2" commit -qm root
+bl_rc=0
+bl_out=$(bl_scan HEAD "$bl2") || bl_rc=$?
+check "betterleaks root commit secret exit" 1 "$bl_rc"
+check "betterleaks root commit secret found despite log.showRoot=false" 1 \
+    "$(printf '%s\n' "$bl_out" | jq -rs '[.[] | select(has("finding")) | select(.finding.location.path == "root.tf")] | length | if . > 0 then 1 else 0 end')"
+git -C "$bl2" rm -q root.tf
+git -C "$bl2" commit -qm 'drop the root secret'
+git -C "$bl2" checkout -q -b side
+echo s > "$bl2/s.txt"
+git -C "$bl2" add -A
+git -C "$bl2" commit -qm side
+git -C "$bl2" checkout -q main
+echo m > "$bl2/m.txt"
+git -C "$bl2" add -A
+git -C "$bl2" commit -qm main
+git -C "$bl2" merge -q --no-ff --no-commit side
+printf 'cf = "%s"\n' "$bl_tok" > "$bl2/resolved.tf"
+git -C "$bl2" add -A
+git -C "$bl2" commit -qm 'merge with a secret only in the resolution'
+bl_rc=0
+bl_out=$(bl_scan "HEAD^1..HEAD" "$bl2") || bl_rc=$?
+check "betterleaks merge-resolution secret exit" 1 "$bl_rc"
+check "betterleaks merge-resolution secret found despite log.diffMerges" 1 \
+    "$(printf '%s\n' "$bl_out" | jq -rs '[.[] | select(has("finding")) | select(.finding.location.path == "resolved.tf")] | length | if . > 0 then 1 else 0 end')"
+bl_rc=0
+bl_scan no-such-rev "$bl2" > /dev/null || bl_rc=$?
+check "betterleaks scan with a failing git is an error, not a clean stream" 125 "$bl_rc"
+rm -rf "$bl" "$bl2"
 check "PATH has ~/.local/bin" 1 "$(printf '%s' ":$PATH:" | grep -c ':/home/app/.local/bin:')"
 check "python3" 3.14 "$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
 check "tools venv" /opt/devc/tools/bin/pre-commit "$(readlink /usr/local/bin/pre-commit)"

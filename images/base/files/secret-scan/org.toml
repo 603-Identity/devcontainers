@@ -1,5 +1,5 @@
-# Org secret-scanning rules for 603-Identity (devcontainers#190). Tested against betterleaks
-# 2.0.0-rc.1, the version pinned by BETTERLEAKS_VERSION in images/base/Dockerfile.
+# Org secret-scanning rules for 603-Identity (devcontainers#190). Written against betterleaks 2.0.0-rc.1 and smoke-tested on
+# the version pinned by BETTERLEAKS_VERSION in images/base/Dockerfile.
 #
 # This file is the single authority for the org rule set. The reusable workflow reads it at
 # the caller's pinned SHA, and the base image ships it at /usr/local/share/devc/secret-scan/org.toml.
@@ -40,7 +40,9 @@ finding.secret matches "^AAAA[BC]3NzaC"
 
 # Standalone copies of default rules that rc.1 gates on REQUIRED components (the default
 # azure-ad-client-secret reports only when a tenant id AND client id are within 8 lines; the
-# default aws-access-token only with a secret key nearby). A lone secret is the common leak.
+# default aws-access-token, before rc.3, with a secret key nearby; rc.3 and later report AWS
+# access keys always, so on rc.6 the aws copy is a second rule for the same key). A lone secret
+# is the common leak.
 # No validate/components: detection only.
 #
 # org-azure-ad-client-secret departs from upstream gitleaks on purpose three times: it has no
