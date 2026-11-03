@@ -110,8 +110,8 @@ PR lands.
 **Resolved** 2026-09-30, in the design spec on #21 (which also folds #9).
 
 *Amended 2026-11-02 by DEVC-D9:* from v1.6 the template on `main` drops VS Code entry, the
-shared volume and the token-ledger bullet below. VS Code stays a convention plus a backstop, not a
-requirement. The host directory `glunk-identity`, named in the template's token mount, is a
+shared volume and the token-ledger bullet below. VS Code attach is unsupported for dev-App containers (DEVC-D9's
+2026-11-02 amendment): a stated position, not an enforced one. The legacy template is unchanged. The host directory `glunk-identity`, named in the template's token mount, is a
 named exception to the org-neutral names. The rest of this decision stands.
 
 **Context.** The images become the shared devcontainer images for 603-Identity and
@@ -420,6 +420,15 @@ repo from editing around either.
   `.devcontainer/` from any general Dependabot auto-arm pattern, a consumer requirement. Dev-App
   repos may not run an approvals-0 ruleset. #396 holds the remaining preconditions. Superseding
   #267 leaves #93 and F9b accepted at the root of the auto-merge chain, as the threat model says.
+- **VS Code is unsupported for dev-App containers.** *Amended 2026-11-02 (#456), before the v1.6 tag.* The template
+  sets no `customizations.vscode` settings: the four it first carried were unverified, and a
+  setting nobody tests would be copied into every adopter as if it were a control. The only
+  supported entry is the launcher (glunk-works/claude-workbench#1276); until it ships, the
+  devcontainer CLI from PowerShell (`devcontainer up --skip-post-attach --workspace-folder <path>`, then `devcontainer exec --workspace-folder <path> claude`, run from outside the checkout). Attaching VS Code brings
+  back the host's git config and credential helper, an askpass program and the host's VS Code
+  GitHub session. The template keeps the `postStartCommand` `rm` of VS Code's helper scripts and
+  the `postAttachCommand` warning as a notice of an attach, and `TestRealTemplateShape` fails if a
+  `customizations` block returns.
 - **The legacy route is frozen.** No new PAT-route adoptions. The two pilots keep their copies
   until their cutover, and the plain images keep publishing.
 - **Supersessions.** DEVC-D4 and DEVC-D7 carry in-place notes, and so does DEVC-D3. #267 and #139

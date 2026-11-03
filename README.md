@@ -70,12 +70,24 @@ procedure is the README at
 `%USERPROFILE%\.config\glunk-identity\tokens\<owner>\<repo>\`, and the template mounts that
 directory read-only at `/run/wow`. The checkout folder name must be unique on the host
 (see [Consuming from another org](#consuming-from-another-org)). Open the repo through the
-launcher only (planned, tracked at glunk-works/claude-workbench#1276; until it ships, that is
-a convention): VS Code's "Reopen/Rebuild in Container" prompts bypass it, and a local edit to
-`.devcontainer/` runs on the host on any rebuild that does (the threat model's Known gaps).
-Do not run the host's Dev Containers or git on the mounted checkout. **Until the launcher
-ships there is no entry this repo can make safe:** opening the folder in host VS Code (which
-runs the git extension and honours workspace tasks) is itself the exposure. Open only a
+launcher only (planned, tracked at glunk-works/claude-workbench#1276). Until it ships, the interim
+entry is the devcontainer CLI from PowerShell: `devcontainer up --skip-post-attach --workspace-folder <absolute path>`, then
+`devcontainer exec --workspace-folder <absolute path> claude`. **Run them from a directory outside the checkout,
+in PowerShell (never `cmd.exe` or `devcontainer.cmd`)**: the checkout is writable by the container, and a `node.bat` planted in
+it would run on the host when `cmd.exe` resolves `node` from the current directory (reproduced), and a prompt that shows git
+status would run host git there. These commands are untested by this repo (the launcher
+replaces them); a cutover repo's first `up` can restart its legacy container, so remove that first. **VS Code attach is unsupported** in a dev-App
+container: it brings back what the template is built to keep out (the host's git config and
+credential helper, an askpass program, and the host's VS Code GitHub session, which reaches every
+repo its owner can), and the template sets no VS Code settings to stop it. A local edit to
+`.devcontainer/` (or a root `.devcontainer.json`) runs on the host on any `up` or rebuild (the threat
+model's Known gaps). Since the first `up` makes the checkout a written-to one, **stop the container, then inspect `.devcontainer/`
+(and that no root `.devcontainer.json` took over), then `up`**: a running container can rewrite the file between
+your look and the CLI's read. `exec --workspace-folder` re-reads the file and substitutes the host's
+environment into it, so run the CLI from a PowerShell whose environment holds no secrets (`Get-ChildItem env:`
+in that window lists what it inherits).
+Do not run the host's Dev Containers extension or git on the mounted checkout, and do not open the folder in host VS Code: it
+runs the git extension and honours workspace tasks, which is itself the exposure. Open only a
 fresh clone of the default branch that no container has run on, never a checkout a container has
 written to (a clone becomes one the moment a container mounts it). To use a written-to checkout
 anyway, inspect it first, without host git or VS Code: `.devcontainer/`, `.devcontainer.json`,
@@ -143,7 +155,7 @@ anyway, inspect it first, without host git or VS Code: `.devcontainer/`, `.devco
    - **`tofu init` in the container rewrites the lock file** (it adds the `linux_amd64` hash
      and its header comment). Commit that as its own change or discard it; do not let it
      ride along in the adoption PR.
-6. Start the container from the launcher (until it ships, see the interim precaution above). There is no `gh auth login` step: the dev token is
+6. Start the container from the launcher (until it ships, see the interim entry above). There is no `gh auth login` step: the dev token is
    already at `/run/wow/dev-token`, and `gh` and git read it from there (see
    [Credentials](#credentials)). Without it they refuse.
 
@@ -155,18 +167,19 @@ What a healthy container looks like (from the terraform-cloudflare-dns pilot):
   `NoNewPrivs: 1`; `id -un` is `app`; `touch /usr/local/x` fails with "Read-only file system".
 - `/home/app` is owned by `app`. `/tmp` is the volume's
   root-owned directory, mode 1777, which is normal: `app` writes there through the sticky bit.
-- `ls ~/.vscode-server/extensions` lists no extension directory (or holds only what you installed on purpose): the template
+- `~/.vscode-server` does not exist on a fresh home volume (the CLI entry never creates it; VS Code does). The template
   installs no extension, but the VS Code server loads whatever a reused home volume still holds, and a host
   user setting `dev.containers.defaultExtensions` installs into every container.
 - `/run/wow` is a read-only mount holding `dev-token` (`touch /run/wow/x` fails), `gpg` is not
   on `PATH`, and `gh auth status` reports a login only while the token is fresh. A start with
   no token directory either fails to start (Docker Desktop: "bind source path does not exist")
   or starts with an empty `/run/wow`, in which case `gh` and git refuse.
-- **`docker diff` is not literally empty.** Expect exactly `A /vscode` (the mount point VS Code
-  creates for its server) and `C /usr/sbin`, `A /usr/sbin/docker-init` (the init binary Docker
-  injects for `"init": true`). Anything else is a write the container should not be making,
-  and it stayed that way after a full working session (editor, git, tofu, tflint, pre-commit,
-  Claude Code, `gh`).
+- **`docker diff` is not literally empty.** Expect `C /usr/sbin` and `A /usr/sbin/docker-init` (the init binary Docker
+  injects for `"init": true`). The pilot also showed `A /vscode`, the mount point the Dev Containers
+  extension adds when it creates a container; the CLI entry is expected to drop it (unmeasured). Anything else
+  is a write the container should not be making, and it stayed that way after a full working session
+  in the pilot (editor, git, tofu, tflint, pre-commit, Claude Code, `gh`). `docker diff` does not show a VS Code
+  attach to a running container.
 - **Commits made in a dev-App container are unsigned** (`commit.gpgsign=false`; the image has
   no gpg), whatever the host identity file says. `git log --format=%G?` prints `N` for them.
   (A legacy PAT-route container signs through VS Code's forwarded agent; see

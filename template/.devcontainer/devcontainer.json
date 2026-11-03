@@ -6,7 +6,7 @@
 //
 // Windows hosts only: the host broker writes the token directory under %USERPROFILE%, and
 // every ${localEnv:USERPROFILE} below reads it. Open the repo through the launcher, never
-// through VS Code's "Reopen in Container" (README "Using an image").
+// through VS Code (attach is unsupported; README "Using an image").
 //
 // Volume names derive from the checkout FOLDER name: no two checkouts on one host may share
 // one (README "Consuming from another org").
@@ -55,20 +55,5 @@
   // agent, an unexpected claude binary) and the git identity projection.
   "postStartCommand": "rm -f /tmp/vscode-remote-containers-*.js; sh /usr/local/share/devc/owner-check.sh; sh /usr/local/share/devc/devapp-check.sh; sh /usr/local/share/devc/git-identity.sh",
   "postCreateCommand": "if [ -f .pre-commit-config.yaml ]; then pre-commit install; fi",
-  "postAttachCommand": "echo 'devapp: open this repo through the launcher only' >&2",
-
-  // No extensions: an extension runs in the container with the dev token in reach. The first
-  // two settings are meant to stop VS Code copying the host's git config and forwarding its credential
-  // helper; the last two, to stop it setting an askpass program for the terminal's git and offering
-  // the host's GitHub session to it, which would answer where dev-token quits (DEVC-D9).
-  "customizations": {
-    "vscode": {
-      "settings": {
-        "dev.containers.copyGitConfig": false,
-        "remote.containers.gitCredentialHelperConfigLocation": "none",
-        "git.terminalAuthentication": false,
-        "github.gitAuthentication": false
-      }
-    }
-  }
+  "postAttachCommand": "echo 'devapp: open this repo through the launcher only' >&2"
 }
