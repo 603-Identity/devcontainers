@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Proves the main refusals in images/devapp/files/claude-fetch.sh fire (not each gpgv status token). That script is the build's
+# Proves the main refusals in images/devapp/files/claude-fetch.sh fire. It does not prove that each
+# gpgv status check fires on its own: some of them overlap by design, and the note at key c below
+# says which ones this suite witnesses only as a pair, and which one it cannot reach. That script is the build's
 # only trust decision about a third-party binary, and a real build exercises just the
 # passing path: a regression that made one check vacuous would still go green. Here each case
 # breaks exactly one thing in an otherwise valid release and expects the script to refuse for
@@ -39,8 +41,14 @@ FPR_B=$(genkey b)
 cat "$W/a.asc" "$W/b.asc" >"$W/both.asc"
 
 # Key c (made just before its case) expires two seconds after it is made; key d is revoked. Both sign the manifest while still
-# good (c) or are exported after the fact (d): gpgv can exit 0 for these, so the status-token
-# loop in claude-fetch.sh, not gpgv's exit code, is what has to refuse them.
+# good (c) or are exported after the fact (d). gpgv exits 0 for both (checked with gpgv 2.4.8) and
+# reports EXPKEYSIG or REVKEYSIG in place of GOODSIG, so two checks in claude-fetch.sh refuse each
+# of them: the GOODSIG count and the bad-status loop. Each one alone is enough, which means this
+# suite witnesses the two only as a pair. Removing either one leaves every case green; removing
+# both turns these two cases red (#445). The same holds for the GOODSIG and VALIDSIG counts in
+# the two-signature case below. The VALIDSIG signer check cannot be reached here at all: the
+# one-primary-key and fingerprint checks have already limited the keyring to the pinned key. These
+# overlaps are defence in depth, by design.
 FPR_D=$(genkey d)
 
 # A fake curl: serves $FIX/manifest.json, $FIX/manifest.json.sig and $FIX/claude by the URL's tail.
