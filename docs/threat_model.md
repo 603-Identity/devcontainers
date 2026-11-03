@@ -30,7 +30,7 @@ at build and publish time, before any consumer pulls.
 | Input | Enters through | Control |
 |---|---|---|
 | Ubuntu base image | `FROM` in `images/base/Dockerfile` | Pinned by digest. Dependabot proposes new digests as reviewed PRs. |
-| apt packages | `apt-get install` in the base image | **Not version-pinned** (see [Known gaps](#known-gaps)). Bounded by the base digest and the weekly rebuild. |
+| apt packages | `apt-get install` in the base, node and dev-App images | **Not version-pinned** (see [Known gaps](#known-gaps)). Bounded by the base digest and the weekly rebuild. |
 | Release binaries (gh, yq, uv, tofu, tflint, node, betterleaks) | `curl` in each Dockerfile | Pinned by version and sha256. Each sha256 comes from that release's own published checksum file, never from a first download. Neither the build nor the automated bump checks that file's signature or the binary's provenance. Only tofu's checksum file was checked, by hand, for 1.13.0 and 1.13.2 (see Known gaps). The exception is betterleaks: `bump-binaries.sh` verifies its sigstore bundle before taking the checksum (see Org secret scanning). |
 | uv-provisioned interpreters | `uv` at run time, when a repo's `.python-version` asks for an older Python | Not part of the image: uv downloads the interpreter from upstream on demand, into the per-repo home volume (`~/.local/share/uv`, kept across rebuilds, never the shared cache volume). uv checks it against a sha256 built into the pinned uv binary; the build's Trivy gate never scans it. Only a repo that cannot use the system 3.14 does this. |
 | Python tools | `uv sync --locked` in the base image | Installed only from `images/base/tools/uv.lock`, which carries hashes; `--locked` fails on any drift from `pyproject.toml`. |
