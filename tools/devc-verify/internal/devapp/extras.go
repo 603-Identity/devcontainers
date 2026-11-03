@@ -49,7 +49,7 @@ var identityRE = func() *regexp.Regexp {
 var systemGitRE = regexp.MustCompile(`\bgit\b[^;&|\n]*\bconfig\b[^;&|\n]*--system\b`)
 
 // forbiddenEnv is matched without regard to letter case. GIT_ is a prefix.
-var forbiddenEnv = []string{"ANTHROPIC_BASE_URL", "HTTP_PROXY", "HTTPS_PROXY"}
+var forbiddenEnv = []string{"ANTHROPIC_BASE_URL", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"}
 
 // CheckDockerfile applies the extras rules to a dev-App Dockerfile that passed
 // dockerfile.Parse. files holds what fetch-consumer.sh fetched from .devcontainer/, by path

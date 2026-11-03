@@ -22,7 +22,8 @@
 #     at most 1 MiB each) and may not ADD a local file;
 #   - the extras may not write the identity layer (/run/wow, /usr/local/libexec,
 #     /usr/local/bin/gh and claude, /etc/gitconfig, /etc/claude-code, /usr/local/share/devc),
-#     set GIT_*, HTTP_PROXY, HTTPS_PROXY or ANTHROPIC_BASE_URL, or run `git config --system`.
+#     set GIT_*, HTTP_PROXY, HTTPS_PROXY, ALL_PROXY or ANTHROPIC_BASE_URL, or run
+#     `git config --system`.
 #     That list catches accidents, not attacks: a human reviews the extras.
 # devcontainer.json is held to the same template exactly (see its header), no other
 # devcontainer.json may exist anywhere in the repo, and the default branch must require an
