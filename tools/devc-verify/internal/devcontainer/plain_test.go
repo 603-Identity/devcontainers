@@ -34,14 +34,15 @@ func TestPlainAcceptsLegacyAndPilot(t *testing.T) {
 	}
 }
 
-// Until PR D replaces it, the template on main IS the legacy template.
-func TestLegacyFixtureIsTheTemplate(t *testing.T) {
+// The template is dev-App only now, so it must never again be accepted by plain mode: a plain
+// repo that copies it would be dev-App by its markers and fail the head-must-be-dev-App rule.
+func TestTemplateIsNotPlain(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "template", ".devcontainer", "devcontainer.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(b) != testdata(t, "legacy.devcontainer.json") {
-		t.Fatal("template/.devcontainer/devcontainer.json differs from testdata/legacy.devcontainer.json")
+	if err := CheckPlain(b); !check.IsFailure(err) {
+		t.Fatalf("the dev-App template passes plain mode: %v", err)
 	}
 }
 

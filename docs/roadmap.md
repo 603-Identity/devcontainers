@@ -18,7 +18,7 @@ P0: cross-org images (milestone 1) is done. Its last change merged as `6f63aec` 
 
 P1: pilot adoption (milestone 2) is done. Its last change merged as `00b6a2e` (#228, the
 adoption runbook). The pilots, terraform-cloudflare-dns and terraform-microsoft365-entra, have
-adopted the template (#10 closed). The waves (#26 to #28) were to follow `docs/adopting.md`; DEVC-D9 froze it first. Org secret
+adopted the template (#10 closed). The waves (#26 to #28) were to follow `docs/adopting.md`; DEVC-D9 froze it first, and PR D (#392) rewrote it for the dev-App route. Org secret
 scanning (#190) moved to milestone 4.
 
 Repo hardening: review gate and CI (milestone 4) is done. Its last change merged as `344d625`
@@ -26,8 +26,8 @@ Repo hardening: review gate and CI (milestone 4) is done. Its last change merged
 (glunk-works/claude-workbench#346).
 
 Dev-App flavour and template (milestone 8, #418) is in progress. DEVC-D9 records it and
-ships in v1.6. The images are built and published (#442). The consumer-verification lint (PR C, #392), the
-template (PR D, #392), the v1.6 tag and the closing PR E follow, in that order. The legacy PAT route is frozen: the
+ships in v1.6. The images are built and published (#442). The consumer-verification lint (PR C, #451) is merged;
+the template (PR D, #392) is in review, then the v1.6 tag and the closing PR E follow, in that order. The legacy PAT route is frozen: the
 two pilots keep their copies until their cutover.
 
 ## Next action

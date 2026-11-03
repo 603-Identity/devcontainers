@@ -68,7 +68,7 @@ base dev-App. A dev-App head must then carry the token mount (surface 1). In dev
 head must itself be dev-App.
 
 **Plain mode** is an allowlist built from the legacy template (`internal/devcontainer/plain.go`;
-`testdata/legacy.devcontainer.json` is that template), #392's cloud-credential guard widened:
+`testdata/legacy.devcontainer.json` is that template, now kept only for this), #392's cloud-credential guard widened:
 
 - `runArgs` is exactly the legacy five; `workspaceFolder` and `workspaceMount` are exactly the
   legacy strings;
@@ -155,6 +155,10 @@ code-owner review requires nothing), and whether stale approvals are dismissed o
   `tools/check-self-pins.sh` checks it against the pinned release.
 - `testdata/` fixtures are hand-built, not recorded (see `testdata/README.md`), except
   `legacy.devcontainer.json` and `pilot.devcontainer.json`, which are copies.
+- The dev-App self-tests read the real `template/` (there is no template fixture): the
+  consumer and `main` tests fill it in as a head, and the `internal/devapp` tests hold one
+  negative case per surface and per rule, plus what the template must never carry (extensions,
+  `containerEnv`, the shared tofu cache, `~/.aws`).
 
 ## Re-vendoring
 

@@ -1,10 +1,14 @@
 package devapp
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/tailscale/hujson"
 
 	"github.com/603-identity/devcontainers/tools/devc-verify/internal/check"
 	"github.com/603-identity/devcontainers/tools/devc-verify/internal/dockerfile"
@@ -18,22 +22,22 @@ const (
 	hdr    = "# syntax=" + dockerfile.CurrentSyntax + "\n"
 )
 
-func fixtureTemplate(t *testing.T) string {
+func realTemplate(t *testing.T) string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "testdata", "devapp", "template", ".devcontainer", "devcontainer.json"))
+	b, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "template", ".devcontainer", "devcontainer.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	return string(b)
 }
 
-// head is the fixture template as an adopter fills it in: the token directory names the repo.
+// head is the real template as an adopter fills it in: the token directory names the repo.
 func head(t *testing.T) string {
-	return strings.Replace(fixtureTemplate(t), "tokens/OWNER/REPO", "tokens/"+repo, 1)
+	return strings.Replace(realTemplate(t), "tokens/OWNER/REPO", "tokens/"+repo, 1)
 }
 
 func cands(t *testing.T) []Candidate {
-	return []Candidate{{Name: "the template", Data: []byte(fixtureTemplate(t))}}
+	return []Candidate{{Name: "the template", Data: []byte(realTemplate(t))}}
 }
 
 func isFailure(t *testing.T, err error) {
@@ -83,7 +87,7 @@ func TestCompareJSON(t *testing.T) {
 		}
 	}
 	// The snapshot is the second candidate.
-	snap := strings.Replace(fixtureTemplate(t), `"init": true,`, `"init": true, "oldKey": 1,`, 1)
+	snap := strings.Replace(realTemplate(t), `"init": true,`, `"init": true, "oldKey": 1,`, 1)
 	h := strings.Replace(head(t), `"init": true,`, `"init": true, "oldKey": 1,`, 1)
 	if err := CompareJSON([]byte(h), repo, append(cands(t), Candidate{Name: "the snapshot", Data: []byte(snap)})); err != nil {
 		t.Errorf("matching the snapshot: %v", err)
@@ -99,7 +103,7 @@ func TestCompareJSONRejects(t *testing.T) {
 		// Surface 1, the token mount name.
 		"another repo's tokens": strings.Replace(h, "tokens/"+repo, "tokens/glunk-works/other", 1),
 		"case differs":          strings.Replace(h, "tokens/"+repo, "tokens/Glunk-Works/app", 1),
-		"placeholder left":      fixtureTemplate(t),
+		"placeholder left":      realTemplate(t),
 		"owner only":            strings.Replace(h, "tokens/"+repo, "tokens/glunk-works", 1),
 		"token mount writable":  strings.Replace(h, "target=/run/wow,type=bind,readonly", "target=/run/wow,type=bind", 1),
 		"second token mount":    strings.Replace(h, `"mounts": [`, `"mounts": ["source=${localEnv:USERPROFILE}/.config/glunk-identity/tokens/`+repo+`,target=/run/wow,type=bind,readonly",`, 1),
@@ -367,4 +371,91 @@ func TestCheckDockerfileNeedsADevAppImage(t *testing.T) {
 		t.Fatal(err)
 	}
 	isFailure(t, CheckDockerfile(p, nil))
+}
+
+// The real template/ is what every dev-App head is compared with, so what it must NOT carry is
+// pinned here, apart from the comparison: an edit that adds one of these to the template would
+// otherwise pass every head that copies it (#392, the design's "Not in the template").
+func TestRealTemplateShape(t *testing.T) {
+	tmpl := realTemplate(t)
+	for _, banned := range []string{
+		`"extensions"`, `"containerEnv"`, `"remoteEnv"`, `"initializeCommand"`, `"appPort"`, `"features"`,
+		`"image"`, "devc-tofu-plugins", ".aws", "${localEnv:HOME}", "--privileged", `"privileged"`,
+		`"capAdd"`, `"securityOpt"`, "docker.sock", `"forwardPorts"`, `"onCreateCommand"`,
+		`"updateContentCommand"`, `"runServices"`, `"dockerComposeFile"`,
+	} {
+		// Comments may name them; the JSON below the header may not. Strip // comments first.
+		var code []string
+		for _, l := range strings.Split(tmpl, "\n") {
+			if i := strings.Index(l, "//"); i >= 0 && !strings.Contains(l[:i], `"`) {
+				continue
+			}
+			code = append(code, l)
+		}
+		if strings.Contains(strings.Join(code, "\n"), banned) {
+			t.Errorf("the template carries %s", banned)
+		}
+	}
+	for _, want := range []string{
+		"tokens/OWNER/REPO,target=/run/wow,type=bind,readonly",
+		`"dev.containers.copyGitConfig": false`,
+		`"remote.containers.gitCredentialHelperConfigLocation": "none"`,
+		`"git.terminalAuthentication": false`,
+		`"github.gitAuthentication": false`,
+		"--read-only",
+	} {
+		if !strings.Contains(tmpl, want) {
+			t.Errorf("the template lacks %s", want)
+		}
+	}
+	// runArgs and mounts are pinned exactly: a value that widens every adopter (--network=host,
+	// --pid=host, a mount of the whole broker directory) is not a banned key.
+	std, err := hujson.Standardize([]byte(tmpl))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Case-sensitive decoding: encoding/json would match "RUNARGS" to runArgs and let the last
+	// duplicate win, while the devcontainer CLI reads the exact key only.
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(std, &raw); err != nil {
+		t.Fatal(err)
+	}
+	for k := range raw {
+		for _, known := range []string{"runArgs", "mounts"} {
+			if k != known && strings.EqualFold(k, known) {
+				t.Errorf("the template carries a case-variant %q of %q", k, known)
+			}
+		}
+	}
+	var top struct {
+		RunArgs []string
+		Mounts  []string
+	}
+	if err := json.Unmarshal(raw["runArgs"], &top.RunArgs); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw["mounts"], &top.Mounts); err != nil {
+		t.Fatal(err)
+	}
+	wantArgs := []string{"--cap-drop=ALL", "--security-opt=no-new-privileges", "--read-only", "--tmpfs=/run", "--tmpfs=/var/tmp"}
+	if !slices.Equal(top.RunArgs, wantArgs) {
+		t.Errorf("runArgs = %q, want %q", top.RunArgs, wantArgs)
+	}
+	wantMounts := []string{
+		"source=${localEnv:USERPROFILE}/.gitconfig.d,target=/home/app/.gitconfig.d,type=bind,readonly",
+		"source=${localWorkspaceFolderBasename}-home,target=/home/app,type=volume",
+		"source=${localWorkspaceFolderBasename}-tmp,target=/tmp,type=volume",
+		"source=${localWorkspaceFolderBasename}-node_modules,target=/workspace/node_modules,type=volume",
+		"source=${localWorkspaceFolderBasename}-venv,target=/workspace/.venv,type=volume",
+		"source=${localEnv:USERPROFILE}/.config/glunk-identity/tokens/OWNER/REPO,target=/run/wow,type=bind,readonly",
+	}
+	if !slices.Equal(top.Mounts, wantMounts) {
+		t.Errorf("mounts = %q, want %q", top.Mounts, wantMounts)
+	}
+	// The credential-file cleanup runs first in postStartCommand, before any other start-up step.
+	if !strings.Contains(tmpl, `"postStartCommand": "rm -f /tmp/vscode-remote-containers-*.js; sh /usr/local/share/devc/owner-check.sh;`) {
+		t.Errorf("postStartCommand does not start with the credential-file cleanup")
+	}
+	// It is not valid as a head until OWNER/REPO is filled in.
+	isFailure(t, CompareJSON([]byte(tmpl), repo, cands(t)))
 }

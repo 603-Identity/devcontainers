@@ -41,7 +41,7 @@ at build and publish time, before any consumer pulls.
 | The token directory `/run/wow` | the host's broker, mounted read-only into a dev-App container | `dev-token` reads the one file `/run/wow/dev-token` (two lines, LF, `ghs_` installation token then UTC `expires_at`, replaced by atomic rename; refused from 60 s before `expires_at`, so the broker must replace it earlier), refuses a symlink, a malformed or oversized file, a wrong kind of token and an expired one, and answers `quit=1` to every host and protocol except https github.com. Nothing else in the directory is read: `admin-token` is the elevated token and the flavour never opens it. A missing or empty directory fails closed. |
 | Linter and scanner images | `lint.yml` and `build-and-test.sh` | Pinned by digest, the same rule the images follow. |
 | Upstream release metadata and checksum files (GitHub releases, nodejs.org, the npm registry) | `bump-binaries.sh`, run by `bump-binaries.yml`, holding the write token below while it parses this | The sha256 (or npm's registry `integrity`) is read from that release's own published file, never computed from a first download, then checked against a strict shape (a plain `X.Y.Z` version, or `X.Y.Z-rc.N` for betterleaks, which the resolver considers only while its pin is itself an rc (#208); 64 lowercase hex, or `sha512-...` for npm) before it is ever written to a file, a branch name or a commit message -- closing the path a crafted tag or checksum line would otherwise have into the Dockerfile rewrite. A resolved version older than the current pin is rejected rather than opened as a downgrade PR. The resulting PR still goes through every ordinary gate, including `architect-review`, before merge (see Known gaps for what that gate does and does not check). |
-| Other repos' and orgs' code, through the shared cache volume | `devc-tofu-plugins` at `~/.cache/tofu-plugins` | Only the tofu provider cache lives there: the volume is mounted at that one directory, not over `~/.cache`, so a tool that hard-codes `~/.cache` writes into the per-repo home volume. `tofu` verifies each cached provider against the consuming repo's lock when a command starts, but runs it from the shared, writable path (see Known gaps). npm's cache is per repo, because `npx` runs packages from it without a check; pre-commit, pip, uv and every other XDG-aware cache are per repo too, in the home volume (`XDG_CACHE_HOME=~/.local/cache`). A modified `.devcontainer/` is outside this control (boundary 5). |
+| Other repos' and orgs' code, through the shared cache volume (legacy template only; the dev-App template mounts none) | `devc-tofu-plugins` at `~/.cache/tofu-plugins` | Only the tofu provider cache lives there: the volume is mounted at that one directory, not over `~/.cache`, so a tool that hard-codes `~/.cache` writes into the per-repo home volume. `tofu` verifies each cached provider against the consuming repo's lock when a command starts, but runs it from the shared, writable path (see Known gaps). npm's cache is per repo, because `npx` runs packages from it without a check; pre-commit, pip, uv and every other XDG-aware cache are per repo too, in the home volume (`XDG_CACHE_HOME=~/.local/cache`). A modified `.devcontainer/` is outside this control (boundary 5). |
 | Home-volume contents | `~/.vscode-server` and extensions, uv interpreters and cache, pre-commit and tflint plugins, `npm install -g` packages, dotfiles and `~/.local/bin`, all in `<repo>-home` | Installed at container create and first use, on the developer's machine, from their upstream sources, into a volume that outlives rebuilds. **Covered by no attestation, SBOM, Trivy scan or `.trivyignore.yaml` expiry, and never re-pinned by an image bump**: a rebuild does not refresh or remove them. What checks each one is the installer's own: uv checks an interpreter against a sha256 built into the pinned uv binary (the image sets no `UV_PYTHON_INSTALL_MIRROR`); a PyPI package a repo installs itself (checkov, say) is hash-checked only when the repo installs it from its own `--require-hashes` file; `npm install -g` checks the registry's `integrity` value for what it resolves, which nothing here pins. Wipe the volume to start clean. |
 | Host identity directory | the host's `~/.gitconfig.d`, mounted read-only into **every** container | `git-identity.sh` copies an allowlist of five keys (`user.name`, `user.email`, `user.signingkey`, `commit.gpgsign`, `tag.gpgsign`) from the one file that claims the origin's org. It never includes or links the host file, so that file's credential, `gpg.*`, `url.*`, `core.*` and alias sections cannot reach the container's git config. |
 
@@ -81,7 +81,7 @@ at build and publish time, before any consumer pulls.
    | Smoke test ([`tests/smoke.sh`](../tests/smoke.sh)) | before push | a tool version differs from its pin (a Dockerfile `ARG`, or `images/base/tools/uv.lock` for the Python tools); the user isn't uid 1000; any setuid/setgid binary exists; a volume mount point isn't app-owned; any credential helper other than gh's runs; the projected identity holds a non-allowlisted key; a token from the origin URL appears in output; an identity is left in place after a failed selection (no origin, a non-github or lookalike origin, an ambiguous, unreadable or missing identity file); the system Python isn't the expected major.minor; the tools venv or a cache path isn't where the image documents it; a mount point (`/home/app`, `~/.cache/tofu-plugins`, `/workspace/.venv`, `/workspace/node_modules`) or `~/.cache` isn't app-owned; any cache variable points into the shared `~/.cache/tofu-plugins` except tofu's; the image ships a `~/.gitconfig`; `git-identity.sh` fails to rewrite a stale, symlinked or directory `~/.gitconfig`, or to remove a planted `~/.config/git/config`; `owner-check.sh` fails to write the lowercase owner marker, to warn on a different owner or leave that marker unchanged, to replace a symlinked, directory or junk marker without echoing its content or following a link; a token from the origin URL appears in its output; a `url.*.insteadOf` planted in the home volume's global git config changes the origin it reads, or one planted in `~/.gitconfig-identity` changes the origin `git-identity.sh` reads; or its origin grammar disagrees with `git-identity.sh`'s on a table of URLs. For the dev-App flavours the file asserts dev-token (not gh) as the one helper that runs and the only one configured, and the served and fail-closed cases are [`tests/smoke-devapp.sh`](../tests/smoke-devapp.sh) |
    | Dev-App smoke ([`tests/smoke-devapp.sh`](../tests/smoke-devapp.sh)) | before push, once per `/run/wow` | with a valid token (decoys beside it): `dev-token get` does not serve the dev token for `http`, `github.com:443`, an upper-case or lookalike host, a second host or protocol line or any other host; `git credential fill` does not run exactly one helper, `dev-token`; the `gh` wrapper or `gh auth token` yields anything but the dev token (including with `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` or a `hosts.yml` set to the decoy); a decoy token appears in any output; an ssh remote form is not rewritten to https; a gpg program, `gpg-check.sh`, or the `unsigned` marker's absence; the projected identity carries a signing key or `gpgsign` other than false; `claude` is not root-owned, mode 0755, the pinned version and sha256, or its managed settings are not root-owned, 0444 and carry the pins and the updater switches; `timeout`, `date`, or the package is not GNU's; a setuid binary. With no `/run/wow`, an empty one, an expired token, CRLF line endings or a token of the wrong kind: `dev-token` answers anything but `quit=1`, the `gh` wrapper runs, or a credential fill succeeds. `devapp-check.sh` fails to remove `hosts.yml` or `.git-credentials`, follows a symlink out of the volume, or misses an agent or a shadowing `claude` |
    | `claude` signature ([`images/devapp/files/claude-fetch.sh`](../images/devapp/files/claude-fetch.sh)) | before any push (the `claude-verify` stage, built right after base) | the committed key file is not one primary key with the pinned fingerprint; `gpgv` does not report exactly one GOODSIG and one VALIDSIG on the manifest, or reports BADSIG, ERRSIG, EXPKEYSIG, REVKEYSIG or NO_PUBKEY; VALIDSIG's primary-key fingerprint is not the pinned one; the manifest's version is not `CLAUDE_VERSION`; the manifest's linux-x64 checksum, `CLAUDE_SHA256` and the downloaded file's sha256 are not all equal |
-   | Template proof ([`tests/template-proof.sh`](../tests/template-proof.sh)) | pull request | a container brought up from `template/.devcontainer/` with the pinned devcontainer CLI is not uid 1000, has a non-empty capability bounding set or `NoNewPrivs` 0, has no init as PID 1, has a writable root filesystem (a write to `/usr/local` succeeds instead of failing with `EROFS`), lacks any of the `<repo>-home`, `-tmp`, `-node_modules`, `-venv`, `devc-tofu-plugins` or read-only identity mounts, cannot write the home, `/tmp`, `.venv` or shared cache paths, has no `~/.gitconfig` or fixture identity after start, has no owner marker after start, prints the collision banner for a first checkout, prints no banner (or changes the marker) when a second checkout with the same folder name and another origin shares its `-home` volume, runs a credential helper other than gh's, has a `tofu` other than the image's pin, or skips `pre-commit install` |
+   | Template proof ([`tests/template-proof.sh`](../tests/template-proof.sh)) | pull request | a container brought up from `template/.devcontainer/` (the dev-App template) on `devcontainer-devapp-tofu:local`, with the pinned devcontainer CLI and a fixture `USERPROFILE` holding a token directory, is not uid 1000, has a non-empty capability bounding set or `NoNewPrivs` 0, has no init as PID 1, has a writable root filesystem (a write to `/usr/local` succeeds instead of failing with `EROFS`), lacks any of the `<repo>-home`, `-tmp`, `-node_modules`, `-venv` or read-only `.gitconfig.d` and `/run/wow` mounts, mounts a shared tofu cache or `~/.aws`, cannot write the home, `/tmp` or `.venv` paths, has a writable `/run/wow`, a gpg binary or a `commit.gpgsign` other than false, does not return the fixture token from `git credential fill` through `dev-token` as the one helper that runs, has no `~/.gitconfig` or fixture identity after start, has no owner marker after start, prints the collision banner for a first checkout, prints no banner (or changes the marker) when a second checkout with the same folder name and another origin shares its `-home` volume, has a `tofu` other than the image's pin, or skips `pre-commit install`. A start with no token directory must either fail or come up with an empty `/run/wow` where `dev-token` answers only `quit=1`, git has no password and `gh` refuses (the daemon decides which). An `appPort` string and a list must publish on `127.0.0.1` only |
    | Trivy image scan | before push | there's a HIGH/CRITICAL vulnerability **with a fix available**, or a secret is baked into a layer |
    | hadolint and Trivy config | lint | there's a Dockerfile anti-pattern |
    | shellcheck | lint | a script has a shell bug |
@@ -113,7 +113,7 @@ at build and publish time, before any consumer pulls.
    `runArgs`): code running as `app` cannot replace `/usr/local/bin/gh`, `git`, the
    tools venv or `/etc/gitconfig`, and a write to the image fails with `EROFS` (the
    template proof asserts that failure on `/usr/local`; see boundary 1). It
-   can still write the mounts (the home volume, `/tmp`, the dependency volumes, the shared
+   can still write the mounts (the home volume, `/tmp`, the dependency volumes, and on the legacy template the shared
    cache) and the tmpfs directories (`/var/tmp`, `/dev/shm`; `/run` is tmpfs too but root-owned), so this closes the image, not
    the volumes. In particular the home volume's `~/.local/bin` leads `PATH`, so a planted
    `gh` there, or a planted `git` or `tofu`, shadows the image's, and it now persists
@@ -139,7 +139,9 @@ at build and publish time, before any consumer pulls.
 5. **Repos stay apart; identity files do not.** Repos stay apart under their own,
    unmodified template, and only while every checkout on the host has a unique folder
    name. Each repo gets its own container and up to four per-repo volumes: `-home`,
-   `-tmp`, `-node_modules` and `-venv`. Only tofu's provider cache is shared (see Known gaps).
+   `-tmp`, `-node_modules` and `-venv`, and (dev-App template) its own token directory,
+   `tokens/<owner>/<repo>`, mounted read-only at `/run/wow`. The dev-App template shares no volume;
+   the legacy template shared tofu's provider cache (see Known gaps).
    A start-up check warns when two checkouts collide on a folder name (see Known gaps). A modified
    `.devcontainer/` (a PR branch opened in a container, say) can mount any volume on the
    host, and skip that check: Docker named volumes are not a boundary against a hostile config.
@@ -183,6 +185,19 @@ at build and publish time, before any consumer pulls.
    an ssh clone lands on it (other spellings, such as another case of the host, are not). The same local-config qualification applies: code running
    as `app` can add a helper to `~/.gitconfig` or a repo's `.git/config`, and nothing in the
    image can stop that; `git-identity.sh` rewrites `~/.gitconfig` at every start.
+   The dev-App template states the VS Code half as intent, **not as a tested boundary**:
+   `customizations.vscode.settings` turns off `git.terminalAuthentication` and
+   `github.gitAuthentication` (so VS Code sets no askpass program for the terminal's git and offers
+   no host GitHub session for it) and sets `dev.containers.copyGitConfig` and
+   `remote.containers.gitCredentialHelperConfigLocation` (so the host's git config and credential
+   helper are not copied in). Nothing here tests that these settings take effect from
+   `customizations.vscode.settings` (some are Dev Containers extension settings read on the host,
+   and the extension has renamed its `remote.containers.*` keys to `dev.containers.*`), and
+   `tests/template-proof.sh` runs the devcontainer CLI, which injects no VS Code helper. The
+   `postStartCommand` `rm` removes only the helper scripts already in `/tmp` at start, not the
+   IPC socket, and VS Code may create them after it (the settings are untested, so this is not a Known gap with a measured reach: the live check on the Windows host settles it). The template lists no
+   extension, `containerEnv` or `remoteEnv`. `verify / verify` holds the file to the template
+   exactly, so a repo cannot add to it beyond an optional loopback `appPort` (see the consumer-verification section).
 
 ## Consumer verification and the bump gate (#30)
 
@@ -373,7 +388,7 @@ Every repo in both orgs gets a container from these images unless one of these a
   daemon (`--privileged`, docker-in-docker), which cannot coexist with `--cap-drop=ALL` and
   `no-new-privileges` (boundary 4). Docker-outside-of-docker was evaluated and **rejected**:
   a host Docker socket in the container would let anything running in it mount every other
-  repo's `<repo>-home` volume, token included (a direct breach of boundary 5), and the
+  repo's `<repo>-home` volume, token included on the legacy route (a direct breach of boundary 5), and the
   sandbox resolves worktree paths inside the container that a host daemon cannot see. The
   rule for that container: it mounts no other repo's volumes.
 - **603-Identity/devcontainers has no devcontainer.** Building and smoke-testing its images
@@ -388,6 +403,12 @@ Every repo in both orgs gets a container from these images unless one of these a
   devcontainer CLI) can mount any repo's `-home` volume. Only run code from checkouts you trust there. Revisit if a
   second contributor or machine joins, or the WSL setup drifts from CI (a lint-and-test-only
   devcontainer would still exclude image builds).
+- **A host that holds the token directory runs no privileged container.** Every dev-App
+  container mounts only its own repo's `tokens/<owner>/<repo>`, but a container with `--privileged`,
+  the Docker socket or a bind of `%USERPROFILE%` can read every repo's directory, and the
+  broker's own files beside them. That is the loop-orchestrator exception's rule (it mounts no
+  other repo's volumes) applied to the host: such a container belongs on a host or account that
+  holds no token directory.
 - **No devcontainer** for org profile repos (`.github`), archived repos, or demo
   repositories.
 
@@ -412,8 +433,13 @@ These are stated plainly so nobody trusts the setup for more than it does:
   for github.com, not askpass.) VS Code sets one in its terminals and tasks, and its GitHub
   authentication can answer for github.com with the host's VS Code GitHub session, a token that
   reaches every repo its owner can. `GIT_TERMINAL_PROMPT=0` does not stop askpass, and the image
-  cannot override an environment `GIT_ASKPASS`; the template (PR D) must switch
-  `git.terminalAuthentication` and `github.gitAuthentication` off. The same uid can also use an
+  cannot override an environment `GIT_ASKPASS`; the template switches
+  `git.terminalAuthentication` and `github.gitAuthentication` off (boundary 8), which a repo's
+  user or workspace settings, or a VS Code window opened outside the template, can undo. That includes
+  code in the container: it can write `/workspace/.vscode/settings.json` (the bind mount) with both keys
+  `true`, and a repo can commit the same file; `verify / verify` reads only `.devcontainer/`, so the PR
+  stays green. A verifier rule rejecting those keys in `.vscode/settings.json` and `*.code-workspace`,
+  and a start-up warning, are not built. The same uid can also use an
   ssh key left in `~/.ssh`, or a forwarded agent (`devapp-check.sh` only warns about the latter, and only about an agent already present when it runs at start, which a VS Code attach that follows may not be).
 - **The dev-App flavour's `claude` trust is a committed key, a pin and a build-time check.**
   The check proves the binary is the one Anthropic signed for exactly `CLAUDE_VERSION`
@@ -478,7 +504,7 @@ These are stated plainly so nobody trusts the setup for more than it does:
   CLI's rewrite to the host uid would chown only `/home/app` and leave the dependency
   volumes unwritable. A Linux developer whose uid is not 1000 can read the bind mount but
   not write it from the container. macOS and Windows hosts are unaffected. The template
-  proof asserts uid 1000 and writes to the home, `/tmp`, `.venv` and shared-cache volumes; its CI
+  proof asserts uid 1000 and writes to the home, `/tmp`, `.venv` and `/var/tmp`; its CI
   fixture is made world-writable, so it does not exercise this trade-off.
 - **The devcontainer CLI in the template proof is pinned by version, not by hash.** npm
   checks the registry's integrity value for the tarball it resolves, but nothing here pins
@@ -490,14 +516,14 @@ These are stated plainly so nobody trusts the setup for more than it does:
   repo that has not copied `devcontainer-image.yml` and does not require `verify / verify`
   still takes whatever digest a Dependabot image bump proposes, including a branch-built
   one, unless a human runs the verify command. Only the two pilots have adopted them (#10).
-- **The shared tofu provider cache is checked at command start, not at exec.** tofu links a
+- **Legacy template only: the shared tofu provider cache is checked at command start, not at exec.** tofu links a
   cached provider into the repo's data directory and runs it from the shared volume, so a
   hostile process in another container could swap the binary between the check and the
   exec. It needs code already running in any container that mounts `devc-tofu-plugins` (a hostile
   dependency in another repo or org, say). The `devc-tofu-plugins` volume is the one cross-container
   channel left. `plugin_cache_may_break_dependency_lock_file` must stay unset: the smoke test asserts its
   environment-variable form, and no image ships a tofu CLI config file.
-- **The shared cache volume is readable and writable from every container that mounts it.**
+- **Legacy template only: the shared cache volume is readable and writable from every container that mounts it.** The dev-App template mounts no `devc-tofu-plugins`, but a legacy container on the same host still does.
   It holds only the tofu provider cache and is mounted at `~/.cache/tofu-plugins` alone, so
   a tool that hard-codes `~/.cache` (Puppeteer, say) or ignores `XDG_CACHE_HOME` stays in
   the per-repo home volume; a cache variable pointed into the shared directory is the only
@@ -518,7 +544,7 @@ These are stated plainly so nobody trusts the setup for more than it does:
   `org/repo` of the first origin it saw in `~/.devc-owner` on the `-home` volume, and prints
   a banner when a later start's origin names another repo. It warns and never blocks. By
   then the second container already has the first repo's `-home` volume mounted, token
-  included, so the fix stays the host rule: rename the folder and remove the shared
+  included on the legacy route, so the fix stays the host rule: rename the folder and remove the shared
   volumes. It catches accidental collisions under the unmodified template only. A hostile
   `.devcontainer/` mounts any volume and skips any start-up step (boundary 5), and a repo
   renamed or transferred needs `rm ~/.devc-owner`. The marker is untrusted input: it is
@@ -596,7 +622,7 @@ These are stated plainly so nobody trusts the setup for more than it does:
   org's email and signing-key ID, because the whole `~/.gitconfig.d` is mounted
   read-only. A secret written inline in one of those files (a token in a URL, an
   `http.extraHeader`) would be readable too, so the README forbids it.
-- **Identity selection is not authorization.** Identity and the GPG agent are host-wide
+- **Legacy route: identity selection is not authorization.** A dev-App container has no gpg and signs nothing (`devapp-check.sh` warns when an agent is present), so only the legacy template forwards one. Identity and the GPG agent are host-wide
   across both orgs: the editor forwards one agent to every container, so a glunk-works
   container whose `user.signingkey` were changed could sign with the 603-Identity key.
   Accepted: the agent is the signing boundary, and `git-identity.sh` only sets the key each
@@ -607,3 +633,47 @@ These are stated plainly so nobody trusts the setup for more than it does:
 - **`/workspace/.git` sits on the host bind mount** (pre-existing), so a container
   process can plant hooks, `core.hooksPath` or `core.fsmonitor` that the **host's** git
   then runs.
+- **A session can run code on the host through the checkout, not only `.devcontainer/`.**
+  `/workspace/.vscode/tasks.json` with a `folderOpen` task, a root `.devcontainer.json`, `.git/config`
+  (`core.fsmonitor`), `.git/hooks`, and the same in any nested `.git` directory or `.git/modules/*`, are all writable through the bind mount, and run on the host
+  when the folder is opened in host VS Code (the git extension, a trusted workspace's tasks) before
+  any prompt can be declined. The same holds for the machine settings file in the home volume
+  (`~/.vscode-server/data/Machine/settings.json`), which can switch the askpass settings back on and
+  is invisible to git and to `verify / verify`.
+- **A session can run code on the host through the local `.devcontainer/`.** The checkout is a
+  bind mount, so a session can edit `.devcontainer/devcontainer.json` (an `initializeCommand`, a
+  host bind) and the host runs it on any rebuild that bypasses the launcher, including VS Code's
+  "Reopen/Rebuild in Container" prompt. `verify / verify` sees only what is pushed. Until the
+  launcher ships and is the only way in (planned, tracked at glunk-works/claude-workbench#1276),
+  only the convention "open through the launcher; never run the host's Dev Containers or git on a
+  mounted checkout" holds this.
+- **"No extensions" holds for a fresh home volume only.** The VS Code server loads every
+  extension in `~/.vscode-server/extensions`, and a cutover repo reuses its legacy `<folder>-home`
+  volume, which holds the GitHub and Claude Code extensions; a host user setting
+  `dev.containers.defaultExtensions` also installs into every container. `docs/adopting.md` step 6
+  has the cleanup. Nothing enforces it.
+- **Extras can undo the identity layer.** The Dockerfile's extras run as root at build time if they
+  say `USER 0`. The verifier's filter catches accidents (writes to the identity paths, `ENV` of
+  `GIT_*`, a proxy or `ANTHROPIC_BASE_URL`, a local `ADD`), not attacks; the approval rule and the
+  human review hold the rest.
+- **The elevated token shares the mount.** The broker's elevated-token file sits in the same
+  directory as `dev-token`. The image's tools read only `dev-token`, but the directory is a live
+  bind mount: while the file exists, any process in any running container of that repo can read it,
+  including an ordinary long-running window the launcher reuses. Residue in the home volume from an
+  elevated window (a copied token, a cached login) persists into every later window of the repo.
+- **`appPort` reach is measured, not asserted.** The template proof shows a port is published on
+  `127.0.0.1` and nowhere else. Whether another container or the VM reaches it through
+  `host.docker.internal` is measured on the Windows host and recorded here once it is.
+- **A PR can downgrade its own verifier pin.** `verify / verify` runs the verifier the PR's own
+  caller names, so a PR may pin an older release, or one that predates dev-App mode and reads the
+  repo as plain. In a dev-App repo what holds it is the approval rule and the dev App's lack of the
+  Workflows permission, not a gate rule. Plain pins below v1.6 also have no mount rules.
+- **The WSL distro reads the token directories.** Docker Desktop's WSL integration and the distro
+  both reach `%USERPROFILE%` (`/mnt/c/Users/...`), so code run in the Ubuntu WSL2 distro (a PR
+  branch's test scripts) can read every repo's `dev-token`. The Exceptions section's advice stands:
+  only run code from checkouts you trust there.
+- **Volume names collide across orgs.** Per-repo volumes are named after the checkout folder, so
+  same-named checkouts of different repos share `-home`, and with it a Claude login and sessions
+  (the dev token is per repo and mounted from the host, so it is not shared). `owner-check.sh`
+  detects this after the fact and cannot prevent it.
+

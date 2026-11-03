@@ -35,7 +35,7 @@ func TestTemplateWithRealDigest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ref.Name != "tofu" || ref.Major != 4 || ref.Minor != 144 || ref.Digest != digest {
+	if ref.Name != "devapp-tofu" || ref.Major != 4 || ref.Minor != 144 || ref.Digest != digest {
 		t.Errorf("unexpected base %+v", ref)
 	}
 }

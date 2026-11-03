@@ -65,7 +65,7 @@ code_paths:
 # and build.yml's test job, with the same digest-pinned linter images. Needs Docker, git, jq, Go 1.26.8, node
 # with npm, and a POSIX shell. The second-to-last step builds all five images (base, tofu, node and the two
 # dev-App flavours) and runs the smoke tests and Trivy gate, so it takes several minutes; the last brings up
-# the template against the tofu image it just built, with the pinned devcontainer CLI (about a minute).
+# the template against the devapp-tofu image it just built, with the pinned devcontainer CLI (about a minute).
 gates:
   green:
     - { cwd: ".", run: "for f in images/*/Dockerfile template/.devcontainer/Dockerfile; do docker run --rm -i hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d < \"$f\" || exit 1; done" }

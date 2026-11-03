@@ -11,14 +11,14 @@ import (
 	"github.com/603-identity/devcontainers/tools/devc-verify/internal/dockerfile"
 )
 
-// The dev-App self-test (#392, PR C) against the fixture in testdata/devapp/template. PR D adds
-// the same against the real template/.
+// The dev-App self-test (#392) against the real template/ (PR D replaced PR C's fixture): any
+// edit to the template that the verifier would not accept in a head fails here first.
 const (
 	repo     = "glunk-works/app"
 	devappDF = "# syntax=" + dockerfile.CurrentSyntax + "\nFROM ghcr.io/603-identity/devcontainer-devapp-tofu:4.150@" + digest + "\nUSER 0\nCOPY tools.txt /opt/tools.txt\nUSER 1000:1000\n"
 )
 
-var templateDir = filepath.Join("..", "..", "testdata", "devapp", "template")
+var templateDir = filepath.Join("..", "..", "..", "..", "template")
 
 func templateJSON(t *testing.T) string {
 	t.Helper()
@@ -51,6 +51,31 @@ func side(t *testing.T, df string) string {
 		write(t, dir, ".devcontainer/Dockerfile", df)
 	}
 	return dir
+}
+
+// The real template Dockerfile, filled in as an adopter would (the placeholders replaced, no
+// extras), must pass the dev-App extras rules with the real template's devcontainer.json: an
+// edit that breaks one (an instruction after the final USER, a local ADD, ENV GIT_*) would
+// otherwise fail every adoption PR and no other test.
+func TestRealTemplateDockerfilePasses(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join(templateDir, ".devcontainer", "Dockerfile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	df := strings.Replace(string(b), "TAG@sha256:DIGEST", "4.150@"+digest, 1)
+	if df == string(b) {
+		t.Fatal("the template FROM placeholder changed; update this test")
+	}
+	dir := t.TempDir()
+	write(t, dir, ".devcontainer/Dockerfile", df)
+	write(t, dir, ".devcontainer/devcontainer.json", strings.Replace(templateJSON(t), "tokens/OWNER/REPO", "tokens/"+repo, 1))
+	r, err := Check(opts(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r.DevApp {
+		t.Fatalf("the filled-in template is not read as dev-App: %+v", r)
+	}
 }
 
 func TestDevAppHeadPasses(t *testing.T) {
