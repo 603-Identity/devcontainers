@@ -4,10 +4,11 @@
 
 **Just done:**
 - Milestone 9 archived: its roadmap entry merged as `bfaf673` (#482), and its final cursor is snapshotted in `.ai/archive/M9-next-steps.md`.
+- Backlog triaged with `/way-of-working:plan-sprint` (2026-11-03). Filed #484 (the December `.trivyignore.yaml` renewal) on milestone 5. Placed #459 and #477 on milestone 5, #463 and #475 on milestone 3, and #443, #446, #452, #460 and #479 on milestone 6. Left #126, #132, #444 (a duplicate of #446) and #480 unmilestoned on purpose. Milestone 5's description now has the build order #484, #427, #329, then #477 + #459.
 
 **Milestone close:** closed, milestone 9 "Image bumps: node 26 and betterleaks rc.6" (read-back `closed`, 0 open issues).
 
-**Next:** plan milestone 5 (Trivy renewal 2026-11, due 2026-11-24, 2 open issues). The `.trivyignore.yaml` exceptions expire 2026-12-01 and each renewal extends at most 30 days. `/way-of-working:plan-sprint` can help triage, as a suggestion only; `/way-of-working:handoff` anchors the plan. Model: **opus** (architect).
+**Next:** `/way-of-working:handoff` to anchor milestone 5 (Trivy renewal 2026-11, due 2026-11-24, 5 open issues) and set task #484 first. The 36 `.trivyignore.yaml` exceptions expire 2026-12-01. #427 needs the owner's pick between its early-warning and stagger options before it is built. Model: **opus** (architect) for the anchor, then **sonnet** to build.
 
 **HITL Gate:** NONE OPEN.
 
