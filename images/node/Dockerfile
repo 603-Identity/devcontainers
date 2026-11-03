@@ -31,8 +31,8 @@ RUN apt-get update \
 # Residual risk: that file is fetched over TLS but its detached GPG signature
 # (SHASUMS256.txt.asc) is not verified here. Doing that needs the Node release team's
 # keyring pinned in this repo; tracked in docs/threat_model.md § "Known gaps".
-ARG NODE_VERSION=24.22.2
-ARG NODE_SHA256=48cc0e21e048790e54c0cf5749c2725005313d652651c40b7a21feb9697aaf75
+ARG NODE_VERSION=26.13.0
+ARG NODE_SHA256=d28a96af6c38596f6d9d97c0ee531c13d238d757742387d1928de822d959e997
 RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" \
         -o /tmp/node.tar.xz \
     && echo "${NODE_SHA256}  /tmp/node.tar.xz" | sha256sum -c - \
