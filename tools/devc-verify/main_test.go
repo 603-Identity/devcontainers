@@ -18,6 +18,18 @@ const (
 	oldDig = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
 )
 
+// realTemplate is the repo's own template/, which dev-App mode compares every head with (#392).
+var realTemplate = filepath.Join("..", "..", "template")
+
+func realTemplateJSON(t *testing.T) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(realTemplate, ".devcontainer", "devcontainer.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
 func fixture(t *testing.T, name string) string {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join("testdata", name))
@@ -87,12 +99,12 @@ func listedDir(t *testing.T) string {
 
 func verifyArgs(t *testing.T, dir string) []string {
 	return []string{"verify", "--consumer-dir", dir, "--base-dir", listedDir(t), "--tip-dir", listedDir(t),
-		"--template-dir", filepath.Join("testdata", "devapp", "template"), "--repo", "glunk-works/app", "--default-branch", "main"}
+		"--template-dir", realTemplate, "--repo", "glunk-works/app", "--default-branch", "main"}
 }
 
 // decideArgs is decide on dir with patch, with every flag decide-bump.sh passes.
 func decideArgs(t *testing.T, dir, patch string) []string {
-	return []string{"decide", "--consumer-dir", dir, "--patch", patch, "--template-dir", filepath.Join("testdata", "devapp", "template"), "--repo", "glunk-works/app"}
+	return []string{"decide", "--consumer-dir", dir, "--patch", patch, "--template-dir", realTemplate, "--repo", "glunk-works/app"}
 }
 
 func patchFile(t *testing.T, content string) string {
@@ -239,7 +251,7 @@ func devAppFake(t *testing.T) *fake {
 
 const goodRules = `[{"type":"pull_request","parameters":{"required_approving_review_count":1,"require_code_owner_review":true}}]`
 
-// devAppDir is a dev-App head built from testdata/devapp/template, for glunk-works/app.
+// devAppDir is a dev-App head built from the real template/, for glunk-works/app.
 func devAppDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -247,7 +259,7 @@ func devAppDir(t *testing.T) string {
 		t.Fatal(err)
 	}
 	df := "# syntax=" + dockerfile.CurrentSyntax + "\nFROM ghcr.io/603-identity/devcontainer-devapp:4.144@" + digest + "\nUSER 1000:1000\n"
-	dj := strings.Replace(fixture(t, "devapp/template/.devcontainer/devcontainer.json"), "tokens/OWNER/REPO", "tokens/glunk-works/app", 1)
+	dj := strings.Replace(realTemplateJSON(t), "tokens/OWNER/REPO", "tokens/glunk-works/app", 1)
 	for name, content := range map[string]string{"Dockerfile": df, "devcontainer.json": dj} {
 		if err := os.WriteFile(filepath.Join(dir, ".devcontainer", name), []byte(content), 0o644); err != nil {
 			t.Fatal(err)
@@ -264,7 +276,7 @@ func TestVerifyDevApp(t *testing.T) {
 		t.Fatalf("code %d stdout %q stderr %q rules calls %d", code, out, e, f.rulesCalls)
 	}
 	// files says which mode it found.
-	code, out, _ = invoke(newFake(t), "files", "--consumer-dir", devAppDir(t), "--template-dir", filepath.Join("testdata", "devapp", "template"), "--repo", "glunk-works/app")
+	code, out, _ = invoke(newFake(t), "files", "--consumer-dir", devAppDir(t), "--template-dir", realTemplate, "--repo", "glunk-works/app")
 	if code != 0 || !strings.Contains(out, `"image":"ghcr.io/603-identity/devcontainer-devapp"`) || !strings.Contains(out, `"mode":"dev-app"`) {
 		t.Fatalf("files: code %d stdout %q", code, out)
 	}

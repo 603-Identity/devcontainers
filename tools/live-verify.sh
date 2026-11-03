@@ -17,7 +17,7 @@ ok_runs="$(gh run list --repo 603-Identity/devcontainers --workflow build.yml \
   --jq '.[] | select(.attempt == 1) | .number')"
 [ -n "$ok_runs" ] || { echo "::error::no successful build.yml runs found" >&2; exit 1; }
 
-for name in devcontainer-base devcontainer-tofu devcontainer-node; do
+for name in devcontainer-base devcontainer-tofu devcontainer-node devcontainer-devapp devcontainer-devapp-tofu; do
   token="$(curl -fsS --retry 3 --retry-delay 2 --retry-all-errors --max-time 30 "https://ghcr.io/token?scope=repository:${owner}/${name}:pull" | jq -r '.token')"
   tags=""
   url="https://ghcr.io/v2/${owner}/${name}/tags/list?n=200"
