@@ -32,6 +32,12 @@ pins to it. The leftovers closed after it: #470 recorded the `appPort` reach mea
 two of its claims (#386, #387). The flaky consumer-workflows test (#446) moved to the backlog. The legacy PAT route is frozen:
 the two pilots keep their copies until their cutover.
 
+Image bumps: node 26 and betterleaks rc.6 (milestone 9) is done. Its last change merged as `0ea2b97` (#478, for #449).
+#450 installed `libatomic1` in the node image. #436 bumped node from 24.22.2 to 26.13.0 (`df6523d`). #449 changed the
+secret scan to pipe `git log -p` into `betterleaks stdin --git-diff`, moved the pin to rc.6, and replaced the rc.1 Trivy
+exceptions with 26 rc.6 ones, so it superseded #438. Follow-ups: #479 (a smoke case for the README pre-commit hook) and
+#480 (whether the scan should look inside committed archives).
+
 ## Next action
 
 The next piece of work is set by the open milestone on this repo, since
