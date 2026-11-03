@@ -3,15 +3,16 @@
 **Now:** Milestone 8, dev-App flavour and template (#418), in `implementing`. Milestone 6 is parked.
 
 **Just done:**
-- PR A (#393) shipped: DEVC-D9 and its docs (#448, `ff2ce9b`). #393 stays open until the v1.6 tag.
-  - Critic pass on #448: docs-consistency and security-critic, 3 rounds, converged; the last round returned only tightenings. Critics' own frontmatter models; no second-opinion round. Not the review gate.
-- PR C (#392, first half) shipped: `devc-verify` dev-App mode and the plain-mode allowlist (#451, `9af5b4c`).
-- The gh 2.103.3 bump merged (#437, `f6d4cc5`).
-- Bump PRs #436 (node 26) and #438 (betterleaks rc.6) stay red and must not land until #450 (`libatomic1`) and #449 (`--log-opts` replacement) do.
+- PR D (#392) shipped: the dev-App-only template, the real-template self-tests, `template-proof.sh` on `devcontainer-devapp-tofu`, and the README, `docs/adopting.md` and threat model rewrite (#455, `7f2cbb6`). #392 is closed.
+  - Critic pass on #455: architect, security-critic, docs-consistency, 3 fix-and-re-run rounds, converged; the last round returned no false statements. Critics' own frontmatter models; no second-opinion round. Not the review gate.
+- The fresh-session review of #455 filed #456 (remove the template's VS Code settings; the owner reframed it to land **before the v1.6 tag**), #457 (measure `appPort` reach on the Windows host) and #458 (askpass keys in `.vscode/settings.json`).
+- Build run for `7f2cbb6` (the publish) was still in progress when this was written.
+- First anchor for milestone 8 in this cursor: no baseline was verified this session; the description sha256 (`259b9872…`) equals the previous anchor's.
 
-**Next:** task #392 — on **sonnet** (coder), build PR D of the [#418 design](https://github.com/603-Identity/devcontainers/issues/418#issuecomment-6584294809): the dev-App-only template, `template-proof.sh` against `devcontainer-devapp-tofu`, README and `docs/adopting.md` rewritten for the dev-App route, the real-template self-test with one negative case per surface. Scope is in the #392 body and the "Left for PR D" list in #451. Run the green gate, then `/way-of-working:critic-gate` before `/way-of-working:ship`. PR D closes #392 and touches `code_paths`, so it needs a fresh-session `/way-of-working:architect-review`. After D: the v1.6 tag (closes #393), then PR E (closes #418).
+**Next:** task #456 — on **sonnet** (coder), take the VS Code settings out of the template before the v1.6 tag, per [#456](https://github.com/603-Identity/devcontainers/issues/456): delete `customizations.vscode` and its comment, drop the four keys from `TestRealTemplateShape` and ban `customizations`, keep the `postStartCommand` `rm` and the `postAttachCommand` warning, rewrite README, `docs/adopting.md` and the threat model so the launcher (interim: the devcontainer CLI from PowerShell) is the only entry and VS Code attach is unsupported, amend DEVC-D9 and DEVC-D3's note in `docs/roadmap.md`, and close or narrow #458. Run the green gate, then `/way-of-working:critic-gate` before `/way-of-working:ship`. It touches `code_paths`, so it needs a fresh-session `/way-of-working:architect-review`.
+After #456: the owner cuts the signed `v1.6` tag on `main` (README "Cutting a release" step 1) once `build.yml` publishes green (closes #393), then PR E (self-pins to v1.6, `previous.devcontainer.json`, DEVC-D9 shipped, roadmap Status; closes #418).
 
-**HITL Gate: NONE OPEN.** The next gate is the owner's merge of PR D.
+**HITL Gate: OPEN.** A human "go" is needed before #456 starts (the first-anchor line above). The next gates are the owner's merge of the #456 PR after a fresh-session architect review, then the owner's `v1.6` tag.
 
 **Open for the owner (non-blocking):**
 - The `.trivyignore.yaml` exceptions expire 2026-12-01, and no issue tracks the renewal itself.
