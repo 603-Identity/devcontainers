@@ -25,10 +25,9 @@ Repo hardening: review gate and CI (milestone 4) is done. Its last change merged
 (#365, consumer pin provenance). The skill half of #278 moved to the way-of-working plugin
 (glunk-works/claude-workbench#346).
 
-Dev-App flavour and template (milestone 8, #418) is in progress. DEVC-D9 records it and
-ships in v1.6. The images are built and published (#442). The consumer-verification lint (PR C, #451) is merged;
-the template (PR D, #392) is in review, then the v1.6 tag and the closing PR E follow, in that order. The legacy PAT route is frozen: the
-two pilots keep their copies until their cutover.
+Dev-App flavour and template (milestone 8, #418) shipped in v1.6 (DEVC-D9). The images are built and published (#442), the
+consumer-verification lint (PR C, #451) and the template (PR D, #392) are merged, v1.6 is tagged, and PR E moved the template's
+pins to it. The legacy PAT route is frozen: the two pilots keep their copies until their cutover.
 
 ## Next action
 
@@ -372,8 +371,8 @@ protection. The threat model's tag-ruleset entry records the change.
 #### DEVC-D9: A dev-App flavour of the images, a template that reads its token from a host file, and a lint that holds both
 
 **Resolved** 2026-11-02 by the repo owner, on #418 (the design of record is the v4 comment there)
-and recorded through #393. **Ships in v1.6.** The images are built and published (#442). The lint and the template
-are PRs C and D (#392), then the tag, then PR E, which marks this decision shipped.
+and recorded through #393. **Shipped in v1.6** (tagged on `58d54dd`). The images are built and published (#442). The lint and the template
+were PRs C and D (#392); PR E moved the self-pins to v1.6 and rotated the template snapshot.
 
 **Context.** The PAT route gives a container a hand-made, long-lived token, and lets the host's
 GPG agent sign for it. The org's identity rollout replaces that with a

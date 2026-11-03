@@ -121,8 +121,6 @@ anyway, inspect it first, without host git or VS Code: `.devcontainer/`, `.devco
    `devcontainer.json`: a string or a list of up to 5 strings, each
    `127.0.0.1:<host>:<container>` with both ports from 1024 to 65535.
 4. Wire up CI (the full list is in [What the consuming repo needs](#what-the-consuming-repo-needs)):
-   - **Not yet:** `template/`'s workflow callers still pin the v1.5 verifier, which rejects a
-     devapp `FROM`. Adopt only once they pin v1.6 (release step 2 below, PR E).
    - Copy **only two files** into `.github/workflows/`:
      [`devcontainer-image.yml`](template/.github/workflows/devcontainer-image.yml), which runs
      this repo's verifier as the check `verify / verify` on every pull request (copy it

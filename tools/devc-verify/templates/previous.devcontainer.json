@@ -1,0 +1,59 @@
+// The dev-App devcontainer (DEVC-D9). Copy this directory to <repo>/.devcontainer/ and change
+// exactly two things: OWNER/REPO in the token mount below (this repo's github.repository, in
+// GitHub's canonical case), and the FROM line in the Dockerfile (plus its extras, if any).
+// `verify / verify` compares this file with the template, as parsed JSON, so comments, spacing
+// and key order may differ and nothing else may. The one other thing a repo may add is an optional `appPort` (README).
+//
+// Windows hosts only: the host broker writes the token directory under %USERPROFILE%, and
+// every ${localEnv:USERPROFILE} below reads it. Open the repo through the launcher, never
+// through VS Code (attach is unsupported; README "Using an image").
+//
+// Volume names derive from the checkout FOLDER name: no two checkouts on one host may share
+// one (README "Consuming from another org").
+{
+  "name": "${localWorkspaceFolderBasename}",
+  "build": { "dockerfile": "Dockerfile" },
+
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+  "remoteUser": "app",
+
+  // The app user stays uid 1000 on every host (see the Dockerfile's note on volume ownership).
+  "updateRemoteUserUID": false,
+
+  // Least privilege: no Linux capabilities, no privilege gain through setuid binaries, and a
+  // read-only root filesystem, so a write outside a mount below fails with EROFS. /run and
+  // /var/tmp are tmpfs; /run is root-owned, so the app user cannot write it.
+  "runArgs": [
+    "--cap-drop=ALL", "--security-opt=no-new-privileges",
+    "--read-only", "--tmpfs=/run", "--tmpfs=/var/tmp"
+  ],
+
+  // A real init process (PID 1) reaps the zombies VS Code's and Claude Code's subprocesses leave.
+  "init": true,
+
+  "mounts": [
+    // The host's ~/.gitconfig.d (one <name>.gitconfig per GitHub account), read-only.
+    // git-identity.sh picks the file that claims this repo's origin org. The directory must exist.
+    "source=${localEnv:USERPROFILE}/.gitconfig.d,target=/home/app/.gitconfig.d,type=bind,readonly",
+
+    // PER-REPO home, scratch and dependency volumes. Never shared between repos. Wipe a repo's
+    // state with `docker volume rm <repo>-home <repo>-tmp <repo>-venv <repo>-node_modules`.
+    "source=${localWorkspaceFolderBasename}-home,target=/home/app,type=volume",
+    "source=${localWorkspaceFolderBasename}-tmp,target=/tmp,type=volume",
+    "source=${localWorkspaceFolderBasename}-node_modules,target=/workspace/node_modules,type=volume",
+    "source=${localWorkspaceFolderBasename}-venv,target=/workspace/.venv,type=volume",
+
+    // THE per-repo surface: this repo's dev token directory, read-only, at /run/wow. OWNER/REPO
+    // is this repo's github.repository, in its canonical case. `verify / verify` fails the PR
+    // when it is not. Nothing else reaches the container from the host's credentials.
+    "source=${localEnv:USERPROFILE}/.config/glunk-identity/tokens/OWNER/REPO,target=/run/wow,type=bind,readonly"
+  ],
+
+  // On every START: delete VS Code's forwarded-credential helper scripts, then run the owner
+  // check (a folder-name collision warning), the dev-App check (stale credentials, an SSH
+  // agent, an unexpected claude binary) and the git identity projection.
+  "postStartCommand": "rm -f /tmp/vscode-remote-containers-*.js; sh /usr/local/share/devc/owner-check.sh; sh /usr/local/share/devc/devapp-check.sh; sh /usr/local/share/devc/git-identity.sh",
+  "postCreateCommand": "if [ -f .pre-commit-config.yaml ]; then pre-commit install; fi",
+  "postAttachCommand": "echo 'devapp: open this repo through the launcher only' >&2"
+}
