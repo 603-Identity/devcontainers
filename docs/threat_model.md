@@ -367,8 +367,18 @@ content, and this one must.
   The base image installs the same pinned release and ships the org rules from the same commit.
 - **Fail closed.** v2 exits 1 for findings and for errors alike, so the wrapper requires the
   JSONL `scan` record to say `complete`. A missing or incomplete record is red (one retry on
-  `incomplete`, never on findings). The env vars that change the config or contact credential
-  providers are refused. Findings are always redacted and never uploaded.
+  `incomplete`, never on findings). The env vars that change the config or fingerprints, or contact
+  credential providers, are refused. Findings are always redacted and never uploaded.
+- **The git half is ours (rc.3 onward).** Betterleaks 2.0.0-rc.3 dropped `git --log-opts` and no longer runs git, so this wrapper
+  runs `git log -p` over the head's whole ancestry and pipes it to `betterleaks stdin --git-diff`,
+  so coverage is whatever that command prints. Every option that can drop coverage from the output is named
+  (`--root`, `--diff-merges=separate`, `--text`, no renames, no external diff or textconv, full
+  commit ids, the default date format, UTF-8 output, `--pretty=medium`, `--no-replace-objects`), so runner or repo git config cannot drop the root commit,
+  merge-resolution content or a commit's header. A git failure, or git cut off because the scanner
+  stopped reading, is red. The scanner itself treats input it cannot parse as an `incomplete` scan
+  in most cases, but a stream with no `diff --git` file header is "nothing to scan", so the stream assertions
+  in `tools/tests/secret-scan-test.sh` and the real-scanner cases in `tests/smoke.sh` are what
+  keep coverage honest.
 - **Residual risks.**
   - Unlabeled high-entropy strings outside the entropy rule's file types and shape are not found.
   - Pre-commit hooks can be bypassed and web or host-side edits go unscanned until CI, so CI is

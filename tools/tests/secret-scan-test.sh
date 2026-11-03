@@ -12,11 +12,12 @@ SCRIPT="$TOOLS_DIR/secret-scan.sh"
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 
-# Fake scanner. FAKE_BL_MODE picks the scripted outcome; every call appends its argv to the log.
+# Fake scanner (reads the `git log -p` stream on stdin). FAKE_BL_MODE picks the scripted outcome; every call appends its argv to the log.
 # FAKE_BL_FIRST (optional) is the mode for the first call only.
 cat > "$T/betterleaks" <<'B'
 #!/usr/bin/env bash
 echo "$*" >> "$FAKE_BL_LOG"
+cat > "${FAKE_BL_STDIN:-/dev/null}"  # drain the patch stream; keep the last one for the tests
 n="$(wc -l < "$FAKE_BL_LOG")"
 mode="$FAKE_BL_MODE"
 if [ "$n" -eq 1 ] && [ -n "${FAKE_BL_FIRST:-}" ]; then mode="$FAKE_BL_FIRST"; fi
@@ -76,12 +77,14 @@ suite "secret-scan"
 mkrepo
 MODE=clean run
 assert_rc "clean scan passes" 0 "$RC"
-log_has_ "full ancestry, merges, text" "--log-opts=-m --text $HEAD_C"
+log_has_ "reads the patch stream from stdin" "stdin --git-diff"
+log_lacks_ "no --log-opts (removed in rc.3)" "--log-opts"
+log_lacks_ "no revision or repo argument to the scanner" "$HEAD_C"
 log_has_ "redacted" "--redact"
 log_has_ "no allow signatures" "--no-allow-signatures"
 log_has_ "explicit ignore file" "--ignore-file"
 log_has_ "org config when the base has none" "-c $T/org.toml"
-for bad in --disable-rule --isolate-rule --confidence --allow-signature " -v" " -a" "--validate" "--analyze" " -o " "--output"; do
+for bad in --disable-rule --isolate-rule --confidence --allow-signature --set-attr " -v" " -a" "--validate" "--analyze" " -o " "--output"; do
   log_lacks_ "never passes$bad" "$bad"
 done
 
@@ -141,7 +144,7 @@ err_has "a negative start_line is a file-level annotation" "::error file=n.tf::o
 err_lacks "no line=0" "line=0"
 err_lacks "no negative line" "line=-"
 
-for v in BETTERLEAKS_CONFIG BETTERLEAKS_CONFIG_TOML BETTERLEAKS_VALIDATE BETTERLEAKS_ANALYZE; do
+for v in BETTERLEAKS_CONFIG BETTERLEAKS_CONFIG_TOML BETTERLEAKS_VALIDATE BETTERLEAKS_ANALYZE BETTERLEAKS_FINGERPRINT_HMAC_KEY; do
   MODE=clean run "$v=x"
   assert_rc "$v set is refused" 1 "$RC"
   assert_eq "$v refused before any scan" "" "$LOG"
@@ -182,5 +185,80 @@ log_has_ "so the org config is used" "-c $T/org.toml"
 mkrepo '.betterleaksignore=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 MODE=clean run
 assert_rc "an ignore file at the base" 0 "$RC"
+
+# The stream git hands the scanner is the scan's whole coverage, so it is asserted here, not in
+# the fake: the full ancestry, the root commit, merge-resolution content, binary content as text,
+# and none of it shaped by the repo's or runner's git config. A stream with no `diff --git`
+# header reads as "nothing to scan", so these assertions are what keep coverage honest.
+mkrepo
+R="$T/repo"; g() { git -C "$R" "$@"; }
+g checkout -q -b side
+printf 'side-added-then-removed\n' > "$R/gone.txt"; g add -A; g commit -qm 'side adds'
+SIDE_ADD="$(g rev-parse HEAD)"
+g rm -q gone.txt; printf 'side-only-line\n' > "$R/side.txt"; g add -A; g commit -qm 'side removes'
+g checkout -q -
+printf 'main-only-line\n' > "$R/main.txt"; g add -A; g commit -qm 'main commit'
+printf 'a\0b secret-in-binary\n' > "$R/bin.dat"; g add -A; g commit -qm 'binary file'
+g mv main.txt renamed.txt; g commit -qm 'rename'
+printf '* -diff\n' > "$R/.gitattributes"; g add -A; g commit -qm 'attrs'
+g merge -q --no-ff --no-commit side
+printf 'only-in-the-merge-resolution\n' >> "$R/side.txt"; g add -A; g commit -qm 'merge side'
+HEAD_C="$(g rev-parse HEAD)"
+# Repo-level git config a runner or developer might have; every one changes `git log -p` output.
+g config diff.noprefix true; g config diff.mnemonicPrefix true; g config color.ui always
+g config log.showSignature true; g config log.showRoot false; g config log.diffMerges dense-combined
+g config log.abbrevCommit true; g config log.decorate full; g config diff.renames copies
+g config log.date relative; g config format.pretty oneline; g config i18n.logOutputEncoding UTF-16
+g replace --graft "$HEAD_C" "$BASE"  # a replace ref that would hide the side branch and the merge
+MODE=clean run FAKE_BL_STDIN="$T/stdin.txt"
+assert_rc "a history with a merge, a binary file and hostile git config passes" 0 "$RC"
+stream="$(tr '\0' @ < "$T/stdin.txt")"
+has_() { case "$stream" in *"$2"*) pass ;; *) fail "$1" "stream lacks '$2'" ;; esac; }
+lacks_() { case "$stream" in *"$2"*) fail "$1" "stream has '$2'" ;; *) pass ;; esac; }
+has_ "head commit header, full id despite log.abbrevCommit" "commit $HEAD_C"
+has_ "the commit message survives i18n.logOutputEncoding" "    merge side"
+has_ "a side-branch commit's own header (not only the first-parent line)" "commit $SIDE_ADD"
+has_ "a line added on the side branch and removed again" "+side-added-then-removed"
+has_ "a commit on the first-parent line" "+main-only-line"
+has_ "the root commit's patch despite log.showRoot=false" "+seed"
+has_ "merge-resolution content despite log.diffMerges" "+only-in-the-merge-resolution"
+has_ "binary content is shown as text, past the NUL" "+a@b secret-in-binary"
+has_ "a/ b/ prefixes despite diff.noprefix" "+++ b/main.txt"
+lacks_ "no combined-diff section from the merge" "diff --cc"
+lacks_ "no rename detection despite diff.renames=copies" "rename from"
+lacks_ "no color despite color.ui=always" "$(printf '\033')"
+lacks_ "no decoration despite log.decorate" "(HEAD"
+lacks_ "no relative date despite log.date" " ago"
+
+# A git that fails is a failed scan, however clean the scanner's own record looks.
+mkdir -p "$T/shim"
+cat > "$T/shim/git" <<'S'
+#!/usr/bin/env bash
+case " $* " in *" log "*) echo "fatal: simulated failure" >&2; exit "${SHIM_RC:-3}" ;; esac
+exec "$REAL_GIT" "$@"
+S
+chmod +x "$T/shim/git"
+MODE=clean run PATH="$T/shim:$PATH" REAL_GIT="$(command -v git)"
+assert_rc "a failing git log fails the scan even when the scanner reports complete" 1 "$RC"
+err_has "and says it did not complete" "scan did not complete (state: gitfail"
+err_has "and shows git's own message" "fatal: simulated failure"
+
+# A scanner that cannot start is reported as that, not as a git failure (git dies of SIGPIPE;
+# the shim stands in for that death so the case does not depend on a pipe race).
+MODE=clean run PATH="$T/shim:$PATH" REAL_GIT="$(command -v git)" SHIM_RC=141 BETTERLEAKS="$T/not-a-scanner"
+assert_rc "a scanner that cannot start fails the scan" 1 "$RC"
+err_has "and is not blamed on git" "scan did not complete (state: none"
+
+# The git flags exist in three places that must not drift apart: the wrapper, the image smoke
+# test and the README's one-off sweep (which adds --all in place of the head).
+flags_of() { grep -o -- '--[a-z][a-z-]*\(=[^ ]*\)\?' | sort -u; }
+# shellcheck disable=SC2016  # the sed patterns hold a literal $
+ss="$(sed -n '/git_ --no-replace-objects log/,/"\$HEAD_SHA"/p' "$SCRIPT" | flags_of)"
+# shellcheck disable=SC2016
+sm="$(sed -n '/--no-replace-objects log -p/,/"\$1"/p' "$ROOT_DIR/tests/smoke.sh" | flags_of)"
+rd="$(sed -n '/git --no-replace-objects log -p/,/--all/p' "$ROOT_DIR/README.md" | flags_of | grep -vx -- '--all')"
+assert_eq "the wrapper has git flags to compare" 1 "$([ -n "$ss" ] && echo 1 || echo 0)"
+assert_eq "smoke.sh passes the wrapper's git flags" "$ss" "$sm"
+assert_eq "the README one-off passes the wrapper's git flags" "$ss" "$rd"
 
 summary

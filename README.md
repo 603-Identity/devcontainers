@@ -361,8 +361,12 @@ Do these in order, so the repo is never covered by neither scanner:
    with every ref fetched (`git fetch origin '+refs/pull/*/head:refs/remotes/origin/pull/*'`).
    `org.toml` is in this repo at the commit you will pin:
    ```sh
-   betterleaks git . -c <path to org.toml> --ignore-file /dev/null --no-allow-signatures \
-     --redact --jsonl --log-opts="-m --text --all" > scan.jsonl
+   git --no-replace-objects log -p --root --diff-merges=separate --text --no-renames --no-ext-diff \
+       --no-textconv --no-color --no-show-signature --no-abbrev-commit --no-decorate --no-notes \
+       --no-relative --date=default --encoding=UTF-8 --pretty=medium --src-prefix=a/ --dst-prefix=b/ --all \
+     | betterleaks stdin --git-diff -c <path to org.toml> --ignore-file /dev/null --no-allow-signatures \
+       --redact --jsonl > scan.jsonl
+   [ "${PIPESTATUS[0]}" -eq 0 ] || echo "git failed: this sweep proves nothing, do not go on" >&2   # bash; in zsh read ${pipestatus[1]}
    jq -c 'select(.scan).scan.state' scan.jsonl     # must print "complete"
    jq -c 'select(.finding).finding | {rule_id, path: .location.path, line: .location.start_line, fp: .match.fingerprint}' scan.jsonl
    ```
@@ -409,17 +413,20 @@ repos:
       - id: betterleaks
         name: betterleaks (staged changes)
         language: system
-        entry: /usr/bin/env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0=/workspace /usr/local/bin/betterleaks git . --staged -c /usr/local/share/devc/secret-scan/org.toml --ignore-file .betterleaksignore --no-allow-signatures --redact --no-banner
+        entry: >-
+          /bin/bash -o pipefail -c '/usr/bin/git --no-replace-objects diff --staged -p --text --no-renames --no-ext-diff
+          --no-textconv --no-color --no-relative --src-prefix=a/ --dst-prefix=b/
+          | /usr/local/bin/betterleaks stdin --git-diff -c /usr/local/share/devc/secret-scan/org.toml
+          --ignore-file .betterleaksignore --no-allow-signatures --redact --no-banner'
         pass_filenames: false
         always_run: true
 ```
-Two things the hook needs that are easy to miss, both found piloting terraform-cloudflare-dns (#10):
-- **The `env … safe.directory` prefix is required on Docker Desktop.** The workspace is a bind mount
-  the `app` user does not own there. Betterleaks does not pick up the system-level `safe.directory`
-  the image sets (plain `git` does), so without the prefix `git diff --staged` falls back to its
-  no-index mode and the scan ends `incomplete`: every commit fails, clean or not. The prefix is
-  harmless where `app` does own the mount. `/usr/bin/env` is absolute for the same reason as the
-  binary: `~/.local/bin` leads `PATH`.
+Two things the hook needs that are easy to miss (the second was found piloting terraform-cloudflare-dns, #10):
+- **Betterleaks 2.0.0-rc.3 and later dropped `--staged` and `--log-opts`**, so `betterleaks git . --staged`
+  (the earlier form of this hook) is gone: git writes the staged diff and `stdin --git-diff` parses it.
+  `pipefail` makes a failing `git diff` fail the commit instead of passing an empty stream. Plain `git`
+  honours the system-level `safe.directory` the image sets, so the `env ... safe.directory` prefix the old
+  form needed on Docker Desktop is no longer used.
 - **`.betterleaksignore` must exist.** A missing `--ignore-file` is fatal (`unable to load ignore
   file`), so commit one (a comment line is enough) before turning the hook on. CI does not need the file; this is
   the hook's requirement, on top of step 2's "reviewed false positives only" for what goes in it.
@@ -802,7 +809,7 @@ the newest release the current node pin supports), takes the sha256 from that re
 own published checksum file (npm: the registry's `integrity` field) -- never from
 hashing the download -- and opens one PR per tool that is behind, with the release page
 and the URL the checksum was read from linked in the body (not a diff -- see step 1 below). To decline a version, close its PR and leave the `bump/<tool>-<version>` branch: the
-next run skips that tool with a warning (#86), and deleting the branch proposes the version again. **betterleaks is the exception** (#190): while its pin is a release candidate (`X.Y.Z-rc.N`, today 2.0.0-rc.1) it
+next run skips that tool with a warning (#86), and deleting the branch proposes the version again. **betterleaks is the exception** (#190): while its pin is a release candidate (`X.Y.Z-rc.N`, today 2.0.0-rc.6) it
 takes the highest-versioned release among any GA release and the release candidates of its own `X.Y.Z` (never a later line's rc, #304), and once the pin is on a GA
 release it takes stable releases only, like every other tool (#208). It takes the sha256 only after `cosign verify-blob` accepts the
 release's sigstore bundle for `checksums.txt` against the signer identity for that exact tag
