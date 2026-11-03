@@ -1,15 +1,16 @@
 # Next steps
 
-**Now:** Milestone 8, dev-App flavour and template (#418), in `implementing`. Milestone 6 is parked.
+**Now:** Milestone 8, dev-App flavour and template (#418), in `planning`. #418 is closed; five other issues are still open in the milestone. Milestone 6 is parked.
 
 **Just done:**
-- Fix #453 shipped: `devc-verify` refuses `ENV ALL_PROXY` in dev-App extras, and the template Dockerfile's header names it (#466). PR #465, `58d54dd`. Went in ahead of the tag so the first dev-App verifier release carries it.
-  - Fresh-session review of #465 found #466; fixed in the same PR. Handing off without a critic-gate pass on this small diff.
-- The owner cut and pushed the signed `v1.6` tag on `58d54dd` (verified: good signature). `build.yml`, Verify self-test and Lint were green on that commit. That closes #393.
+- PR E (#468) shipped: the owner merged it as `9cbbe84`. The five self-pins name `58d54dd # v1.6`, `previous.devcontainer.json` is rotated from the v1.6 template, the adopt-only-once caveats are gone, and the roadmap marks DEVC-D9 shipped. #418 is closed.
+  - The architect review was posted as a comment on #468 before the merge. Read it there for any findings it filed.
+  - Handing off without a critic pass on #468 (the owner's call; the diff was mechanical).
+- Hand-off note: no baseline anchor was verified this session; the milestone 8 description sha is still `259b9872…`, the same as the previous anchor.
 
-**Next:** on **sonnet** (coder), PR E of #418: move the five self-pins to `58d54dd63228e3640327bfcd34d91f64fcc88e60 # v1.6` (README Cutting a release step 2), rotate `tools/devc-verify/templates/previous.devcontainer.json` from `git show v1.6:template/.devcontainer/devcontainer.json`, mark DEVC-D9 shipped, fix the roadmap Status (it still says PR D is in review), and close #418. PR E touches `code_paths`, so it needs a fresh-session `/way-of-working:architect-review`.
+**Next:** on **opus** (architect), decide the five issues still open in milestone 8 (#457, #446, #445, #387, #386): move them to another milestone or build them here. If the sprint is done after that, run `/way-of-working:archive-sprint`. It needs the sprint's done entry in `docs/roadmap.md` on `main` first.
 
-**HITL Gate: OPEN.** No baseline anchor was verified this session for milestone 8; the description sha256 is unchanged from the previous anchor. A human go starts PR E. The next gate is the owner's merge of the PR E PR.
+**HITL Gate: NONE OPEN.** The next gate is the owner's decision on those five issues.
 
 **Open for the owner (non-blocking):**
 - The `.trivyignore.yaml` exceptions expire 2026-12-01, and no issue tracks the renewal itself.
