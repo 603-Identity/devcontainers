@@ -239,7 +239,9 @@ What each piece trusts, and what it leaves open:
   breaks a rule is caught by review alone. The gate defends against Dependabot-shaped
   forgeries, outsiders and wrong images, and against forks only to the extent that auto-merge
   never acts on a fork PR. DEVC-D7 records this split: human writers are trusted, while the
-  bump-binaries App is not and is bounded by its permissions plus the head-SHA binding (#92) plus the review-editor check (#94, see Known gaps). The reviewer-App check run that was to be required
+  bump-binaries App is not and is bounded by its permissions, plus `restrict-updates-to-main`, which
+  stops it changing `main` (the App is not a bypass actor, and its merge into `main` was refused
+  with `405`, #327; invariant 6), plus the head-SHA binding (#92), plus the review-editor check (#94, see Known gaps). The reviewer-App check run that was to be required
   before auto-merge went on (#267) is superseded, and nothing replaces it for this repo's own gate
   (see the auto-merge bullet below). Dev-App repos run the way-of-working plugin's gate (DEVC-D9).
   The other route to a non-forgeable status, a ruleset-required workflow, was rejected
@@ -279,8 +281,10 @@ What each piece trusts, and what it leaves open:
 - **The tag ruleset** (`release-tags`) restricts creating, updating, deleting and moving
   `refs/tags/v*` and `refs/tags/devc-automerge-*`, with the Repository admin role as its only
   bypass. On 603-Identity, org owners and any admin team also bypass it. It was read back
-  through the API after creation. **The negative test passed:** deleting a `v*` tag with the
-  bump-binaries App token was refused (`422`, 2026-10-07, #327). Releases are signed `vX.Y` tags, each published as an immutable GitHub Release from
+  through the API after creation. **One negative test was run live:** deleting a `v*` tag with the
+  bump-binaries App token was refused (`422`, 2026-10-07, #327). Creating or updating a `v*` tag,
+  and any operation on the `devc-automerge-*` pattern, were not tried; they rest on the ruleset
+  read-back. Releases are signed `vX.Y` tags, each published as an immutable GitHub Release from
   `v1.3` on (DEVC-D8), with no release automation. Once a release is published, its tag cannot be moved, and can be deleted only after
   deleting its release (the name can never be reused), which closes the admin bypass above
   against re-pointing that tag; `immutable-releases` is `enforced_by_owner: false`, so a repo
@@ -669,9 +673,21 @@ These are stated plainly so nobody trusts the setup for more than it does:
   bind mount: while the file exists, any process in any running container of that repo can read it,
   including an ordinary long-running window the launcher reuses. Residue in the home volume from an
   elevated window (a copied token, a cached login) persists into every later window of the repo.
-- **`appPort` reach is measured, not asserted.** The template proof shows a port is published on
-  `127.0.0.1` and nowhere else. Whether another container or the VM reaches it through
-  `host.docker.internal` is measured on the Windows host and recorded here once it is.
+- **A loopback `appPort` is reachable from other containers and from WSL.** The template proof
+  shows a port is published on `127.0.0.1` and nowhere else, and that keeps it off the network.
+  It does not keep it away from other containers on the same host. On the owner's Windows host
+  (2026-11-03, #457), a port published as `127.0.0.1:<p>:<c>` from the dev-App image was reached:
+  - **from a second container through `host.docker.internal:<p>`**, on the default bridge and on
+    a user-defined network;
+  - **from the Ubuntu WSL distro on its own `127.0.0.1:<p>`**, because Docker Desktop's WSL
+    integration puts the published port inside the distro.
+
+  The host's non-loopback address refused it. The host was Docker Desktop 4.95.0 (Engine 29.8.2)
+  and WSL 2.7.8.0 in `nat` mode, with WSL integration on. So treat a dev-App `appPort` as open to
+  every container on that Docker Desktop and every integrated distro. Whatever listens on it must
+  authenticate its callers, or serve nothing that a co-tenant container should not see. Not
+  measured: Enhanced Container Isolation, WSL `mirrored` networking, and a distro with WSL
+  integration turned off.
 - **A PR can downgrade its own verifier pin.** `verify / verify` runs the verifier the PR's own
   caller names, so a PR may pin an older release, or one that predates dev-App mode and reads the
   repo as plain. In a dev-App repo what holds it is the approval rule and the dev App's lack of the
