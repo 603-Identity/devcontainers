@@ -70,7 +70,7 @@ procedure is the README at
 `%USERPROFILE%\.config\glunk-identity\tokens\<owner>\<repo>\`, and the template mounts that
 directory read-only at `/run/wow`. The checkout folder name must be unique on the host
 (see [Consuming from another org](#consuming-from-another-org)). Open the repo through the
-launcher only (planned, tracked at glunk-works/claude-workbench#1276). Until it ships, the interim
+launcher only (planned, tracked at glunk-works/claude-workbench#1339). Until it ships, the interim
 entry is the devcontainer CLI from PowerShell: `devcontainer up --skip-post-attach --workspace-folder <absolute path>`, then
 `devcontainer exec --workspace-folder <absolute path> claude`. **Run them from a directory outside the checkout,
 in PowerShell (never `cmd.exe` or `devcontainer.cmd`)**: the checkout is writable by the container, and a `node.bat` planted in
