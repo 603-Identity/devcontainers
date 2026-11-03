@@ -185,17 +185,16 @@ at build and publish time, before any consumer pulls.
    an ssh clone lands on it (other spellings, such as another case of the host, are not). The same local-config qualification applies: code running
    as `app` can add a helper to `~/.gitconfig` or a repo's `.git/config`, and nothing in the
    image can stop that; `git-identity.sh` rewrites `~/.gitconfig` at every start.
-   The dev-App template states the VS Code half as intent, **not as a tested boundary**:
-   `customizations.vscode.settings` turns off `git.terminalAuthentication` and
-   `github.gitAuthentication` (so VS Code sets no askpass program for the terminal's git and offers
-   no host GitHub session for it) and sets `dev.containers.copyGitConfig` and
-   `remote.containers.gitCredentialHelperConfigLocation` (so the host's git config and credential
-   helper are not copied in). Nothing here tests that these settings take effect from
-   `customizations.vscode.settings` (some are Dev Containers extension settings read on the host,
-   and the extension has renamed its `remote.containers.*` keys to `dev.containers.*`), and
-   `tests/template-proof.sh` runs the devcontainer CLI, which injects no VS Code helper. The
-   `postStartCommand` `rm` removes only the helper scripts already in `/tmp` at start, not the
-   IPC socket, and VS Code may create them after it (the settings are untested, so this is not a Known gap with a measured reach: the live check on the Windows host settles it). The template lists no
+   **VS Code attach to a dev-App container is unsupported, and the template sets no VS Code
+   settings.** (It carried four `customizations.vscode.settings` keys until #456; none was verified, and
+   a setting nobody tests would be copied into every adopter as if it were a control.) An attach brings
+   back what the template keeps out: the host's git config and credential helper, an askpass program
+   for the terminal's git, and the host's VS Code GitHub session. The supported entry is the launcher
+   (planned, glunk-works/claude-workbench#1276); until it ships, the devcontainer CLI from PowerShell.
+   `tests/template-proof.sh` runs that CLI, which injects no VS Code helper. The `postStartCommand`
+   `rm` removes only the helper scripts already in `/tmp` at start (a cutover repo's legacy `<folder>-tmp`
+   volume can hold them), and the `postAttachCommand` warning is a notice of an attach (a log line nobody watches): the devcontainer CLI's `up` runs
+   it too, so the documented interim entry passes `--skip-post-attach`. The template lists no
    extension, `containerEnv` or `remoteEnv`. `verify / verify` holds the file to the template
    exactly, so a repo cannot add to it beyond an optional loopback `appPort` (see the consumer-verification section).
 
@@ -433,14 +432,17 @@ These are stated plainly so nobody trusts the setup for more than it does:
   for github.com, not askpass.) VS Code sets one in its terminals and tasks, and its GitHub
   authentication can answer for github.com with the host's VS Code GitHub session, a token that
   reaches every repo its owner can. `GIT_TERMINAL_PROMPT=0` does not stop askpass, and the image
-  cannot override an environment `GIT_ASKPASS`; the template switches
-  `git.terminalAuthentication` and `github.gitAuthentication` off (boundary 8), which a repo's
-  user or workspace settings, or a VS Code window opened outside the template, can undo. That includes
-  code in the container: it can write `/workspace/.vscode/settings.json` (the bind mount) with both keys
-  `true`, and a repo can commit the same file; `verify / verify` reads only `.devcontainer/`, so the PR
-  stays green. A verifier rule rejecting those keys in `.vscode/settings.json` and `*.code-workspace`,
-  and a start-up warning, are not built. The same uid can also use an
-  ssh key left in `~/.ssh`, or a forwarded agent (`devapp-check.sh` only warns about the latter, and only about an agent already present when it runs at start, which a VS Code attach that follows may not be).
+  cannot override an environment `GIT_ASKPASS`. The template sets no VS Code settings against it:
+  VS Code attach is unsupported (boundary 8), and the launcher (interim: the devcontainer CLI) is the only supported entry.
+  Anything that does attach, including a VS Code window opened outside the launcher, gets whatever settings
+  apply, and both askpass keys (`git.terminalAuthentication`, `github.gitAuthentication`) default to
+  on: an askpass program and the host's GitHub session are in reach with no settings write at all. Code in
+  the container can also write `/workspace/.vscode/settings.json` (the bind mount); a repo can commit the
+  same file, and `verify / verify` reads only `.devcontainer/`, so the PR stays green. A verifier rule rejecting those keys, and a start-up warning, are not built (#458 declined: both keys
+  default to on, so a rule rejecting `true` closes nothing, and a rule requiring `false` would be
+  undone by container code rewriting `/workspace/.vscode/settings.json` after the check, or by a
+  window that never opens that workspace). The same uid can also use an
+  ssh key left in `~/.ssh`, or a forwarded agent (`devapp-check.sh` only warns about the latter, and only about an agent already present when it runs at start, which an attach that follows may not be).
 - **The dev-App flavour's `claude` trust is a committed key, a pin and a build-time check.**
   The check proves the binary is the one Anthropic signed for exactly `CLAUDE_VERSION`
   (`images/devapp/files/claude-fetch.sh`), but: a committed key cannot learn of a revocation
@@ -638,15 +640,21 @@ These are stated plainly so nobody trusts the setup for more than it does:
   (`core.fsmonitor`), `.git/hooks`, and the same in any nested `.git` directory or `.git/modules/*`, are all writable through the bind mount, and run on the host
   when the folder is opened in host VS Code (the git extension, a trusted workspace's tasks) before
   any prompt can be declined. The same holds for the machine settings file in the home volume
-  (`~/.vscode-server/data/Machine/settings.json`), which can switch the askpass settings back on and
+  (`~/.vscode-server/data/Machine/settings.json`), which can change VS Code's behaviour in an attach and
   is invisible to git and to `verify / verify`.
 - **A session can run code on the host through the local `.devcontainer/`.** The checkout is a
   bind mount, so a session can edit `.devcontainer/devcontainer.json` (an `initializeCommand`, a
-  host bind) and the host runs it on any rebuild that bypasses the launcher, including VS Code's
-  "Reopen/Rebuild in Container" prompt. `verify / verify` sees only what is pushed. Until the
+  host bind) and the host runs it on the next `up` or rebuild: the devcontainer CLI runs
+  `initializeCommand` from the local file, as VS Code's "Reopen/Rebuild in Container" does.
+  `devcontainer exec --workspace-folder <path>`, the per-session interim entry, re-reads the same file on
+  every run (a running container can rewrite it between inspection and use), substitutes `${localEnv:...}` from the host's environment into `remoteEnv`, and takes
+  `remoteUser` from it, so an edited file can carry a host secret into the next `claude` process or
+  run it as another user. A checkout a container has written to is no longer "a clone you reviewed"
+  after the first `up`.
+  `verify / verify` sees only what is pushed. Until the
   launcher ships and is the only way in (planned, tracked at glunk-works/claude-workbench#1276),
-  only the convention "open through the launcher; never run the host's Dev Containers or git on a
-  mounted checkout" holds this.
+  only the convention "enter through the launcher (interim: the devcontainer CLI; stop the container and
+  inspect the config before any `up`, from a PowerShell outside the checkout with no secrets in its environment); never run the host's Dev Containers extension or git on a mounted checkout" holds this.
 - **"No extensions" holds for a fresh home volume only.** The VS Code server loads every
   extension in `~/.vscode-server/extensions`, and a cutover repo reuses its legacy `<folder>-home`
   volume, which holds the GitHub and Claude Code extensions; a host user setting

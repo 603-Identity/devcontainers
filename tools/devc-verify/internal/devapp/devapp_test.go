@@ -123,7 +123,7 @@ func TestCompareJSONRejects(t *testing.T) {
 		"containerEnv":      addKey(`"containerEnv": {"A": "b"}`),
 		"runArgs":           strings.Replace(h, `"--tmpfs=/var/tmp"`, `"--tmpfs=/var/tmp", "--privileged"`, 1),
 		"workspaceMount":    strings.Replace(h, "consistency=cached", "consistency=delegated", 1),
-		"an extension":      strings.Replace(h, `"settings": {`, `"extensions": ["x.y"], "settings": {`, 1),
+		"an extension":      strings.Replace(h, `"init": true`, `"customizations": {"vscode": {"extensions": ["x.y"]}}, "init": true`, 1),
 		"postStartCommand":  strings.Replace(h, "sh /usr/local/share/devc/devapp-check.sh; ", "", 1),
 		"tofu cache volume": strings.Replace(h, `"mounts": [`, `"mounts": ["source=devc-tofu-plugins,target=/home/app/.cache/tofu-plugins,type=volume",`, 1),
 		"mounts reordered": strings.Replace(h,
@@ -382,7 +382,7 @@ func TestRealTemplateShape(t *testing.T) {
 		`"extensions"`, `"containerEnv"`, `"remoteEnv"`, `"initializeCommand"`, `"appPort"`, `"features"`,
 		`"image"`, "devc-tofu-plugins", ".aws", "${localEnv:HOME}", "--privileged", `"privileged"`,
 		`"capAdd"`, `"securityOpt"`, "docker.sock", `"forwardPorts"`, `"onCreateCommand"`,
-		`"updateContentCommand"`, `"runServices"`, `"dockerComposeFile"`,
+		`"updateContentCommand"`, `"runServices"`, `"dockerComposeFile"`, `"customizations"`,
 	} {
 		// Comments may name them; the JSON below the header may not. Strip // comments first.
 		var code []string
@@ -398,10 +398,6 @@ func TestRealTemplateShape(t *testing.T) {
 	}
 	for _, want := range []string{
 		"tokens/OWNER/REPO,target=/run/wow,type=bind,readonly",
-		`"dev.containers.copyGitConfig": false`,
-		`"remote.containers.gitCredentialHelperConfigLocation": "none"`,
-		`"git.terminalAuthentication": false`,
-		`"github.gitAuthentication": false`,
 		"--read-only",
 	} {
 		if !strings.Contains(tmpl, want) {
@@ -421,6 +417,10 @@ func TestRealTemplateShape(t *testing.T) {
 		t.Fatal(err)
 	}
 	for k := range raw {
+		// The decoded key, not the raw text: "customizations" is the same key.
+		if strings.EqualFold(k, "customizations") {
+			t.Errorf("the template carries the top-level key %q (no VS Code settings: README \"Using an image\")", k)
+		}
 		for _, known := range []string{"runArgs", "mounts"} {
 			if k != known && strings.EqualFold(k, known) {
 				t.Errorf("the template carries a case-variant %q of %q", k, known)
@@ -455,6 +455,10 @@ func TestRealTemplateShape(t *testing.T) {
 	// The credential-file cleanup runs first in postStartCommand, before any other start-up step.
 	if !strings.Contains(tmpl, `"postStartCommand": "rm -f /tmp/vscode-remote-containers-*.js; sh /usr/local/share/devc/owner-check.sh;`) {
 		t.Errorf("postStartCommand does not start with the credential-file cleanup")
+	}
+	// The attach notice (VS Code attach is unsupported) stays.
+	if !strings.Contains(tmpl, `"postAttachCommand": "echo 'devapp: open this repo through the launcher only' >&2"`) {
+		t.Errorf("the postAttachCommand warning is missing")
 	}
 	// It is not valid as a head until OWNER/REPO is filled in.
 	isFailure(t, CompareJSON([]byte(tmpl), repo, cands(t)))

@@ -18,11 +18,12 @@ login, never from the container.
 ## 0. Before you start
 
 - **Host: Windows only.** The template reads the host broker's token directory from
-  `%USERPROFILE%`, and says so in its header. VS Code with the Dev Containers extension is the
-  editor, and the repo is opened through the launcher only (planned, tracked at
-  glunk-works/claude-workbench#1276; until it ships that is a convention, and VS Code's
-  "Reopen/Rebuild in Container" prompts bypass it). Until it ships there is no entry
-  this repo can make safe: opening the folder in host VS Code is itself the exposure (see the README's
+  `%USERPROFILE%`, and says so in its header. The repo is opened through the launcher only
+  (planned, tracked at glunk-works/claude-workbench#1276). Until it ships, the interim entry is the
+  devcontainer CLI from PowerShell: `devcontainer up --skip-post-attach --workspace-folder <absolute path>`, then
+  `devcontainer exec --workspace-folder <absolute path> claude`, run from a directory outside the checkout (untested by this repo; the README's "Using an image in a repo" has the
+  stop-inspect-`up` rule for a written-to checkout and the secret-free-shell rule). VS Code attach is unsupported in a dev-App
+  container. Opening the folder in host VS Code is itself the exposure (see the README's
   "Using an image in a repo"). Open only a fresh clone that no container has run on; a
   checkout a container has written to must be inspected first, without host git or VS Code
   (`.devcontainer/`, `.devcontainer.json`, `.vscode/`, `.git/config`, `.git/hooks`, every nested
@@ -158,7 +159,7 @@ What carries over, and what to do about it:
   loads them whatever `devcontainer.json` lists. The first two reach the host's GitHub session, the
   broad token #439 exists to revoke; Claude Code's own native `claude` shadows the verified one.
   Remove the whole `~/.vscode-server` directory before the first dev-App start (it also holds the
-  machine settings file the template's VS Code settings are written to; the server is downloaded
+  machine settings file; the server is downloaded
   again), with the image you just pinned, never an unpinned one:
   `docker run --rm --network none --read-only --user 1000:1000 --entrypoint /usr/bin/rm -v
   <folder>-home:/home/app <FROM image>@sha256:<digest> -rf /home/app/.vscode-server`, then confirm it is gone with the same container shape and
@@ -175,16 +176,16 @@ What carries over, and what to do about it:
 ## 7. Open the PR and check the container
 
 Open the PR from the host login. Then, with the PR branch checked out (in a fresh clone you reviewed, not by running host git on a checkout a container has written to), start the container from
-the launcher. There is no `gh auth login` step. Prove the container, using [Checking a
+the launcher (until it ships, `devcontainer up --skip-post-attach --workspace-folder <absolute path>` from PowerShell outside the checkout, then `devcontainer exec --workspace-folder <absolute path> bash`; on a cutover, remove the legacy container first, since `up` restarts it; stop and inspect before any later `up`, per the README). There is no `gh auth login` step. Prove the container, using [Checking a
 container](../README.md#checking-a-container):
 
 - no capabilities, `NoNewPrivs: 1`, user `app`, read-only root filesystem;
 - `/run/wow` is mounted read-only and holds `dev-token`; `gh auth status` reports a login through
   `GH_TOKEN` (the wrapper's); `gpg` is not on `PATH`;
-- `docker diff` shows only `A /vscode`, `C /usr/sbin` and `A /usr/sbin/docker-init`;
+- `docker diff` shows only `C /usr/sbin` and `A /usr/sbin/docker-init` (an `A /vscode` is the Dev Containers extension's mount, which the CLI entry is expected not to show);
 - `/home/app` is owned by `app` and the volumes survive a rebuild (`/tmp` is root-owned, mode
   1777: that is normal);
-- `ls ~/.vscode-server/extensions` lists no extension directory;
+- `~/.vscode-server` does not exist (step 6 removed it, or the home volume is new; the CLI entry does not create it);
 - a commit works and is unsigned (`git log --format=%G?` prints `N`);
 - the repo's own gate runs in the container with CI's tool versions: for a tofu repo,
   `tofu init`, then `tofu test -filter=<mocked file>`, then restore the lock;
@@ -227,7 +228,7 @@ back the **container** only. Keep `secret-scan.yml`, the required `secrets / sca
 2**: none of them depends on the container, and the old scanner is not coming back. If the
 adoption PR never merged, close it, keep the repo's volumes, and skip Rollback steps 2 and 3. Step 4 still applies if step 7 started the dev-App container: that start deleted the PAT login from the shared home volume.
 
-1. **Stop using the container.** Close VS Code's window on the repo. Keep the repo's volumes:
+1. **Stop using the container.** Stop the container (`docker ps` to find it, then `docker stop` it). Keep the repo's volumes:
    the legacy layout uses the same names, and step 6 explains what the dev-App container already
    removed from them.
 2. **Revert the container files** in a PR from the host login (it changes
