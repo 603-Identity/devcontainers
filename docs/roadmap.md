@@ -7,7 +7,8 @@ This file points into that log and does not duplicate it.
 
 ## Status
 
-The three images (`base`, `tofu`, `node`) are published to GHCR as public packages, each
+The images (`base`, `tofu`, `node`, and since #442 the dev-App flavour, `devapp` and
+`devapp-tofu`) are published to GHCR as public packages, each
 with signed build provenance and an SBOM. They serve 603-Identity and glunk-works, and the
 packages must stay public (DEVC-D3). Since #2 they are built on Ubuntu 26.04. The
 `main-required-checks` ruleset and the `architect-review` gate protect `main`, and
@@ -17,12 +18,19 @@ P0: cross-org images (milestone 1) is done. Its last change merged as `6f63aec` 
 
 P1: pilot adoption (milestone 2) is done. Its last change merged as `00b6a2e` (#228, the
 adoption runbook). The pilots, terraform-cloudflare-dns and terraform-microsoft365-entra, have
-adopted the template (#10 closed). The waves (#26 to #28) follow `docs/adopting.md`. Org secret
+adopted the template (#10 closed). The waves (#26 to #28) were to follow `docs/adopting.md`; DEVC-D9 froze it first, and PR D (#392) rewrote it for the dev-App route. Org secret
 scanning (#190) moved to milestone 4.
 
 Repo hardening: review gate and CI (milestone 4) is done. Its last change merged as `344d625`
 (#365, consumer pin provenance). The skill half of #278 moved to the way-of-working plugin
 (glunk-works/claude-workbench#346).
+
+Dev-App flavour and template (milestone 8, #418) is done. It shipped in v1.6 (DEVC-D9), and its last change merged as
+`9ea6119` (#471, for #445). The images are built and published (#442), the
+consumer-verification lint (PR C, #451) and the template (PR D, #392) are merged, v1.6 is tagged, and PR E moved the template's
+pins to it. The leftovers closed after it: #470 recorded the `appPort` reach measurement in the threat model (#457) and corrected
+two of its claims (#386, #387). The flaky consumer-workflows test (#446) moved to the backlog. The legacy PAT route is frozen:
+the two pilots keep their copies until their cutover.
 
 ## Next action
 
@@ -42,7 +50,8 @@ Two dates are fixed:
 - Each sprint is one milestone on this repo, and its issues are the task list.
 - **This repo is public.** An issue here must not quote a private repo's internals. Link to
   the private issue instead. Items that started in infrastructure-core's private tracker
-  were restated here (#4, #5, #6), and their originals were closed with a link.
+  were restated here (#4, #5, #6), and their originals were closed with a link. #6 is
+  superseded by DEVC-D9; its one remaining action, revoking the broad OAuth token, is #439.
 
 ## Decisions
 
@@ -102,6 +111,11 @@ PR lands.
 
 **Resolved** 2026-09-30, in the design spec on #21 (which also folds #9).
 
+*Amended 2026-11-02 by DEVC-D9:* from v1.6 the template on `main` drops VS Code entry, the
+shared volume and the token-ledger bullet below. VS Code attach is unsupported for dev-App containers (DEVC-D9's
+2026-11-02 amendment): a stated position, not an enforced one. The legacy template is unchanged. The host directory `glunk-identity`, named in the template's token mount, is a
+named exception to the org-neutral names. The rest of this decision stands.
+
 **Context.** The images become the shared devcontainer images for 603-Identity and
 glunk-works. Several names assumed one org, and the cross-org move joins two orgs' supply
 chains.
@@ -141,6 +155,11 @@ the threat model.
 #### DEVC-D4: No image ships the `claude` CLI; plugin repair uses the extension's own binary
 
 **Resolved** 2026-10-01 by the repo owner, on #4.
+
+*Superseded in part 2026-11-02 by DEVC-D9 (from v1.6):* the dev-App images do ship `claude`, at
+`/usr/local/bin/claude`, from a binary verified against Anthropic's signed manifest, with its updater off and
+its version pinned. `base`, `tofu` and `node` still ship no CLI, and the plugin repair below
+is unchanged for them.
 
 **Context.** A container kept loading an old way-of-working plugin version through two pin
 bumps. The documented fix (refresh the marketplace, reinstall the plugin) needs the CLI, and
@@ -260,6 +279,12 @@ boundary 5). The threat model's Known gap now reads "detected at start, not prev
 
 **Resolved** 2026-10-05 by the repo owner, on #93 and #122 (milestone 4, build-order item 4).
 
+*Superseded 2026-11-02 by DEVC-D9 (from v1.6):* this gate, with its #92, #94 and #278 checks,
+governs this repo and the legacy template route only; DEVC-D9 carries those checks forward. A
+dev-App repo runs the way-of-working plugin's gate. The "reviewer App first" bullet below is
+withdrawn: #267 is superseded, and #139 is superseded by #396, which holds the preconditions
+for turning auto-merge on.
+
 **Context.** `architect-review` is the only review control on `main`. Any writer can turn it
 green without a review: a PR runs its own copy of the gate (#93), and a PR's own workflow can
 post the status itself, because every `GITHUB_TOKEN` run posts as the same integration (F9b,
@@ -346,6 +371,87 @@ way, so no other repo has to change.
 **Consequences.** `v1.3` is the first immutable release. `v1.0`-`v1.2` keep only the ruleset's
 protection. The threat model's tag-ruleset entry records the change.
 
+#### DEVC-D9: A dev-App flavour of the images, a template that reads its token from a host file, and a lint that holds both
+
+**Resolved** 2026-11-02 by the repo owner, on #418 (the design of record is the v4 comment there)
+and recorded through #393. **Shipped in v1.6** (tagged on `58d54dd`). The images are built and published (#442). The lint and the template
+were PRs C and D (#392); PR E moved the self-pins to v1.6 and rotated the template snapshot.
+
+**Context.** The PAT route gives a container a hand-made, long-lived token, and lets the host's
+GPG agent sign for it. The org's identity rollout replaces that with a
+per-repository dev App installation token that a host broker writes to a file. That needs an
+image that reads only that file, a template that mounts it, and a verifier that stops a consuming
+repo from editing around either.
+
+**Decision.** This repo, as publisher, takes on these obligations:
+- **The flavour.** Two images, `devcontainer-devapp` and `devcontainer-devapp-tofu`, built from
+  one `images/devapp/Dockerfile` on `base`'s and `tofu`'s digests in the same run. Their GitHub
+  identity is a dev App installation token and nothing else: `gh` and git's credential helper read
+  only the token file and fail closed without it. They have no gpg (`gpgv` stays), so nothing
+  signs. They ship `claude`, installed from a binary verified against Anthropic's signed manifest
+  before anything is pushed, with its version pinned (a session can still fetch its own binary; the
+  threat model states the limit). They swap Ubuntu 26.04's Rust coreutils for the GNU ones.
+  `base`, `tofu` and `node` are unchanged.
+- **The token-file contract is the image's input.** `/run/wow/dev-token`: the token on line 1,
+  `expires_at` on line 2, LF line endings, replaced by atomic rename. The image refuses a
+  missing, malformed, expired or nearly expired file, and reads no other file in that directory.
+  The broker that writes it is the host's obligation, not decided here.
+- **The template and the lint.** The template has four per-repo surfaces: the token mount's
+  `tokens/<owner>/<repo>` name, the `FROM` (one of the two images, by tag and digest), the
+  extras between the `FROM` and the final `USER 1000:1000` (and the files they copy), and an
+  optional loopback-only `appPort`. Everything else is matched exactly. It is for Windows hosts
+  only. `devc-verify` infers dev-App mode from the PR head, the PR base or the default
+  branch's tip. In that mode the head must itself be dev-App and must equal the template at
+  the pinned commit or the previous release's snapshot (the current template, plus one back).
+  It also reads the default branch's rules and fails unless a pull-request rule requires at
+  least one approval and code-owner review (an API error is red). Bypass actors are not visible
+  to it, so "no bypass actors" stays a host procedure. The extras lint catches accidents, not
+  attacks. Plain mode becomes an allowlist. `decide` exits 3 for any dev-App `FROM`.
+- **Which review gate governs where.** This repo, and consumers on the legacy template route, run
+  `architect-review-gate.yml`: human `REVIEWER_IDS`, the `Reviewed against head` line (#278), the
+  head-SHA binding (#92) and the review-edit-history check (#94), all carried over from DEVC-D7.
+  A dev-App repo runs the way-of-working plugin's `review.ci_gate`. That is cited as the dev-App
+  repo's obligation and not decided here. Both post a commit status named `architect-review`: two
+  gates, one name, a residual that PR C adds to the threat model.
+- **Reviewed only here.** A consuming repo's PR changes a digest and reviews no image
+  content. The review of that content happens in this repo alone. The trust is bounded by the
+  `org.opencontainers.image.revision` label (with a documented command to diff two tags), by
+  `verify`'s approval-rule check, and by the human approval.
+- **The kill switch is kept.** A consumer is to arm an image bump only through `decide` and the
+  `devc-automerge-on` tag, which nobody has created; #396 will make that, and the exclusion of
+  `.devcontainer/` from any general Dependabot auto-arm pattern, a consumer requirement. Dev-App
+  repos may not run an approvals-0 ruleset. #396 holds the remaining preconditions. Superseding
+  #267 leaves #93 and F9b accepted at the root of the auto-merge chain, as the threat model says.
+- **VS Code is unsupported for dev-App containers.** *Amended 2026-11-02 (#456), before the v1.6 tag.* The template
+  sets no `customizations.vscode` settings: the four it first carried were unverified, and a
+  setting nobody tests would be copied into every adopter as if it were a control. The only
+  supported entry is the launcher (glunk-works/claude-workbench#1276); until it ships, the
+  devcontainer CLI from PowerShell (`devcontainer up --skip-post-attach --workspace-folder <path>`, then `devcontainer exec --workspace-folder <path> claude`, run from outside the checkout). Attaching VS Code brings
+  back the host's git config and credential helper, an askpass program and the host's VS Code
+  GitHub session. The template keeps the `postStartCommand` `rm` of VS Code's helper scripts and
+  the `postAttachCommand` warning as a notice of an attach, and `TestRealTemplateShape` fails if a
+  `customizations` block returns.
+- **The legacy route is frozen.** No new PAT-route adoptions. The two pilots keep their copies
+  until their cutover, and the plain images keep publishing.
+- **Supersessions.** DEVC-D4 and DEVC-D7 carry in-place notes, and so does DEVC-D3. #267 and #139
+  are superseded into #396. #395 (a reviewer-App gate here) is superseded: the gate lives in the
+  plugin. #6 is superseded; its one remaining action is #439.
+
+**Why DEVC-D and not IAC-D.** Under DEVC-D1's test this records only what this repo publishes
+and checks. The host and consumer obligations are IAC-D49's, and its rewrite is
+infrastructure-core#593. This decision cites them and does not decide them:
+- launcher-only entry;
+- no host Dev Containers or git on a mounted checkout;
+- the approval ruleset before the dev App;
+- checkout folder names unique per host;
+- the plugin gate.
+
+**Consequences.** Every README and threat-model change lands with the PR that ships its
+behaviour: B (#442), C and D. PR A changes only the passages already true at its merge.
+Invariant 6 (this repo's own `main`) is unchanged. "Approvals are the merge control" belongs
+to the consumer-verification section, which PR C writes. `docs/adopting.md` is frozen to the
+legacy route until PR D rewrites it. The tag v1.6 closes #393.
+
 ### Org-wide IAC-D decisions that bind this repo
 
 Each of these is recorded in full in infrastructure-core's log. They are cited here only.
@@ -354,4 +460,4 @@ Each of these is recorded in full in infrastructure-core's log. They are cited h
 |----|---------|------------------------|
 | IAC-D14 | Work branches live on the org repo, not a personal fork, because fork PRs silently ran no CI. The same "absent-check trap" is why required-check names are read from each workflow's `name:` field and never typed from memory. | Branches on `603-Identity/devcontainers`; `ruleset.required_checks` |
 | IAC-D48 | Each repo numbers its own decisions in a local series; shared and org-wide decisions stay `IAC-D`. Repos that plan sprints as milestones keep a README-only `sprints/`. | DEVC-D1; `decisions` and `sprints_dir` in `.ai/project.yml`; `sprints/` |
-| IAC-D49 | Every repo in 603-Identity and glunk-works gets its devcontainer from shared, digest-pinned images that only this repo publishes, from `main`. Each container carries a per-repo, tiered fine-grained token. Consumers pin and verify every digest, keep checkout folder names unique, and on Linux run as uid 1000. Adds `DEVC-D` to IAC-D48's series. | DEVC-D2, DEVC-D3, DEVC-D5; README's *Credentials* section; `build.yml`'s `MAJOR`; #12 |
+| IAC-D49 | **Rewrite pending (infrastructure-core#593).** As logged: every repo in 603-Identity and glunk-works gets its devcontainer from shared, digest-pinned images that only this repo publishes, from `main`. Each container carries a per-repo, tiered fine-grained token. Consumers pin and verify every digest, keep checkout folder names unique, and on Linux run as uid 1000. Adds `DEVC-D` to IAC-D48's series. | DEVC-D2, DEVC-D3, DEVC-D5, DEVC-D9; README's *Credentials* section; `build.yml`'s `MAJOR`; #12 |

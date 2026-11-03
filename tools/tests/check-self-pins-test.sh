@@ -42,7 +42,12 @@ new_tree() {
     mkdir -p "$TREE/$(dirname "$f")"
     cp "$ROOT_DIR/$f" "$TREE/$f"
   done
+  # The fixture upstream's templates (below), not this checkout's: TMPL_B is v1.1's.
+  printf '%s' "$TMPL_B" > "$TREE/template/.devcontainer/devcontainer.json"
+  mkdir -p "$TREE/$(dirname "$SNAP")"
 }
+SNAP=tools/devc-verify/templates/previous.devcontainer.json
+set_snapshot() { printf '%s' "$1" > "$TREE/$SNAP"; }
 # pin_all SHA TAG: every self-pin in $TREE names SHA, labeled TAG.
 pin_all() {
   local f
@@ -61,6 +66,11 @@ go_file() { # current previous-literal-or-ident
   [ "$p" = CurrentSyntax ] || p="\"$p\""
   printf 'package dockerfile\n\nconst CurrentSyntax = "%s"\n\nconst PreviousSyntax = %s\n' "$1" "$p"
 }
+# Each release's template devcontainer.json; the second has no trailing newline, so a comparison
+# that dropped one would call the two snapshots below equal.
+TMPL_A=$'{ "release": "v1.0" }
+'
+TMPL_B='{ "release": "v1.1" }'
 UPROOT="$(mktemp -d)"
 trap 'rm -rf "$UPROOT"' EXIT
 w="$UPROOT/work"
@@ -68,9 +78,11 @@ gof=tools/devc-verify/internal/dockerfile/dockerfile.go
 g init -q "$w"
 mkdir -p "$w/$(dirname "$gof")"
 go_file "$SYN_A" CurrentSyntax > "$w/$gof"
+mkdir -p "$w/template/.devcontainer"; printf '%s' "$TMPL_A" > "$w/template/.devcontainer/devcontainer.json"
 g -C "$w" add -A; g -C "$w" commit -q -m c1; C1="$(g -C "$w" rev-parse HEAD)"; g -C "$w" tag -a v1.0 -m v1.0
 g -C "$w" branch side; g -C "$w" branch fork
 go_file "$SYN_B" "$SYN_A" > "$w/$gof"
+printf '%s' "$TMPL_B" > "$w/template/.devcontainer/devcontainer.json"
 g -C "$w" commit -q -am c2; C2="$(g -C "$w" rev-parse HEAD)"; g -C "$w" tag v1.1
 g -C "$w" checkout -q side; g -C "$w" commit -q --allow-empty -m s1; S1="$(g -C "$w" rev-parse HEAD)"
 g -C "$w" checkout -q fork; g -C "$w" commit -q --allow-empty -m f1; F1="$(g -C "$w" rev-parse HEAD)"
@@ -113,6 +125,29 @@ run_check; expect "a fork-only pin" 1 "not on 603-Identity/devcontainers main's 
 # accepted" finding. It must not be read at all: in the filtered clone that read would fetch
 # the fork's commit from origin by object ID.
 refute_msg "a fork-only pin's syntax is never read" "is not accepted by the verifier"
+
+# --- the template snapshot (#418 owner decision 5) -----------------------------------------
+new_tree; pin_all "$C2" v1.1; set_syntax "$SYN_B"
+run_check; expect "no snapshot only warns" 0 "previous.devcontainer.json is missing"
+refute_msg "main's template equals the pinned one" "differs from the pinned"
+
+new_tree; pin_all "$C2" v1.1; set_syntax "$SYN_B"; set_snapshot "$TMPL_B"
+run_check; expect "the snapshot is the pinned release's template" 0
+refute_msg "a snapshot present draws no missing warning" "is missing"
+
+new_tree; pin_all "$C2" v1.1; set_syntax "$SYN_B"; set_snapshot "$TMPL_A"
+run_check; expect "a snapshot of another release" 1 "is not template/.devcontainer/devcontainer.json at the pinned v1.1"
+
+new_tree; pin_all "$C2" v1.1; set_syntax "$SYN_B"; set_snapshot "$TMPL_B"$'
+'
+run_check; expect "a snapshot one newline off" 1 "byte for byte"
+
+new_tree; pin_all "$C1" v1.0; set_syntax "$SYN_A"; set_snapshot "$TMPL_A"
+run_check; expect "main's template ahead of the pin only warns" 0 "differs from the pinned v1.0's"
+
+new_tree; pin_all "$F1" v1.1; set_syntax "$SYN_B"; set_snapshot "$TMPL_B"
+run_check; expect "a fork-only pin, with a snapshot" 1 "not on 603-Identity/devcontainers main's first-parent line"
+refute_msg "a fork-only pin's template is never read" "byte for byte"
 
 run_check "$UPROOT/does-not-exist.git"; expect "an unreachable upstream" 3 "never ok"
 run_check "https://example.invalid/x.git"; expect "a network override" 2 "absolute local path"

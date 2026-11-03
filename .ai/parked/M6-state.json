@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "current_phase": "Internal hardening",
+  "current_sprint_id": "M6",
+  "sprint_status": "implementing",
+  "assigned_model": "opus",
+  "assigned_persona": "architect",
+  "last_commit": "5f7507c",
+  "next_action": "/way-of-working:architect-review 389 — fresh-session review of PR #389 (milestone 6 step 4: merge-guard rewritten as a fail-closed tripwire, closes #170, #171, #311); the owner's merge of it is the next gate",
+  "hitl_gate": "NONE OPEN — next gate: the fresh-session architect review of PR #389, then the owner's merge. Open owner decisions, not blocking: claude-workbench#368 (keep or drop the cursor-sync --admin merge) and the proposed #170/#171 issue edits.",
+  "pointers": {
+    "roadmap": "docs/roadmap.md",
+    "sprint_plan": "https://github.com/603-Identity/devcontainers/milestone/6",
+    "plan_anchor": {
+      "milestone": 6,
+      "description_sha256": "6cbed054fbed2f74dddaef69a5a240b3d91daecc79c9acef6935904245414f61",
+      "task_issue": null,
+      "task_issue_updated_at": null,
+      "spec_comment": null
+    },
+    "review_pr": null
+  },
+  "parked_at": "2026-11-02",
+  "parked_reason": "Owner-directed #418 (dev-App flavour, WB-D42 route step 4) takes priority; M6's step 4 (#389) closed unmerged, resume M6 after milestone 8.",
+  "parked_from_commit": "20c382f"
+}

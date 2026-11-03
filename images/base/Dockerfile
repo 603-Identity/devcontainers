@@ -52,8 +52,8 @@ RUN apt-get update \
 
 # --- gh CLI, from the release tarball rather than the apt repo so the version is
 # pinned and checksum-verified like every other binary here.
-ARG GH_VERSION=2.103.2
-ARG GH_SHA256=62ccf747115ddc61237efffdde66a3c8f70ba249433dc64f70801089b59c59c8
+ARG GH_VERSION=2.103.3
+ARG GH_SHA256=4c806978ffce1cec70853302a56d70ac6da4f19bae7adca4e1a8ab00633dd91d
 RUN curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" \
         -o /tmp/gh.tar.gz \
     && echo "${GH_SHA256}  /tmp/gh.tar.gz" | sha256sum -c - \
@@ -123,6 +123,8 @@ RUN UV_PYTHON_DOWNLOADS=never UV_PROJECT_ENVIRONMENT=/opt/devc/tools \
 
 # --- Start-up scripts, shipped in the image so repos do not each carry a copy.
 # A repo's devcontainer.json runs them from postStartCommand; see README.md.
+# The dev-App flavour (images/devapp) deletes gpg-check.sh from ITS layer only: the v1.5
+# pilots' postStartCommand still calls it from this image, so base keeps shipping it.
 COPY --chmod=0755 files/owner-check.sh files/git-identity.sh files/gpg-check.sh /usr/local/share/devc/
 
 # --- git config layout. ~/.gitconfig (an include of ~/.gitconfig-identity) is NOT in the
@@ -168,7 +170,8 @@ RUN install -d -o app -g app -m 0755 /home/app/.gitconfig.d /home/app/.local \
 # System-level git settings, so they survive a rebuilt home directory and work from
 # the first command in a fresh shell:
 #   * GitHub HTTPS credentials come from gh, whose credential lives in the
-#     per-repo volume above. The helper is an absolute path because ~/.local/bin
+#     per-repo volume above. (The dev-App flavour, images/devapp, replaces this helper
+#     with dev-token and unsets this entry; base and the plain template keep it.) The helper is an absolute path because ~/.local/bin
 #     (writable by app) leads PATH, so a bare `gh` could be shadowed by accident, e.g. a
 #     `uv tool install` entry point named gh. This is hygiene, not a boundary against
 #     code running as app (see docs/threat_model.md, boundary 8);

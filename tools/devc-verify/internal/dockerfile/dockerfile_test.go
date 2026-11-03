@@ -35,7 +35,7 @@ func TestTemplateWithRealDigest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ref.Name != "tofu" || ref.Major != 4 || ref.Minor != 144 || ref.Digest != digest {
+	if ref.Name != "devapp-tofu" || ref.Major != 4 || ref.Minor != 144 || ref.Digest != digest {
 		t.Errorf("unexpected base %+v", ref)
 	}
 }
@@ -79,6 +79,11 @@ func TestImagesCarryCurrentSyntax(t *testing.T) {
 // functional change, so v0.34.1 is the release the frontend was cut from. (The previous pin,
 // dockerfile/1.27.1, is v0.33.1 plus a version-string commit.)
 // v0.34.1 needs go 1.26.8; go.mod and every setup-go go-version must agree (verify-selftest.yml checks this).
+//
+// Only CurrentSyntax's series is checked here. PreviousSyntax (1.27, cut from v0.33.1) is parsed
+// by this vendored release too, which is safe only while the delta between the two releases
+// leaves the parser, instructions, shell, command and linter packages unchanged: see
+// PreviousSyntax's comment (#429), and the bump checklist in README.md.
 var frontendToBuildkit = map[string]string{"1.28": "v0.34.1"}
 
 func TestBuildkitMatchesFrontend(t *testing.T) {
@@ -112,11 +117,45 @@ func check1(t *testing.T, src string) error {
 	return err
 }
 
+// Under PreviousSyntax a heredoc would be lexed by the build's older shell lexer, which differs
+// from the vendored one (#429), so "<<" is refused there and allowed under CurrentSyntax.
+func TestHeredocOnlyOnCurrentSyntax(t *testing.T) {
+	body := "\nFROM " + base + "\nRUN <<\"E\\OF\"\necho hi\nE\\OF\nUSER 1000:1000\n"
+	if err := check1(t, "# syntax="+CurrentSyntax+body); err != nil {
+		t.Fatalf("a heredoc on the current syntax: %v", err)
+	}
+	if PreviousSyntax == CurrentSyntax {
+		t.Skip("PreviousSyntax equals CurrentSyntax: nothing is fenced off")
+	}
+	for name, src := range map[string]string{
+		"a heredoc":           "# syntax=" + PreviousSyntax + body,
+		"<< in a comment":     "# syntax=" + PreviousSyntax + "\nFROM " + base + "\n# a << b\nUSER 1000:1000\n",
+		"<< in a RUN command": "# syntax=" + PreviousSyntax + "\nFROM " + base + "\nRUN echo a << b\nUSER 1000:1000\n",
+		// Every spelling of the directive BuildKit accepts: the fence keys on its value.
+		"no space":        "#syntax=" + PreviousSyntax + body,
+		"spaces around =": "# syntax = " + PreviousSyntax + body,
+		"upper case":      "# SYNTAX=" + PreviousSyntax + body,
+		"two spaces":      "#  syntax=" + PreviousSyntax + body,
+		"trailing space":  "# syntax=" + PreviousSyntax + " " + body,
+		// A "<<" split across a line continuation: no "<<" in the bytes, one on the joined line.
+		"split across a continuation": "# syntax=" + PreviousSyntax + "\nFROM " + base + "\nRUN cat <\\\n<EOF\nCOPY --from=evil / /\nEOF\nUSER 1000:1000\n",
+		"split around a comment":      "# syntax=" + PreviousSyntax + "\nFROM " + base + "\nRUN cat <\\\n# note\n<EOF\nCOPY --from=evil / /\nEOF\nUSER 1000:1000\n",
+	} {
+		if err := check1(t, src); !check.IsFailure(err) || !strings.Contains(err.Error(), "may not contain") {
+			t.Errorf("%s on the previous syntax: want the heredoc failure, got %v", name, err)
+		}
+	}
+}
+
 func TestAcceptsMinimal(t *testing.T) {
 	for _, h := range []string{CurrentSyntax, PreviousSyntax} {
 		if err := check1(t, "# syntax="+h+"\nFROM "+base+"\nUSER 1000:1000\nRUN --mount=type=cache,target=/tmp/c true\nCOPY a b\n"); err != nil {
 			t.Errorf("syntax %q: %v", h, err)
 		}
+	}
+	// Other labels are fine, one that only starts with the metadata label's name included.
+	if err := check1(t, hdr+"FROM "+base+"\nLABEL org.opencontainers.image.description=\"x\" devcontainer.metadata.note=y\n"); err != nil {
+		t.Error(err)
 	}
 	// Comments, blank lines and a continuation after FROM are fine.
 	if err := check1(t, hdr+"#\n# note\n\nFROM "+base+"\n\nRUN echo a \\\n  && echo b\n"); err != nil {
@@ -152,6 +191,14 @@ func TestRejects(t *testing.T) {
 		"nothing but a comment": hdr,
 		"empty":                 "",
 		"unknown instruction":   hdr + from + "BOGUS x\n",
+
+		// The devcontainer CLI merges this label into the container's configuration (#418).
+		"metadata label":             hdr + from + "LABEL devcontainer.metadata='[{\"mounts\":[]}]'\n",
+		"metadata label, quoted key": hdr + from + "LABEL \"devcontainer.metadata\"=\"[]\"\n",
+		"metadata label, case":       hdr + from + "LABEL DevContainer.Metadata=x\n",
+		"metadata label, escaped":    hdr + from + "LABEL devcontainer\\.metadata=x\n",
+		"metadata label, second key": hdr + from + "LABEL a=b devcontainer.metadata=x\n",
+		"label key from an ARG":      hdr + from + "ARG K=devcontainer.metadata\nLABEL $K=x\n",
 
 		"syntax unknown":        "# syntax=docker/dockerfile:1.28\n" + from,
 		"syntax other digest":   "# syntax=docker/dockerfile:1.27@sha256:" + strings.Repeat("0", 64) + "\n" + from,

@@ -9,6 +9,28 @@ costs almost no disk, because the image layers are stored once per machine.
 | `ghcr.io/603-identity/devcontainer-base` | Ubuntu, non-root `app` (uid 1000), git, gh, jq, yq, Python (system), uv, pre-commit, betterleaks, zizmor |
 | `ghcr.io/603-identity/devcontainer-tofu` | base + OpenTofu + tflint |
 | `ghcr.io/603-identity/devcontainer-node` | base + Node.js + npm |
+| `ghcr.io/603-identity/devcontainer-devapp` | base + the dev-App identity layer (below) + `claude` |
+| `ghcr.io/603-identity/devcontainer-devapp-tofu` | tofu + the same layer + `claude` |
+
+**The dev-App flavour** (`devcontainer-devapp`, `devcontainer-devapp-tofu`; DEVC-D9, recorded through #393; #418) is
+base or tofu with a different GitHub identity: a per-repository dev App installation token, and
+nothing else. `gh` is a wrapper and git's credential helper is `dev-token`; both read only
+`/run/wow/dev-token` (a host-mounted file, `token` on line 1, `expires_at` on line 2) and
+refuse when it is absent, malformed, expired or within 60 s of expiring, so the flavour **fails closed without
+`/run/wow`**. It never reads `admin-token`, or any other file in that directory. There is no
+gpg, gpg-agent, gpgconf, gpg-connect-agent or gpgsm (`gpgv` stays), so nothing can sign:
+`git-identity.sh` projects `commit.gpgsign=false` and `tag.gpgsign=false`, and a repo-local
+`commit.gpgsign=true` makes commits fail. `claude` is installed at `/usr/local/bin/claude`, root-owned, from a
+binary verified against Anthropic's signed manifest before anything is pushed; root-owned managed
+settings turn its updater off and pin its version. The GNU coreutils replace Ubuntu 26.04's
+Rust ones on `PATH`. `base`, `tofu` and `node` are unchanged, and the pilots' legacy copies of the
+plain template keep working on them. [Git identity](#git-identity) and the
+[threat model](docs/threat_model.md) say what this changes. No repo outside this one consumes the
+flavour yet. The verifier's dev-App mode is in `tools/devc-verify`, and
+[`template/.devcontainer/`](template/.devcontainer/) is the dev-App template (#392): both are
+released with v1.6. The **legacy PAT route is frozen** and takes no new adoptions; its
+README is the one at commit
+[`9af5b4c`](https://github.com/603-Identity/devcontainers/blob/9af5b4c/README.md), the last commit before the template became dev-App only.
 
 Exact versions live in one place each, not here: the Dockerfile `ARG`s for the downloaded
 binaries and [`images/base/tools/uv.lock`](images/base/tools/uv.lock) for the Python tools.
@@ -17,11 +39,14 @@ The images are **linux/amd64 only**: every downloaded binary is amd64, so the ba
 image's first build step fails with a clear message on any other architecture.
 
 The pilots (terraform-cloudflare-dns and terraform-microsoft365-entra, #10) have adopted
-them. To adopt them in another repo, follow [`docs/adopting.md`](docs/adopting.md). The
-waves are tracked in #26 to #28.
+them, on the legacy PAT route, and keep their copies until their cutover.
+[`docs/adopting.md`](docs/adopting.md) is the adoption procedure for the dev-App template that
+replaced it (DEVC-D9). The waves are tracked in #26 to #28.
 
-Local sizes measured on 2026-09-28: base 445 MB, tofu 664 MB, node 752 MB. Shared layers
-are stored only once, so all three together take about 0.95 GB.
+Local sizes measured on 2026-11-02 (`docker images`): base 589 MB, tofu 812 MB, node 899 MB,
+devapp 1.13 GB, devapp-tofu 1.35 GB. Shared layers are stored only once, so all five together
+take about 2.2 GB. The devapp images add the `claude` binary (about 330 MB, the bulk of the
+difference) and the GNU coreutils to base or tofu.
 
 Work on these images is planned on this repo's issues and milestones. See
 [`docs/roadmap.md`](docs/roadmap.md) for status, next action and decisions. This repo has
@@ -36,49 +61,85 @@ org profile, archived and demo repos) are listed under
 ## Using an image in a repo
 
 The ordered adoption procedure, with its rollback, is [`docs/adopting.md`](docs/adopting.md).
-This section and the ones after it hold the detail it links to.
+This section and the ones after it hold the detail it links to. It describes the **dev-App
+route** (DEVC-D9). The legacy PAT route is frozen: for a pilot that still runs it, the
+procedure is the README at
+[`9af5b4c`](https://github.com/603-Identity/devcontainers/blob/9af5b4c/README.md#using-an-image-in-a-repo).
 
-Open the repo with VS Code and its Dev Containers extension. Commit signing depends on its
-GPG agent forwarding, and no other editor is supported. On a Linux host your uid must be
-1000, or the container can't write `/workspace` (DEVC-D5). macOS and Windows hosts are
-unaffected.
+**Windows hosts only.** The host broker writes each repo's dev token under
+`%USERPROFILE%\.config\glunk-identity\tokens\<owner>\<repo>\`, and the template mounts that
+directory read-only at `/run/wow`. The checkout folder name must be unique on the host
+(see [Consuming from another org](#consuming-from-another-org)). Open the repo through the
+launcher only (planned, tracked at glunk-works/claude-workbench#1276). Until it ships, the interim
+entry is the devcontainer CLI from PowerShell: `devcontainer up --skip-post-attach --workspace-folder <absolute path>`, then
+`devcontainer exec --workspace-folder <absolute path> claude`. **Run them from a directory outside the checkout,
+in PowerShell (never `cmd.exe` or `devcontainer.cmd`)**: the checkout is writable by the container, and a `node.bat` planted in
+it would run on the host when `cmd.exe` resolves `node` from the current directory (reproduced), and a prompt that shows git
+status would run host git there. These commands are untested by this repo (the launcher
+replaces them); a cutover repo's first `up` can restart its legacy container, so remove that first. **VS Code attach is unsupported** in a dev-App
+container: it brings back what the template is built to keep out (the host's git config and
+credential helper, an askpass program, and the host's VS Code GitHub session, which reaches every
+repo its owner can), and the template sets no VS Code settings to stop it. A local edit to
+`.devcontainer/` (or a root `.devcontainer.json`) runs on the host on any `up` or rebuild (the threat
+model's Known gaps). Since the first `up` makes the checkout a written-to one, **stop the container, then inspect `.devcontainer/`
+(and that no root `.devcontainer.json` took over), then `up`**: a running container can rewrite the file between
+your look and the CLI's read. `exec --workspace-folder` re-reads the file and substitutes the host's
+environment into it, so run the CLI from a PowerShell whose environment holds no secrets (`Get-ChildItem env:`
+in that window lists what it inherits).
+Do not run the host's Dev Containers extension or git on the mounted checkout, and do not open the folder in host VS Code: it
+runs the git extension and honours workspace tasks, which is itself the exposure. Open only a
+fresh clone of the default branch that no container has run on, never a checkout a container has
+written to (a clone becomes one the moment a container mounts it). To use a written-to checkout
+anyway, inspect it first, without host git or VS Code: `.devcontainer/`, `.devcontainer.json`,
+`.vscode/`, `.git/config` and `.git/hooks`, and every nested `.git` directory and `.git/modules/*`
+(the threat model's Known gaps).
 
-1. Copy [`template/.devcontainer/`](template/.devcontainer/) into the repo unchanged.
-2. In its `Dockerfile`, set `FROM` to one image, by tag **and** digest. Take both from the
-   latest *Build images* run summary. CI verifies every digest on every pull request (step 3),
-   so a bad one fails the PR. To check one by hand first:
+1. **The repo's approval ruleset comes first,** before the dev App is installed: at least 1
+   approving review, code-owner review required, a `CODEOWNERS` file, and no bypass actors
+   (see [What the consuming repo needs](#what-the-consuming-repo-needs)). `verify / verify`
+   reads the first two and fails without them.
+2. Copy [`template/.devcontainer/`](template/.devcontainer/) into the repo and change **only**
+   two things: `OWNER/REPO` in the token mount of `devcontainer.json` (the repo's
+   `github.repository`, in GitHub's case), and the `FROM` line of the `Dockerfile`. An optional
+   third, a loopback-only `appPort`, is below. Everything else in `devcontainer.json` must stay
+   as it is: `verify / verify` compares that file with the template exactly (the Dockerfile is
+   held to rules instead, step 3). That includes the volume
+   mounts the repo does not use (`node_modules`, `.venv`): leave them, an unused named volume
+   is empty and costs nothing.
+3. In the `Dockerfile`, set `FROM` to `devcontainer-devapp` or `devcontainer-devapp-tofu`, by
+   tag **and** digest. Take both from the latest *Build images* run summary. CI verifies every
+   digest on every pull request (step 4), so a bad one fails the PR. To check one by hand first:
    ```sh
-   gh attestation verify oci://ghcr.io/603-identity/devcontainer-<image>@sha256:<digest> \
+   gh attestation verify oci://ghcr.io/603-identity/devcontainer-devapp-tofu@sha256:<digest> \
      --repo 603-Identity/devcontainers \
      --cert-identity https://github.com/603-Identity/devcontainers/.github/workflows/build.yml@refs/heads/main \
      --cert-oidc-issuer https://token.actions.githubusercontent.com \
      --source-ref refs/heads/main --deny-self-hosted-runners
    ```
-3. Wire up CI (the full list is in [What the consuming repo needs](#what-the-consuming-repo-needs)):
-   - Copy [`template/.github/workflows/devcontainer-image.yml`](template/.github/workflows/devcontainer-image.yml)
-     and [`architect-review-gate.yml`](template/.github/workflows/architect-review-gate.yml)
-     into `.github/workflows/`. The first runs this repo's verifier as the check
-     `verify / verify` on every pull request. Copy it unchanged.
-   - Edit only the marked per-consumer values in the gate.
-     **Derive the `case` block from the adopting repo's own `.ai/project.yml` `code_paths`,
-     never from another adopter's gate.** A glob the copy lacks fails silently the unsafe way:
-     a PR touching only that path posts "No code_paths touched" instead of a red check.
-     **Choose `code_paths` knowing what it leaves unguarded.** A change outside it passes
-     `architect-review` ("No code_paths touched"), so it is guarded only by the two secret
-     scans and whatever else the repo requires.
-   - Copy [`secret-scan.yml`](template/.github/workflows/secret-scan.yml) too, unchanged: it
-     runs the org secret scan as the check `secrets / scan`. Follow [Secret
-     scanning](#secret-scanning-190), which sets the order for requiring it.
+   Repo-specific tools go between the `FROM` and the final `USER 1000:1000` (the Dockerfile's
+   header lists the rules). To publish a port from the container, add one `appPort` to
+   `devcontainer.json`: a string or a list of up to 5 strings, each
+   `127.0.0.1:<host>:<container>` with both ports from 1024 to 65535.
+4. Wire up CI (the full list is in [What the consuming repo needs](#what-the-consuming-repo-needs)):
+   - Copy **only two files** into `.github/workflows/`:
+     [`devcontainer-image.yml`](template/.github/workflows/devcontainer-image.yml), which runs
+     this repo's verifier as the check `verify / verify` on every pull request (copy it
+     unchanged), and [`secret-scan.yml`](template/.github/workflows/secret-scan.yml), which runs
+     the org secret scan as the check `secrets / scan` (unchanged too; follow [Secret
+     scanning](#secret-scanning-190), which sets the order for requiring it).
+   - **Do not copy `architect-review-gate.yml`.** A dev-App repo's review gate comes from the
+     way-of-working plugin (`review.ci_gate`), which posts the same check name,
+     `architect-review`. The template gate serves this repo and the legacy route, and
+     `tools/check-consumer-workflows.sh` fails a dev-App repo that carries its jobs.
    - Add `.devcontainer` to `.github/dependabot.yml` under the `docker` ecosystem, and
      configure the `github-actions` ecosystem too. Image bumps and verify-pin bumps then
-     arrive as pull requests. **Dependabot's image bump is not exempt from review**: a human
-     merges it (auto-merge is off, see below).
+     arrive as pull requests. **A dev-App image bump is never exempt from review**: the dev-App
+     lint fails a repo that carries the `decide` job (and `decide` itself exits 3 for a dev-App
+     image), so nothing auto-merges it; a human approves and merges it.
    - Run `tools/check-consumer-workflows.sh` from a checkout of this repo, against the
-     consuming repo's `.github/workflows`, before opening the adoption PR.
-4. Delete the dependency-volume lines the repo doesn't use (`node_modules`, `.venv`), and the
-   trailing comma left on the last remaining mount.
-   Leave the `--read-only` and tmpfs `runArgs`, the `init` line and the home volume alone.
-   Then the repo-side housekeeping the pilot of terraform-cloudflare-dns turned up:
+     consuming repo's `.github/workflows`, before opening the adoption PR. It detects the
+     dev-App repo from its `.devcontainer/` and applies the dev-App profile.
+5. Repo-side housekeeping the pilot of terraform-cloudflare-dns turned up:
    - **Force LF checkouts.** On a Windows host with `core.autocrlf=true`, every file in the
      bind mount is CRLF, so the container's git (no `autocrlf`) reports the whole tree as
      modified and a gate that reads the git index fails. Add `* text=auto eol=lf` to `.gitattributes` (this repo does), or at least
@@ -92,15 +153,9 @@ unaffected.
    - **`tofu init` in the container rewrites the lock file** (it adds the `linux_amd64` hash
      and its header comment). Commit that as its own change or discard it; do not let it
      ride along in the adoption PR.
-5. Open the repo's checkout with **Dev Containers: Open Folder in Container**, started from
-   PowerShell, cmd or the Start menu (not Git Bash). Do not use *Clone Repository in
-   Container Volume*: the template bind-mounts the host checkout, and a clone of a branch
-   without `.devcontainer/` just offers VS Code's own template picker. Then store the repo's
-   GitHub credential once, without echoing it into the terminal (see
-   [Credentials](#credentials)):
-   ```sh
-   read -rs T && printf '%s' "$T" | gh auth login --with-token; unset T
-   ```
+6. Start the container from the launcher (until it ships, see the interim entry above). There is no `gh auth login` step: the dev token is
+   already at `/run/wow/dev-token`, and `gh` and git read it from there (see
+   [Credentials](#credentials)). Without it they refuse.
 
 ### Checking a container
 
@@ -108,17 +163,25 @@ What a healthy container looks like (from the terraform-cloudflare-dns pilot):
 
 - `grep -E 'CapEff|NoNewPrivs' /proc/self/status` prints `CapEff: 0000000000000000` and
   `NoNewPrivs: 1`; `id -un` is `app`; `touch /usr/local/x` fails with "Read-only file system".
-- `/home/app` and `/home/app/.cache/tofu-plugins` are owned by `app`. `/tmp` is the volume's
+- `/home/app` is owned by `app`. `/tmp` is the volume's
   root-owned directory, mode 1777, which is normal: `app` writes there through the sticky bit.
-- **`docker diff` is not literally empty.** Expect exactly `A /vscode` (the mount point VS Code
-  creates for its server) and `C /usr/sbin`, `A /usr/sbin/docker-init` (the init binary Docker
-  injects for `"init": true`). Anything else is a write the container should not be making,
-  and it stayed that way after a full working session (editor, git, tofu, tflint, pre-commit,
-  Claude Code, `gh`).
-- Commit signing goes through VS Code's forwarded agent: the passphrase prompt appears on the
-  host. Inside the container `git log --show-signature` prints "Can't check signature: No
-  public key" in red even when the signature was made; that only means the container's
-  keyring lacks your public key. Check with `git log --format=%G?` on the host (`G` is good).
+- `~/.vscode-server` does not exist on a fresh home volume (the CLI entry never creates it; VS Code does). The template
+  installs no extension, but the VS Code server loads whatever a reused home volume still holds, and a host
+  user setting `dev.containers.defaultExtensions` installs into every container.
+- `/run/wow` is a read-only mount holding `dev-token` (`touch /run/wow/x` fails), `gpg` is not
+  on `PATH`, and `gh auth status` reports a login only while the token is fresh. A start with
+  no token directory either fails to start (Docker Desktop: "bind source path does not exist")
+  or starts with an empty `/run/wow`, in which case `gh` and git refuse.
+- **`docker diff` is not literally empty.** Expect `C /usr/sbin` and `A /usr/sbin/docker-init` (the init binary Docker
+  injects for `"init": true`). The pilot also showed `A /vscode`, the mount point the Dev Containers
+  extension adds when it creates a container; the CLI entry is expected to drop it (unmeasured). Anything else
+  is a write the container should not be making, and it stayed that way after a full working session
+  in the pilot (editor, git, tofu, tflint, pre-commit, Claude Code, `gh`). `docker diff` does not show a VS Code
+  attach to a running container.
+- **Commits made in a dev-App container are unsigned** (`commit.gpgsign=false`; the image has
+  no gpg), whatever the host identity file says. `git log --format=%G?` prints `N` for them.
+  (A legacy PAT-route container signs through VS Code's forwarded agent; see
+  [Host signing policy](#host-signing-policy).)
 - **`tofu init` dirties the tree.** It adds a `linux_amd64` hash and its own header comment to
   `.terraform.lock.hcl`. Before committing, run `git checkout -- .terraform.lock.hcl`. A lock committed without the
   `linux_amd64` hash makes `tofu validate` and `tofu test` fail until `tofu init` has run;
@@ -133,16 +196,36 @@ What a healthy container looks like (from the terraform-cloudflare-dns pilot):
 - **A Windows checkout from before `.gitattributes` forced LF stays CRLF** in the working tree
   (`git ls-files --eol` shows `i/lf w/crlf`), and `git status` hides it. Re-checkout it:
   `git rm --cached -r -q . && git reset --hard`, with the tree clean first.
-- **The container token cannot do admin work.** Check it from inside the container:
+- **The dev token cannot do admin work.** Check it from inside the container:
   `gh api repos/<owner>/<repo>/branches/main/protection` must return 403 (it needs
-  `administration=read`). Do not use `GET .../rulesets` (any token with `metadata=read` gets a
+  `administration=read`, which the dev App is not granted). Do not use `GET .../rulesets` (any token with `metadata=read` gets a
   200) or `.permissions` on `GET /repos/<owner>/<repo>` (it shows your role, not the token's scope).
+
+### Comparing two tags
+
+The devapp images carry an `org.opencontainers.image.revision` label with the commit they
+were built from. The commit is what the build compiled, so it is what to diff when asking what
+changed between two tags (base, tofu and node carry no such label; their tags map to commits
+through the attestation). Resolve each tag's digest first, then read the label:
+
+```sh
+rev() { docker buildx imagetools inspect "ghcr.io/603-identity/devcontainer-devapp:$1" --format '{{json .Image}}' |
+          jq -r '.config.Labels["org.opencontainers.image.revision"]'; }
+git diff "$(rev <older tag>)" "$(rev <newer tag>)" -- images/ tests/ .github/scripts/
+```
+
+A local build (`build-and-test.sh local`) carries the local `HEAD`, possibly with uncommitted
+edits on top, or `unknown` if git cannot say; only a commit that CI built is a published image.
 
 ### What the consuming repo needs
 
-[`devcontainer-image.yml`](template/.github/workflows/devcontainer-image.yml) and the
-[gate](template/.github/workflows/architect-review-gate.yml) only mean something with these
-in place. `tools/check-consumer-workflows.sh` lints the workflow shapes named below (the caller, write
+[`devcontainer-image.yml`](template/.github/workflows/devcontainer-image.yml) and the review
+gate (the way-of-working plugin's for a dev-App repo; for the legacy route this repo's
+[template gate](template/.github/workflows/architect-review-gate.yml)) only mean something with
+these in place. `tools/check-consumer-workflows.sh` lints the workflow shapes named below. (The gate rules in
+it, and the `code_paths` spot check against the gate's `case` block, apply to the legacy template gate; a dev-App
+repo's profile skips them, fails the template gate's jobs, and exempts the plugin gate's one status writer if it is
+shaped like the plugin's.) It checks (the caller, write
 permissions, `uses:` in the gate's `resolve` and `post`, the gate's triggers, the `.github/` rule, the pin shapes, and that each pin is on this repo's `main` and its tag points at it, which needs network access). When
 `.ai/project.yml` sits next to `.github/`, it also runs each `code_paths` entry through the gate's
 CONSUMER `case` block (a dir `x/` as a few sample paths under it, a glob as a few paths that match
@@ -156,7 +239,8 @@ settings the adoption PR records, and review.
 
 - **Required checks, pinned.** The ruleset requires `architect-review`, `verify / verify` and,
   once the repo has adopted [secret scanning](#secret-scanning-190), `secrets / scan`,
-  each with `integration_id: 15368` (GitHub Actions). Unpinned, a status posted by a user
+  each with `integration_id: 15368` (GitHub Actions). Both gates post the one check name,
+  `architect-review`. Unpinned, a status posted by a user
   with push access satisfies the requirement. Read the ruleset back through the API after
   creating it, and attach the result to the adoption PR. The pin on `verify / verify` blocked
   a merge on the pilots (#10): a PR that dropped the digest went red and was `BLOCKED`.
@@ -165,22 +249,46 @@ settings the adoption PR records, and review.
   `# syntax=` line, no `COPY --from` or `ONBUILD`) and `devcontainer.json` has no top-level `image`,
   `features`, `dockerComposeFile`, `dockerfile` or `context` key (any letter case), a `build` holding only
   `dockerfile: "Dockerfile"` and, optionally, `context: "."`, and no second `devcontainer.json` anywhere in the
-  repo (a symlink or a case-variant path also fails). A
+  repo (a symlink or a case-variant path also fails), and no `LABEL devcontainer.metadata` in the
+  Dockerfile. A Dockerfile still on the previous `# syntax=` (dockerfile 1.27) may not contain
+  `<<` (a heredoc), in a line or split across a line continuation: move it to the current line
+  first. A
   repo that needs Dev Container Features, or keeps a fixture `devcontainer.json`, cannot adopt the
   template as it stands. An image built by a re-run of `build.yml` (attempt 2) fails too: use a digest from
-  a first-attempt run.
+  a first-attempt run. From v1.6 (#418) it also reads the repo's **mode**: dev-App when the PR
+  head, the PR base or the default branch's tip is (the base and tip are read leniently, as raw
+  bytes, so a broken base never wedges its repair; an API error is red).
+  - **Plain mode** (the legacy template) is an allowlist: `runArgs`, `workspaceFolder` and
+    `workspaceMount` exactly the legacy template's; each mount a legacy mount or a per-repo
+    `${localWorkspaceFolderBasename}-<name>` volume; no `${localEnv:`, `${env:` or
+    `${localWorkspaceFolder}` outside those exact strings (`containerEnv` and `remoteEnv`
+    included); and no `appPort`, `privileged`, `capAdd`, `securityOpt` or `initializeCommand`.
+    So no host bind, `~/.aws` included, can be added.
+  - **Dev-App mode** compares `devcontainer.json` exactly with the template at the pin (or the
+    previous release's snapshot) outside four per-repo surfaces, two in each file: the token
+    mount's `tokens/<owner>/<repo>`, which must equal the repository's own name in GitHub's case,
+    and an optional loopback-only `appPort`; the Dockerfile's `FROM` (`devcontainer-devapp` or
+    `devcontainer-devapp-tofu`, not older than the base's) and its extras between `FROM` and a
+    final `USER 1000:1000`, with a filter that catches accidents, not attacks (no `ENV` of
+    `GIT_*`, a proxy or `ANTHROPIC_BASE_URL`, nothing that names or writes the identity layer's
+    paths, no local `ADD`). A plain repo's `Dockerfile` and `devcontainer.json` must name none of the dev-App
+    markers, comments included. It also reads the default branch's
+    rules and fails unless a `pull_request` rule requires at least 1 approval and code-owner
+    review. `decide` never exempts a dev-App image bump. The full list is in
+    [`tools/devc-verify/README.md`](tools/devc-verify/README.md).
 - **The caller stays unfiltered.** `pull_request` with no `paths:` or `branches:` filter, one
   job `verify` with no `name:` or `if:` and no key besides `permissions:` and `uses:`. A filtered required check never reports and blocks
   every other PR.
 - **Both pins are `@<sha> # vX.Y`.** A full commit SHA plus a version comment, never a bare tag:
-  the verifier fails unless its own pin is a SHA. The caller's pin and the gate's `decide` pin
-  name the same release (the lint only warns when they differ). Dependabot's `github-actions` ecosystem bumps them. A bump edits only
+  the verifier fails unless its own pin is a SHA. The caller's pin and (legacy route) the gate's
+  `decide` pin name the same release (the lint only warns when they differ). Dependabot's `github-actions` ecosystem bumps them. A bump edits only
   `.github/`, which is always in the gate's review scope whatever its `case` block says, so it
   always needs a review.
-- **The gate's per-consumer values**, marked in the file, and nothing else: the `case` block
+- **Legacy route only: the gate's per-consumer values**, marked in the file, and nothing else: the `case` block
   (this repo's `code_paths`; the `.github/` rule above it is not editable), `REVIEWER_IDS`,
   `HEADER` and `ATTESTATION`, and the `decide` pin.
-- **Write tokens only where the gate needs them.** No job other than the gate's `post` holds
+- **Write tokens only where the gate needs them (legacy template gate; a dev-App repo's plugin gate is held to
+  the status-writer shape instead).** No job other than the gate's `post` holds
   `statuses`, `contents`, `pull-requests`, `checks` or `actions: write` on a trigger that
   Dependabot's own branch can run (a PR event, including `issue_comment` and `pull_request_target`, which the lint treats alike; `create`; and a `push` whose
   filter is not `tags:` alone or a list of literal branch names; no `branches-ignore:` counts, because Dependabot's branch name is configurable (`pull-request-branch-name.separator`)). A job on such a trigger with no
@@ -188,7 +296,12 @@ settings the adoption PR records, and review.
   on those triggers an explicit block. `resolve` and `post` contain no `uses:`, `container:` or
   `services:`, run on a GitHub-hosted runner, and `post` holds only `statuses`, `contents` and `pull-requests: write` (the lint still tolerates `issues: read`, for a consumer on an older gate pin). That keeps upstream action code, which
   Dependabot bumps, off the runner that holds the status token.
-- **Settings.** "Allow auto-merge" on, and an approval count of 0 in the ruleset. The `docker`
+- **Settings.** **Dev-App repos: a ruleset requiring at least 1 approving review and code-owner
+  review (with a `CODEOWNERS` file), set before the dev App is installed, and no bypass
+  actors.** `verify / verify` fails without the first two; it cannot see bypass actors, a
+  missing `CODEOWNERS` file or whether stale approvals are dismissed, so those stay a host
+  procedure. "Allow auto-merge" is for the legacy route only, with its approval count of 0: a
+  dev-App repo may not use approvals-0. The `docker`
   and `github-actions` Dependabot ecosystems both configured. **Private repos:** "Send write
   tokens to workflows from fork pull requests" stays **off**.
 - **Private repos: the push ruleset that blocks secret-bearing files.** Apply
@@ -208,8 +321,9 @@ settings the adoption PR records, and review.
 
 **Auto-merge is off.** The gate can merge a verified, same-MAJOR Dependabot image bump on its
 own, but only while the tag `devc-automerge-on` exists in *this* repo, and nobody has created
-it. Until the owner does (a separate decision with preconditions, tracked in #30), every bump
-takes the review path and a human merges it. The tags `v*` and `devc-automerge-*` are
+it. Until the owner does (a separate decision with preconditions, tracked in #396), every bump
+takes the review path and a human merges it. Image bumps are armed only through `decide`
+and that kill switch, and a dev-App image bump is never armed (`decide` exits 3). The tags `v*` and `devc-automerge-*` are
 protected by a tag ruleset here: creating, moving or deleting one needs the Repository admin
 role.
 
@@ -337,7 +451,7 @@ image ships npm 12 ahead of CI's bundled npm 11 until each repo takes it (#27).
 ### Consuming from another org
 
 1. Every org pulls `ghcr.io/603-identity/devcontainer-*` and verifies it against this
-   repo's `build.yml` on `main`: the `verify / verify` check does it on every PR, and step 2 has the
+   repo's `build.yml` on `main`: the `verify / verify` check does it on every PR, and step 3 of Using an image has the
    command to run by hand. There is no per-org
    image or fork: this repo is the single publisher.
 2. **The GHCR packages must stay public.** Package visibility is set per package, separately
@@ -347,9 +461,9 @@ image ships npm 12 ahead of CI's bundled npm 11 until each repo takes it (#27).
 3. **Checkout folder names must be unique across every checkout on the host, in every
    org**, including forks, reference clones of third-party repos, and a second clone of the
    same repo. Each per-repo volume is named `<folder>-<suffix>`. Two checkouts with one
-   folder name share every one they both mount, up to all four: `-home` (the token, usable
-   from both, plus Claude sessions and, on Linux, Claude Code's own login and settings
-   hooks), `-tmp`, `-node_modules` and `-venv` (each repo runs the other's dependency
+   folder name share every one they both mount, up to all four: `-home` (Claude sessions and
+   Claude Code's own login and settings hooks, and on the legacy route the gh token, usable
+   from both), `-tmp`, `-node_modules` and `-venv` (each repo runs the other's dependency
    trees). **A collision merges two repos
    into one trust domain.** Rename the second folder. Docker volume names are
    case-sensitive and Windows folders are not, so `Foo` and `foo` get separate volumes.
@@ -359,8 +473,9 @@ image ships npm 12 ahead of CI's bundled npm 11 until each repo takes it (#27).
    `docker volume rm <folder>-home <folder>-tmp <folder>-node_modules <folder>-venv`; for a
    repo that was only renamed or transferred, `rm ~/.devc-owner`). It detects and never
    blocks, so the rule stands.
-4. Tokens stay per repo, tiered as in [Credentials](#credentials), inside the repo's own
-   org. A token never covers another org's repos.
+4. Tokens stay per repo, inside the repo's own org: a dev-App repo's token directory is
+   `tokens/<owner>/<repo>`, one per repository, as in [Credentials](#credentials). A token
+   never covers another org's repos.
 5. Identity takes one `~/.gitconfig.d` file per account, listing every org it serves; see
    [Git identity](#git-identity).
 
@@ -398,8 +513,10 @@ below fails with `EROFS` and names the next disk hog instead of hiding it.
 |---|---|---|
 | `/workspace` | bind (host checkout) | the repo |
 | `/workspace/.venv`, `/workspace/node_modules` | per-repo volumes `<repo>-venv`, `<repo>-node_modules` | the uv project environment and npm dependencies (many small files are the slowest thing across the Windows bind mount) |
-| `/home/app` | per-repo volume `<repo>-home` | everything user-scoped: the gh credential, Claude Code sessions and memory, the VS Code server and extensions, uv's managed interpreters and cache (`UV_CACHE_DIR=~/.local/uv-cache`), `PRE_COMMIT_HOME=~/.local/pre-commit`, `TFLINT_PLUGIN_DIR=~/.local/tflint-plugins` (tofu image), `NPM_CONFIG_CACHE=~/.local/npm-cache` and `NPM_CONFIG_PREFIX=~/.local` (node image), the forwarded GPG agent socket in `~/.gnupg`. `XDG_CACHE_HOME=~/.local/cache` moves every other XDG-aware cache here too. |
-| `/home/app/.cache/tofu-plugins` | shared volume `devc-tofu-plugins`, nested in the home volume | **only** `TF_PLUGIN_CACHE_DIR`, the tofu provider cache, which `tofu init` checks against the consuming repo's `.terraform.lock.hcl`. It is mounted at that one directory, not over `~/.cache`, so a tool that hard-codes `~/.cache` stays in the per-repo home volume. npm's cache is per repo too, because `npx` runs packages from it without a check |
+| `/run/wow` | bind, read-only (dev-App template) | the repo's dev token directory from the host broker, `%USERPROFILE%\.config\glunk-identity\tokens\<owner>\<repo>`; `dev-token` is the only file `gh` and git read |
+| `/home/app/.gitconfig.d` | bind, read-only | the host's git identity files (see [Git identity](#git-identity)) |
+| `/home/app` | per-repo volume `<repo>-home` | everything user-scoped: (legacy route only) the gh credential, Claude Code sessions and memory, the VS Code server and extensions, uv's managed interpreters and cache (`UV_CACHE_DIR=~/.local/uv-cache`), `PRE_COMMIT_HOME=~/.local/pre-commit`, `TFLINT_PLUGIN_DIR=~/.local/tflint-plugins` (tofu image), `NPM_CONFIG_CACHE=~/.local/npm-cache` and `NPM_CONFIG_PREFIX=~/.local` (node image), (legacy route only) the forwarded GPG agent socket in `~/.gnupg`. `XDG_CACHE_HOME=~/.local/cache` moves every other XDG-aware cache here too. |
+| `/home/app/.cache/tofu-plugins` | **legacy route only:** shared volume `devc-tofu-plugins`, nested in the home volume (the dev-App template has no shared volume) | **only** `TF_PLUGIN_CACHE_DIR`, the tofu provider cache, which `tofu init` checks against the consuming repo's `.terraform.lock.hcl`. It is mounted at that one directory, not over `~/.cache`, so a tool that hard-codes `~/.cache` stays in the per-repo home volume. npm's cache is per repo too, because `npx` runs packages from it without a check |
 | `/tmp` | per-repo volume `<repo>-tmp` | scratch and task output |
 | `/var/tmp`, `/dev/shm` | tmpfs | scratch that is gone when the container stops. `/run` is tmpfs too, but root-owned, so only root-run tooling writes there |
 | everything else | **read-only** | the image |
@@ -411,7 +528,8 @@ project environment are separate mounts and hardlinks between them fail with `EX
 bind mount, so it still works.
 
 **Wiping a repo's state:** `docker volume rm <repo>-home <repo>-tmp <repo>-venv <repo>-node_modules`.
-That also removes the repo's GitHub credential, so run `gh auth login --with-token` again.
+On the legacy route that also removes the repo's GitHub credential, so run `gh auth login --with-token`
+again. A dev-App container keeps its token on the host, so nothing needs re-entering.
 
 **The home volume is frozen at first mount.** Docker copies the image's `/home/app` into an
 empty volume once and never again, so image-owned configuration must not live in the home
@@ -421,7 +539,7 @@ scripts in `/usr/local/share`. Each home, cache and dependency volume mount poin
 image (`tests/smoke.sh` asserts it), because Docker copies the image path's ownership into
 an empty volume and a missing path comes up root-owned and unwritable as uid 1000.
 
-**Migrating from the old layout.** Needed only by a container that already holds the
+**Migrating from the old layout (legacy PAT route only; a dev-App container deletes the copied `hosts.yml` at start and mounts no shared cache).** Needed only by a container that already holds the
 template's earlier `<repo>-gh` and `<repo>-claude` volumes. With the container stopped
 and before rebuilding it, copy the credential and sessions once into the new home volume
 (substitute the old volumes' actual names):
@@ -451,9 +569,9 @@ sessions installed dependencies into `/tmp`, which sat in the container's own fi
 where nothing ever cleaned it up, and several repos had been cloned into one container.
 The layout above makes growth visible (`docker system df -v`) and disposable, for everything
 in a volume, and the read-only root stops anything else from accumulating. The
-one-container-per-repo rule keeps each repo's credentials and data apart. Only the tofu
-provider cache and the host's git identity files (see [Git identity](#git-identity)) are shared
-by all containers.
+one-container-per-repo rule keeps each repo's credentials and data apart. Only the host's git
+identity files (see [Git identity](#git-identity)) are shared by every container, read-only; the
+legacy route also shared a tofu provider cache.
 
 **Getting disk space back on Windows:** Docker Desktop keeps everything in
 `%LOCALAPPDATA%\Docker\wsl\disk\docker_data.vhdx`. Deleting data frees space inside that
@@ -475,8 +593,21 @@ The monthly prune routine is tracked in #31.
 
 ## Credentials
 
-Each container carries a **fine-grained personal access token**, tiered by what that repo
-needs:
+**A dev-App container carries no personal access token.** Its GitHub identity is a
+per-repository dev App installation token, which the host broker writes to
+`%USERPROFILE%\.config\glunk-identity\tokens\<owner>\<repo>\dev-token` (token on line 1,
+`expires_at` on line 2) and the template mounts read-only at `/run/wow`. `gh` and git read only
+that file, and refuse when it is absent or stale, so there is nothing to log in with and nothing
+to leave in the home volume (`devapp-check.sh` deletes a leftover `hosts.yml` and
+`.git-credentials` at every start). Reviewer tokens never enter a dev container. The token
+directory holds other files for the broker's own use (an elevated token, say): the image's tools read
+none of them, but the directory is mounted whole, so any process in a running container of that repo can open
+them for as long as they exist (threat model, Credential holders). The
+host broker, its elevated-token window and the launcher are not in this repo; the threat model
+lists what they must hold.
+
+The rest of this section is the **legacy PAT route** (frozen, DEVC-D9). Each legacy container
+carries a **fine-grained personal access token**, tiered by what that repo needs:
 
 - **Satellite repos:** a token covering **only that repo**.
 - **infrastructure-core (the hub):** a token covering infrastructure-core **and** the repos
@@ -550,14 +681,24 @@ and the container still starts.
   token in a URL, no `http.extraHeader`), because any container can read them.
 - **Prerequisite:** `~/.gitconfig.d` must exist on the host. The devcontainer CLI's
   `--mount` fails on a missing source with `bind source path does not exist`.
-- **Windows:** start VS Code or the CLI from PowerShell or cmd. Git Bash also exports
-  `HOME`, so the template's source path doubles (`C:\Users\x` + `C:\Users\x/.gitconfig.d`)
-  and the same error appears. Run `unset HOME` in that shell first if you must use it.
+- **Windows:** the dev-App template reads `USERPROFILE` only, so a shell that exports `HOME`
+  too (Git Bash) cannot double the path. The legacy template read `HOME` and `USERPROFILE`
+  together; there, start from PowerShell or cmd, or `unset HOME` first.
 - Edits to the host files apply on the **next container start**.
-- Signing goes through VS Code's forwarded GPG agent. SSH signing is out of scope. See
+- Legacy route: signing goes through VS Code's forwarded GPG agent. SSH signing is out of scope. See
   [Host signing policy](#host-signing-policy) for the host cache TTL.
+- **The dev-App flavour has no signing.** `devcontainer-devapp` and `devcontainer-devapp-tofu`
+  ship no gpg (`gpgv`, which only verifies, stays) and mark themselves with
+  `/usr/local/share/devc/unsigned`. There `git-identity.sh` still projects `user.name` and
+  `user.email`, but never `user.signingkey`, and projects `commit.gpgsign=false` and
+  `tag.gpgsign=false` whatever the host file says. A repo-local `commit.gpgsign=true` then makes
+  commits fail ("cannot run gpg"), which fails closed; remove the setting, don't install gpg.
+  `gpg-check.sh` is removed from that layer only: base keeps it, because the v1.5 pilots'
+  `postStartCommand` still calls it from base.
 
 ## Host signing policy
+
+**Legacy PAT route only.** A dev-App container has no gpg and signs nothing.
 
 Signing uses the passphrase cache of the **host's** gpg-agent, reached through VS Code's
 forwarded socket. No image component warms or extends that cache, and nothing in one can
@@ -586,9 +727,12 @@ which key a repo uses.
 
 ## Repairing Claude Code plugin state
 
-No image ships the `claude` CLI (DEVC-D4). When a container keeps loading an old plugin
+`base`, `tofu` and `node` ship no `claude` CLI (DEVC-D4); the devapp images do, at
+`/usr/local/bin/claude` (see the table at the top), and the dev-App template installs no
+editor extension. In a dev-App container run the commands below with plain `claude` in place
+of `"$claude"`, and skip the `ls`. In a legacy container, when it keeps loading an old plugin
 version, the documented fix (refresh the marketplace, then reinstall the plugin) still
-works: the Claude Code extension the template installs carries its own native `claude`
+works: the Claude Code extension the legacy template installs carries its own native `claude`
 binary, the same release as the extension, with no node or npm needed. Close the Claude
 panel first, so the extension isn't writing plugin state at the same time, then run it from
 a terminal in the container:
@@ -647,7 +791,8 @@ WSL integration for it (Settings, Resources, WSL integration).
 ## Updating a pinned tool
 
 `bump-binaries.yml` runs weekly, and on manual dispatch, for gh, yq, uv, tofu, tflint,
-node, npm and betterleaks. It needs a GitHub App (the private key is a secret of the `bump-binaries`
+node, npm and betterleaks. **`claude` is not covered yet** (`images/devapp/Dockerfile`): bump it by hand,
+see "Bumping `claude`" below. It needs a GitHub App (the private key is a secret of the `bump-binaries`
 Environment, restricted to `main`; docs/threat_model.md). Until the repo-level variable
 `BUMP_BINARIES_CLIENT_ID` (the App's Client ID) is set, the job is skipped (#87), and the fallback
 below is how to bump a tool. Set the variable last, after the Environment secret: with the variable
@@ -693,15 +838,39 @@ A human still has to:
    them through the Dependabot pin bump, not before. The image and CI use one version: the
    same `BETTERLEAKS_*` ARGs.
 
+**Bumping `claude`.** Its two `ARG`s, `CLAUDE_VERSION` and `CLAUDE_SHA256` in
+`images/devapp/Dockerfile`, move together, and the new release must be newer: this is a manual
+review until `bump-binaries.sh` gains the same check plus a downgrade refusal. Read the release
+notes, then take the sha256 from the release's **signed** manifest, never from hashing a download
+(`claude-fetch.sh` refuses a pin the manifest does not carry, but a pin read from the wrong place
+fails only later):
+
+```sh
+v=<new version>
+base=https://downloads.claude.ai/claude-code-releases
+curl -fsSL "$base/$v/manifest.json" -o manifest.json
+curl -fsSL "$base/$v/manifest.json.sig" -o manifest.json.sig
+gpg --dearmor < images/devapp/files/claude-release.asc > claude-release.gpg   # gpgv needs a real file, not a pipe
+gpgv --keyring ./claude-release.gpg manifest.json.sig manifest.json
+jq -r '.version, .platforms["linux-x64"].checksum' manifest.json
+```
+
+The key in `images/devapp/files/claude-release.asc` is Anthropic's release key, fingerprint
+`31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE` as published in the Claude Code setup docs. Replacing
+the file changes what the build trusts, so a PR that touches it needs the fingerprint re-checked
+against that page by a human. The next build proves the new pin end to end, and the managed
+settings, which pin `requiredMinimumVersion` and `requiredMaximumVersion` to the same version, are
+generated from `CLAUDE_VERSION`.
+
 To bump a tool the workflow doesn't cover, or while it's down, do the same by hand: read
 the release notes, take the sha256 from the release's own checksum file (never
 `sha256sum` a download and paste the result), and change the Dockerfile's `ARG`s.
 
-The `# syntax=docker/dockerfile:...@sha256:...` line on line 1 of all four Dockerfiles is
+The `# syntax=docker/dockerfile:...@sha256:...` line on line 1 of all five Dockerfiles is
 pinned by digest but no bot bumps it (Dependabot's docker updater reads only `FROM`
 lines). Take the digest from `docker buildx imagetools inspect docker/dockerfile:<tag>`, and
 move it together with devc-verify's `CurrentSyntax` and vendored BuildKit
-(`tools/devc-verify/README.md`). The three image Dockerfiles move in that PR. The template's
+(`tools/devc-verify/README.md`). The four image Dockerfiles move in that PR. The template's
 copy can move in that PR too, but `template self-pins match their release` then fails until
 the template pins a release whose verifier allows the new value, so the usual order is: the
 images and devc-verify first, then a release, then the template's line with the pin bump
@@ -730,11 +899,26 @@ reusable workflows, the gate template, or the org secret-scan rules and scanner 
    `template/.github/workflows/devcontainer-image.yml` and `secret-scan.yml`. All five become
    `@<sha> # vX.Y`. If the release changed
    `CurrentSyntax`, move `template/.devcontainer/Dockerfile`'s line 1 in this PR too.
+   **Rotate the template snapshot in the same PR** (#418 owner decision 5): copy the template
+   the new pin names, `git show vX.Y:template/.devcontainer/devcontainer.json >
+   tools/devc-verify/templates/previous.devcontainer.json`. The next release embeds it, so its
+   verifier accepts a dev-App consumer on either its own template or this one (release N
+   accepts N and N-1). **Who may skip it:** the release maintainer, for a security release
+   whose point is that the previous template must stop verifying. Then delete the snapshot
+   instead of rotating it, and say so in the PR; the next release accepts only its own template.
 3. **CI checks it.** `template self-pins match their release` (in `verify-selftest.yml`,
    `tools/check-self-pins.sh`) fails when the five pins disagree, when a pin is not on
-   `main`'s first-parent line or its tag does not peel to it, or when the template's
-   `# syntax=` line is not allowed by the verifier at the pinned release. A newer tag than the
+   `main`'s first-parent line or its tag does not peel to it, when the template's
+   `# syntax=` line is not allowed by the verifier at the pinned release, or when the snapshot
+   is there but is not, byte for byte, the template at the pinned release. A newer tag than the
    one pinned only warns, because a commit cannot pin its own release: between the tag and the
-   bump PR every branch pins the previous one.
-4. **Tell the pilots.** Adopters copy `template/` from `main`, so they get the new pins from
-   the next copy. Existing consumers move by their own Dependabot `github-actions` bump.
+   bump PR every branch pins the previous one. It also only warns when the snapshot is missing
+   (expected through v1.6, and after a skipped rotation), and while the checked-out template
+   (`main`'s, on a push to `main`) differs from the pinned release's: an adopter copying it now
+   may get a template the pinned verifier rejects.
+4. **Tell the adopters.** Adopters copy `template/` from `main`, so they get the new pins from
+   the next copy. Existing consumers move by their own Dependabot `github-actions` bump. A dev-App
+   consumer's `devcontainer.json` must equal the template of the verifier it pins, or of the
+   release before (the snapshot), outside its four surfaces: a template change reaches it only
+   as a PR in that repo, and a repo two releases behind fails `verify / verify` until it
+   catches up. The legacy pilots keep their plain copies until their cutover.

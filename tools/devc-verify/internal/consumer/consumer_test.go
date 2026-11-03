@@ -12,8 +12,16 @@ import (
 const (
 	digest = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 	goodDF = "# syntax=" + dockerfile.CurrentSyntax + "\nFROM ghcr.io/603-identity/devcontainer-node:4.144@" + digest + "\nUSER 1000:1000\n"
-	goodDJ = `{"build":{"dockerfile":"Dockerfile"}}`
 )
+
+// goodDJ is the legacy template, which plain mode's allowlist is built from.
+var goodDJ = func() string {
+	b, err := os.ReadFile(filepath.Join("..", "..", "testdata", "legacy.devcontainer.json"))
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}()
 
 func write(t *testing.T, dir, rel, content string) {
 	t.Helper()

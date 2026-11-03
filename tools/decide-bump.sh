@@ -44,7 +44,10 @@ if [ "$cur_head" = "$HEAD_SHA" ] && [[ "$base_sha" =~ ^[0-9a-f]{40}$ ]]; then
     bash "${here}/fetch-consumer.sh" "$REPO" "$HEAD_SHA" "${WORK_DIR}/consumer"
     # 4. Verification and the bump predicate, decided by the tool's exit code.
     rc=0
-    "$DEVC_VERIFY" decide --consumer-dir "${WORK_DIR}/consumer" --patch "${WORK_DIR}/bump.patch" || rc=$?
+    # The template at this pin, and the repository the token mount must name (#418). decide
+    # refuses every dev-App image anyway; they are passed so the head is checked in its mode.
+    "$DEVC_VERIFY" decide --consumer-dir "${WORK_DIR}/consumer" --patch "${WORK_DIR}/bump.patch" \
+      --template-dir "${here}/../template" --repo "$REPO" || rc=$?
     case "$rc" in
       0) exempt=true ;;
       3) exempt=false ;;

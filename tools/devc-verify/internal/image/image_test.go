@@ -19,11 +19,25 @@ func TestParse(t *testing.T) {
 	}
 }
 
+func TestParseDevApp(t *testing.T) {
+	for name, devapp := range map[string]bool{"base": false, "tofu": false, "node": false, "devapp": true, "devapp-tofu": true} {
+		r, err := Parse("ghcr.io/603-identity/devcontainer-" + name + ":4.150@" + dig)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if r.Name != name || r.DevApp() != devapp {
+			t.Errorf("%s: unexpected parse %+v (DevApp %v)", name, r, r.DevApp())
+		}
+	}
+}
+
 func TestParseRejects(t *testing.T) {
 	for _, s := range []string{
 		"",
 		"ghcr.io/603-identity/devcontainer-node:4.144",
 		"ghcr.io/603-identity/devcontainer-other:4.144@" + dig,
+		"ghcr.io/603-identity/devcontainer-devapp-node:4.144@" + dig,
+		"ghcr.io/603-identity/devcontainer-devapp-:4.144@" + dig,
 		"ghcr.io/603-identity/devcontainer-node:4.144@sha256:ABCDEF",
 		"ghcr.io/603-identity/devcontainer-node:4.144@" + dig + "\n",
 		"ghcr.io/603-identity/devcontainer-node:latest@" + dig,

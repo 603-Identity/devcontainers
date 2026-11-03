@@ -1,56 +1,22 @@
 # Next steps
 
-**Now:** Milestone 6, Internal hardening, in `implementing`. Step 4 is built and open as PR #389.
+**Now:** Milestone 9, image bumps for node 26 and betterleaks rc.6, `implementing`. Milestone 6 is parked.
 
 **Just done:**
-- Milestone 6 step 4 built as #389 (branch `fix/merge-guard-step4`, `5f7507c`; `Closes #170, closes #171, closes #311`).
-  The first build followed the issues and fixed the hook's bash-lexer emulation shape by shape. Four critic
-  rounds did not converge: each fix opened a new parser gap, and some shapes the committed hook blocked came
-  through. An Opus design review concluded the hook can only be a seatbelt against mistakes, because the agent's
-  shell holds the owner's admin login. The owner chose the fail-closed tripwire: the hook now refuses any command
-  that holds `merge` as a word, unless it is the one admitted `/resume` cursor-sync shape. Mentions in commit
-  messages and PR bodies are blocked on purpose, so such text goes in a file (`git commit -F`,
-  `--body-file`, `gh api --input`). #311's status check and its fixtures are kept. Tests run in WSL.
-- The owner asked whether anything besides the cursor-sync merge needs the hook. A read of the workbench plans
-  found nothing else; the question is filed as claude-workbench#368 for a keep, drop or redesign decision.
-- Critic pass on #389 (this session):
-    Parser version: 4 rounds (architect, security-critic, docs-consistency), not converged, abandoned on the
-    owner's decision; its security-critic round 4 was stopped by a safety classifier twice and never ran.
-    Tripwire version: 2 rounds on the three critics; the last security-critic round found no reachable bypass
-    beyond the documented residuals. The final small fixes (brace and escape refusals, empty `$()`) were tested
-    but not re-read by a critic. All critics ran on their frontmatter defaults; no second-opinion round.
+- Milestone 8 (#418) is archived and closed on GitHub, after the roadmap's done entry merged (#472, `0b4544d`). Its leftovers closed through #470 (#457, #386, #387) and #471 (#445); #446 moved to the backlog.
+- Created milestone 9, "Image bumps: node 26 and betterleaks rc.6", with #450 and then #449 in it. Its goal is to unblock the red bump PRs #436 and #438.
+- First anchor for milestone 9, description sha `41810cec`.
 
-**Next:** on **opus** (architect), in a new window: `/way-of-working:architect-review 389`. `.claude/` is in
-`code_paths`, so #389 needs that fresh-session review before the owner's merge. Read the hook header's
-residuals first: it is a seatbelt, not a lock.
+**Next:** task #450 — install `libatomic1` in the node image (or in `base`, if that is where it belongs) so node 26 loads. Record the reason in the Dockerfile, check the Trivy gate and the image size, and run the green gate in WSL. Then `/way-of-working:critic-gate` and `/way-of-working:ship`. Model: **sonnet** (coder). `images/` is a code path, so the PR needs a fresh-session `/way-of-working:architect-review`.
 
-**HITL Gate: NONE OPEN** — next gate: the architect review of #389, then the owner's merge.
+**HITL Gate: OPEN** — first anchor for milestone 9, description sha `41810cec`. Confirm the milestone description is the approved plan. When to move consumers to node 26 is out of scope and stays your call.
 
 **Open for the owner (non-blocking):**
-- claude-workbench#368: should `/resume`'s cursor-sync `--admin` merge exist? If it is dropped, a later PR deletes
-  the hook for plain deny rules. No hook work until that is decided.
-- #170 and #171 were written for the parser approach; #389 meets their rows by a different mechanism and says
-  `Closes` on both. Rewrite #170 and close #171 as superseded first if preferred. The issue text and a new issue
-  for the agent-credential decision (the agent's shell should not hold a bypass login; may supersede #262's
-  `--admin` path; #172 tracks the threat-model half) have not been drafted or filed.
-- After #389: milestone 6 goes on with its written build order. #356 fits with step 9's test-only fixes;
-  #377-#379, #383, #386 and #387 are unmilestoned.
-- Milestone 5 (Trivy renewal 2026-11) is due 2026-10-29. The #148 exceptions still expire 2026-11-01: if the
-  tofu and tflint vendors have not shipped fixes by late October, re-scan and renew the rest at most 30 days out.
-  #329 rides along.
-- Any other repo that bumps way-of-working to `v0.17.0` reads `incomplete` until it answers `orchestration`,
-  and needs the drive-letter mirror after `plugin update` (claude-workbench#347).
-- The pilots re-copy the gate and re-pin to `9153da1b6eb4ff2d845cb41efaabab3882529130 # v1.4`; tracked there.
-- The `bump-binaries` Environment still lets admins bypass its protection rules; turning that off is optional.
-- terraform-cloudflare-dns: its gate lists `.terraform.lock.hcl` and `.devcontainer/*` that its `code_paths`
-  do not; confirm during the #212 pilot follow-ups, along with whether it should cover `.claude/` (from #214).
-- -dns#57, -dns#59 and -dns#65 are open. Other detect-secrets repos have migration issues:
-  checkov-ledger-action#16, infrastructure-core#560, tenant-posture-assessment#31, trust-anchors#73.
-- Use `GH_TOKEN="$(gh auth token --user JaredGroves-603)"` for `gh` calls on this repo, and run commits,
-  pushes and PRs from the Windows host. Run tests in WSL, not Git Bash. `gh issue create` and `gh pr create`
-  hang under Git Bash; `gh api ... --input -` with a timeout works. Write `Closes #A, closes #B`.
-- Once #389 is checked out, its hook refuses any command with the word `merge` in it: write commit messages
-  and PR bodies to a file with the Write tool and pass them by name.
+- **Date-bound:** the `.trivyignore.yaml` exceptions expire 2026-12-01, and no issue tracks the renewal itself.
+- #463: the interim devcontainer CLI entry (cutover, rebuild, working directory, Windows checks).
+- The plugin pin is `v0.17.0`; `v0.29.0` is out, and several releases in between need a migration (new `identities` and `agents.diff_rule` keys, renamed labels, a reach-gate hook). Bumping it is your call.
+- The descriptions of milestone 5 and milestone 3 are stale and need a hand edit.
+- Use the JaredGroves-603 login for this repo. Create issues, comments and PRs with `gh api ... --input -`. Run tests in WSL.
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan:
-https://github.com/603-Identity/devcontainers/milestone/6
+https://github.com/603-Identity/devcontainers/milestone/9 · parked sprints: `.ai/parked/`
