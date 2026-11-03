@@ -14,6 +14,18 @@ LABEL org.opencontainers.image.source="https://github.com/603-Identity/devcontai
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 USER 0
 
+# --- libatomic1. The official linux-x64 node binary is dynamically linked against
+# libatomic.so.1 from Node 26 on (24.x loaded without it), and Ubuntu's minimal base
+# does not ship it, so `node` dies at load with "error while loading shared libraries:
+# libatomic.so.1" (#450, seen on the 24 -> 26 bump, #436). It belongs here rather than in
+# base: only the node binary needs it, and base carries no node. Unpinned like base's apt
+# layer (DL3008), for the same reason (see there): the base digest plus the weekly rebuild
+# bound it.
+# hadolint ignore=DL3008
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y libatomic1 \
+    && rm -rf /var/lib/apt/lists/*
+
 # --- Node.js, the official linux-x64 tarball. The sha256 is read from
 # https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt.
 # Residual risk: that file is fetched over TLS but its detached GPG signature

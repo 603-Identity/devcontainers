@@ -66,7 +66,7 @@ trap 'rm -rf "$tmp"' EXIT
 # --- jq, shellcheck, and what the downloads below need
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq --no-install-recommends ca-certificates curl jq shellcheck tar xz-utils
+apt-get install -y -qq --no-install-recommends ca-certificates curl jq libatomic1 shellcheck tar xz-utils
 
 # --- yq (mikefarah v4)
 if [ "$("$bin/yq" --version 2>/dev/null | sed -nE 's/.*mikefarah.*version v?([0-9.]+).*/\1/p')" != "$yq_version" ]; then
