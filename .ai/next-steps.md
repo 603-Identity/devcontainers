@@ -1,23 +1,22 @@
 # Next steps
 
-**Now:** Milestone 8, dev-App flavour and template (#418), in `planning`. #418 is closed; five other issues are still open in the milestone. Milestone 6 is parked.
+**Now:** Milestone 9, image bumps for node 26 and betterleaks rc.6, `implementing`. Milestone 6 is parked.
 
 **Just done:**
-- PR E (#468) shipped: the owner merged it as `9cbbe84`. The five self-pins name `58d54dd # v1.6`, `previous.devcontainer.json` is rotated from the v1.6 template, the adopt-only-once caveats are gone, and the roadmap marks DEVC-D9 shipped. #418 is closed.
-  - The architect review was posted as a comment on #468 before the merge. Read it there for any findings it filed.
-  - Handing off without a critic pass on #468 (the owner's call; the diff was mechanical).
-- Hand-off note: no baseline anchor was verified this session; the milestone 8 description sha is still `259b9872…`, the same as the previous anchor.
+- Milestone 8 (#418) is archived and closed on GitHub, after the roadmap's done entry merged (#472, `0b4544d`). Its leftovers closed through #470 (#457, #386, #387) and #471 (#445); #446 moved to the backlog.
+- Created milestone 9, "Image bumps: node 26 and betterleaks rc.6", with #450 and then #449 in it. Its goal is to unblock the red bump PRs #436 and #438.
+- First anchor for milestone 9, description sha `41810cec`.
 
-**Next:** on **opus** (architect), decide the five issues still open in milestone 8 (#457, #446, #445, #387, #386): move them to another milestone or build them here. If the sprint is done after that, run `/way-of-working:archive-sprint`. It needs the sprint's done entry in `docs/roadmap.md` on `main` first.
+**Next:** task #450 — install `libatomic1` in the node image (or in `base`, if that is where it belongs) so node 26 loads. Record the reason in the Dockerfile, check the Trivy gate and the image size, and run the green gate in WSL. Then `/way-of-working:critic-gate` and `/way-of-working:ship`. Model: **sonnet** (coder). `images/` is a code path, so the PR needs a fresh-session `/way-of-working:architect-review`.
 
-**HITL Gate: NONE OPEN.** The next gate is the owner's decision on those five issues.
+**HITL Gate: OPEN** — first anchor for milestone 9, description sha `41810cec`. Confirm the milestone description is the approved plan. When to move consumers to node 26 is out of scope and stays your call.
 
 **Open for the owner (non-blocking):**
-- The `.trivyignore.yaml` exceptions expire 2026-12-01, and no issue tracks the renewal itself.
-- Follow-up #463: the interim devcontainer CLI entry (cutover, rebuild, working directory, Windows checks).
-- Bump PRs #436 (node 26) and #438 (betterleaks rc.6) stay red and must not land until #450 and #449 do.
+- **Date-bound:** the `.trivyignore.yaml` exceptions expire 2026-12-01, and no issue tracks the renewal itself.
+- #463: the interim devcontainer CLI entry (cutover, rebuild, working directory, Windows checks).
+- The plugin pin is `v0.17.0`; `v0.29.0` is out, and several releases in between need a migration (new `identities` and `agents.diff_rule` keys, renamed labels, a reach-gate hook). Bumping it is your call.
 - The descriptions of milestone 5 and milestone 3 are stale and need a hand edit.
 - Use the JaredGroves-603 login for this repo. Create issues, comments and PRs with `gh api ... --input -`. Run tests in WSL.
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan:
-https://github.com/603-Identity/devcontainers/milestone/8 · parked sprints: `.ai/parked/`
+https://github.com/603-Identity/devcontainers/milestone/9 · parked sprints: `.ai/parked/`
