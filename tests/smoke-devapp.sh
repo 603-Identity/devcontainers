@@ -10,8 +10,16 @@
 #   expired    a dev-token whose expires_at has passed
 #   crlf       a dev-token with CRLF line endings
 #   badtoken   a dev-token whose line 1 is not an installation token
+#   stateless  a valid dev-token in GitHub's stateless format (ghs_APPID_JWT: dots, dashes,
+#              520 characters after ghs_, a file over 512 bytes), served like `with` (#492)
+#   oversize   a stateless-shaped dev-token in a file over the 2048-byte cap
+#   badchar    a dev-token whose line 1 has a character outside [A-Za-z0-9._-]
+#   short      a dev-token with 35 characters after ghs_, one fewer than the minimum
 #
-# Every mode but `with` asserts the same thing: the layer FAILS CLOSED. dev-token answers
+# `with` and `stateless` are the served modes. `stateless` runs only the credential and gh
+# wrapper checks; the checks unrelated to the token run once, under `with`.
+#
+# Every other mode asserts the same thing: the layer FAILS CLOSED. dev-token answers
 # `quit=1`, the gh wrapper refuses, and git cannot fill a credential. No mode may print the
 # decoy token, or the dev token where it is not the one being served.
 #
@@ -23,8 +31,9 @@
 # compared, never printed: `check` is given 1 or 0, not a token.
 set -eu
 
-flavor="${1:?usage: smoke-devapp.sh <devapp|devapp-tofu> <with|without|empty|expired|crlf|badtoken>}"
-mode="${2:?usage: smoke-devapp.sh <devapp|devapp-tofu> <with|without|empty|expired|crlf|badtoken>}"
+usage="usage: smoke-devapp.sh <devapp|devapp-tofu> <with|without|empty|expired|crlf|badtoken|stateless|oversize|badchar|short>"
+flavor="${1:?$usage}"
+mode="${2:?$usage}"
 : "${DEVC_FIXTURE_TOKEN:?} ${DEVC_DECOY_TOKEN:?} ${EXPECT_GH:?} ${EXPECT_CLAUDE:?} ${EXPECT_CLAUDE_SHA256:?}"
 fail=0
 check() { # check <label> <expected> <actual>
@@ -47,18 +56,26 @@ REQ='protocol=https\nhost=github.com\n\n'
 case "$flavor" in devapp|devapp-tofu) ;; *) echo "FAIL unknown flavor $flavor"; exit 1 ;; esac
 case "$mode" in
     without) check "/run/wow is absent" 0 "$(yes_no test -e /run/wow)" ;;
-    with|empty|expired|crlf|badtoken) check "/run/wow is mounted read-only" 1 \
+    with|empty|expired|crlf|badtoken|stateless|oversize|badchar|short) check "/run/wow is mounted read-only" 1 \
         "$(yes_no sh -c 'grep -E "^[^ ]+ /run/wow " /proc/mounts | grep -qE "[ ,]ro[ ,]"')" ;;
     *) echo "FAIL unknown mode $mode"; exit 1 ;;
 esac
+case "$mode" in with|stateless) served=1 ;; *) served=0 ;; esac
 
-# --- the fail-closed modes (everything except `with`) ---------------------------------------
-if [ "$mode" != with ]; then
+# --- the fail-closed modes (everything except `with` and `stateless`) -----------------------
+if [ "$served" = 0 ]; then
     out=$(printf '%b' "$REQ" | "$H" get 2>/dev/null) && rc=0 || rc=$?
     check "dev-token get ($mode): exit" 0 "$rc"
     check "dev-token get ($mode): answers quit=1 only" "quit=1" "$out"
     err=$(printf '%b' "$REQ" | "$H" get 2>&1 >/dev/null || true)
     check "dev-token get ($mode): the reason is on stderr" 1 "$(yes_no test -n "$err")"
+    # Each token-shape mode must be refused by the check it exists for, not by another one.
+    case "$mode" in
+        oversize) why="at most 2048 bytes" ;;
+        badtoken|badchar|short) why="line 1 is not an installation token" ;;
+        *) why= ;;
+    esac
+    [ -z "$why" ] || check "dev-token get ($mode): refused for: $why" 1 "$(contains "$err" "$why")"
     out=$("$H" token 2>/dev/null) && rc=0 || rc=$?
     check "dev-token token ($mode): refuses" 1 "$rc"
     check "dev-token token ($mode): prints nothing" "" "$out"
@@ -86,7 +103,7 @@ if [ "$mode" != with ]; then
     exit "$fail"
 fi
 
-# --- mode `with` ----------------------------------------------------------------------------
+# --- the served modes, `with` and `stateless` -------------------------------------------------
 # dev-token as a git credential helper.
 out=$(printf '%b' "$REQ" | "$H" get)
 check "get: protocol" protocol=https "$(printf '%s\n' "$out" | sed -n 1p)"
@@ -179,6 +196,9 @@ mkdir -p /home/app/.config/gh
 printf 'github.com:\n    oauth_token: %s\n    user: decoy\n' "$DEVC_DECOY_TOKEN" >/home/app/.config/gh/hosts.yml
 check "a hosts.yml in the home volume is not the credential" 1 "$(yes_no test "$(gh auth token)" = "$DEVC_FIXTURE_TOKEN")"
 check "the decoys are not read: no decoy in gh's output" 0 "$(contains "$(gh auth token 2>&1)" "$DEVC_DECOY_TOKEN")"
+
+# Everything below does not depend on the token's shape: it runs once, under `with`.
+[ "$mode" = with ] || exit "$fail"
 
 # devapp-check.sh: removes the leftovers, warns, and always exits 0.
 CHECK=/usr/local/share/devc/devapp-check.sh
