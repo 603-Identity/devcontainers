@@ -70,13 +70,31 @@ revision="${GITHUB_SHA:-$(git -C "$root" rev-parse HEAD 2>/dev/null || echo unkn
 # uid 1000 must read what a CI runner's user wrote.
 export DEVC_FIXTURE_TOKEN DEVC_DECOY_TOKEN
 rand_token() { printf 'ghs_%s' "$(head -c 96 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 36)"; }
+# rand_alnum <n>: n random alphanumerics. The output is cut in the shell, not by a `head` at the
+# end of the pipe, so no stage takes a SIGPIPE that pipefail would turn into a failure.
+rand_alnum() {
+  local s
+  s="$(head -c $(($1 + 64)) /dev/urandom | base64 -w0 | tr -dc 'A-Za-z0-9')"
+  printf '%s' "${s:0:$1}"
+}
+# rand_stateless_token <n>: shaped like GitHub's stateless installation token (ghs_APPID_JWT:
+# dots and dashes, ~520 characters), with n characters after `ghs_`. The `.`, `-` and `_` sit at
+# fixed places so every fixture has them.
+rand_stateless_token() {
+  local head
+  head="1234567_$(rand_alnum 30).$(rand_alnum 30)-$(rand_alnum 30)."
+  printf 'ghs_%s%s' "$head" "$(rand_alnum $(($1 - ${#head})))"
+}
+# The /run/wow modes, in run order. smoke-devapp.sh documents each one.
+WOW_MODES=(with without empty expired crlf badtoken stateless oversize badchar short)
 make_wow_fixtures() {
-  local w="$root/out/wow" m exp
+  local w="$root/out/wow" m exp tok
   DEVC_FIXTURE_TOKEN="$(rand_token)"
   DEVC_DECOY_TOKEN="$(rand_token)"
   exp="$(date -u -d '+1 hour' +%Y-%m-%dT%H:%M:%SZ)"
   rm -rf "$w"
-  for m in with empty expired crlf badtoken; do
+  for m in "${WOW_MODES[@]}"; do
+    [ "$m" = without ] && continue
     mkdir -p "$w/$m"
     chmod 0755 "$w/$m"
     [ "$m" = empty ] && continue
@@ -87,7 +105,23 @@ make_wow_fixtures() {
   printf '%s\n%s\n' "$DEVC_FIXTURE_TOKEN" "2020-01-01T00:00:00Z" > "$w/expired/dev-token"
   printf '%s\r\n%s\r\n' "$DEVC_FIXTURE_TOKEN" "$exp" > "$w/crlf/dev-token"
   printf 'gho_%s\n%s\n' "${DEVC_FIXTURE_TOKEN#ghs_}" "$exp" > "$w/badtoken/dev-token"
+  # #492: the stateless format is served. Over the cap, a character outside the class, or fewer
+  # than 36 characters after `ghs_`, it is refused.
+  printf '%s\n%s\n' "$(rand_stateless_token 520)" "$exp" > "$w/stateless/dev-token"
+  printf '%s\n%s\n' "$(rand_stateless_token 2100)" "$exp" > "$w/oversize/dev-token"
+  printf '%s/%s\n%s\n' "${DEVC_FIXTURE_TOKEN:0:20}" "${DEVC_FIXTURE_TOKEN:21}" "$exp" > "$w/badchar/dev-token"
+  printf 'ghs_%s\n%s\n' "$(rand_alnum 35)" "$exp" > "$w/short/dev-token"
   chmod 0644 "$w"/*/*
+  # The fixtures must keep testing what they are for. A stateless token that shrank under 256
+  # characters or a file under 513 bytes would pass against the old check too.
+  tok="$(head -n 1 "$w/stateless/dev-token")"
+  if [ "${#tok}" -le 259 ] || [ "$(wc -c < "$w/stateless/dev-token")" -le 512 ] \
+     || [[ "$tok" != *.* || "$tok" != *-* ]] \
+     || [ "$(wc -c < "$w/oversize/dev-token")" -le 2048 ] \
+     || [ "$(head -n 1 "$w/short/dev-token" | wc -c)" -ne 40 ]; then
+    echo "make_wow_fixtures: a token fixture is not the shape it tests" >&2
+    exit 1
+  fi
 }
 
 smoke() { # smoke <flavor>
@@ -99,16 +133,22 @@ smoke() { # smoke <flavor>
 }
 
 # The dev-App identity layer, once per /run/wow the host could present: a valid token (with
-# decoys beside it), none at all, an empty directory, an expired token, CRLF line endings, and a
-# token of the wrong kind. Each is a fresh container: the layer must hold on every one.
+# decoys beside it), none at all, an empty directory, an expired token, CRLF line endings, a
+# token of the wrong kind, a valid token in the stateless format, a file over the size cap, a
+# token with a bad character and one too short (WOW_MODES). Each is a fresh container: the
+# layer must hold on every one.
 smoke_devapp() { # smoke_devapp <flavor>
-  local m mounts
+  local m mounts tok
   make_wow_fixtures
-  for m in with without empty expired crlf badtoken; do
+  for m in "${WOW_MODES[@]}"; do
     mounts=()
     [ "$m" = without ] || mounts=(-v "$root/out/wow/$m:/run/wow:ro")
+    # In the #492 modes the dev token is the file's own line 1, so "served" and "never printed"
+    # are checked against the token that is actually there.
+    tok="$DEVC_FIXTURE_TOKEN"
+    case "$m" in stateless|oversize|badchar|short) tok="$(head -n 1 "$root/out/wow/$m/dev-token")" ;; esac
     echo "devapp smoke ($1, /run/wow: $m)"
-    docker run --rm \
+    DEVC_FIXTURE_TOKEN="$tok" docker run --rm \
       -e EXPECT_GH -e EXPECT_TOFU -e EXPECT_TFLINT -e EXPECT_CLAUDE -e EXPECT_CLAUDE_SHA256 \
       -e DEVC_FIXTURE_TOKEN -e DEVC_DECOY_TOKEN \
       "${mounts[@]}" -v "$root/tests:/tests:ro" "$(ref "$1")" sh /tests/smoke-devapp.sh "$1" "$m"
