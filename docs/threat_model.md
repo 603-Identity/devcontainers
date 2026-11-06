@@ -164,7 +164,9 @@ at build and publish time, before any consumer pulls.
 
 7. **OS security fixes arrive on a schedule.** apt packages aren't version-pinned, so a
    weekly scheduled rebuild picks them up. Each rebuild publishes new digests under a new
-   tag.
+   tag. Base's apt layer runs `apt-get upgrade`, so this covers the packages the Ubuntu
+   image itself ships (apt, libc and so on), not only the ones the Dockerfiles install
+   (#494).
 
 8. **Host identity files cannot reach the container's effective credential helper.** The
    identity file is generated from an allowlist of five keys, never included or linked, so

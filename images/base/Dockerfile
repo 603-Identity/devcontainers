@@ -43,8 +43,13 @@ RUN userdel -r ubuntu 2>/dev/null || true \
 # superseded versions, so an exact pin breaks the build within weeks. What pins this
 # layer instead is the base image digest above plus the weekly scheduled rebuild in
 # .github/workflows/build.yml, which is also how security updates arrive.
+# `apt-get upgrade` is what makes that true for the packages the base image itself ships
+# (apt, libc, ...): `install` alone never touches them, and the digest only moves when
+# Canonical republishes the image. #494: apt 3.2.0 (CVE-2026-109518) sat in the pinned
+# image while the archive already had the fix.
 # hadolint ignore=DL3008
 RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install --no-install-recommends -y \
         ca-certificates curl git gnupg jq less openssh-client procps \
         python3 python3-venv unzip xz-utils \
