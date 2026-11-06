@@ -15,9 +15,7 @@
 # ourselves without giving up the upstream checksum verification that is the point of
 # pinning them. The previous set expired 2026-11-01 (#148); this commit's bumps (gh
 # 2.103.2, tofu 1.13.2, tflint 0.65.0, the Ubuntu digest, the Python lock) cleared the rest.
-#   * yq 4.54.1 is the newest yq release (checked 2026-11-02), built with Go 1.27.1.
-#     yq reads local files and opens no network connection, so the net/http, crypto/tls
-#     and crypto/x509 findings have no caller in it.
+#   * yq has no entries: 4.54.2 (#496) scans clean, so its four 4.54.1 entries went.
 #   * betterleaks is 2.0.0-rc.6 (Go 1.26.0, 26 findings; rc.1 had 13 on Go 1.25.12). rc.3
 #     removed `git --log-opts` and `--staged`; the scan now chooses its commits with a caller-side
 #     `git log` (our choice, over rc.6's own `git --revision`), so tools/secret-scan.sh
@@ -40,23 +38,17 @@
 #     network calls (registries, module sources, backends); none of the 5 is fixed
 #     upstream yet. (1.13.2 cleared the 1.13.1 crypto/x509 finding.)
 #   * tflint 0.65.0 is the newest release (2026-10-22) and carries 1 (go-jose).
+#   * CVE-2026-78661 (GO-2026-6860, added 2026-11-06, #496): an O(n^2) denial of service in
+#     golang.org/x/net/html's PARSER (addText, fosterParent); its tokenizer is not affected.
+#     Fixed in x/net 0.62.0, which no gh (newest 2.103.3, trunk on 0.61.0), betterleaks
+#     (rc.7 still 0.60.0), tofu (1.13.9 still 0.57.0) or tflint (0.65.0) release has yet.
+#     Reachability, checked against the built images by the symbol names the Go linker
+#     keeps (it drops unused functions; html.NewTokenizer, found in gh, is the control):
+#     no html.Parse, html.(*parser) or html.fosterParent symbol is in any of the four.
+#     gh links the tokenizer only; betterleaks, tofu and tflint link no x/net/html at all.
+#     gh appears twice: usr/local/bin/gh, and usr/local/libexec/gh-real in the dev-App
+#     images, the same file (equal sha256).
 vulnerabilities:
-  - id: CVE-2026-111943
-    paths: ["usr/local/bin/yq"]
-    statement: "HIGH in crypto/x509 compiled into upstream yq 4.54.1 (Go 1.27.1); no newer yq release."
-    expired_at: 2026-12-01
-  - id: CVE-2026-78667
-    paths: ["usr/local/bin/yq"]
-    statement: "HIGH in net/http compiled into upstream yq 4.54.1 (Go 1.27.1); no newer yq release."
-    expired_at: 2026-12-01
-  - id: CVE-2026-78669
-    paths: ["usr/local/bin/yq"]
-    statement: "HIGH in net/http (stdlib and golang.org/x/net http2) compiled into upstream yq 4.54.1 (Go 1.27.1); no newer yq release."
-    expired_at: 2026-12-01
-  - id: CVE-2026-97031
-    paths: ["usr/local/bin/yq"]
-    statement: "HIGH in crypto/tls compiled into upstream yq 4.54.1 (Go 1.27.1); no newer yq release."
-    expired_at: 2026-12-01
   - id: CVE-2026-111943
     paths: ["usr/local/bin/betterleaks"]
     statement: "HIGH in crypto/x509 compiled into upstream betterleaks 2.0.0-rc.6 (Go 1.26.0); the pinned release; rc.1 has no `stdin --git-diff`, which tools/secret-scan.sh needs (#449)."
@@ -184,4 +176,20 @@ vulnerabilities:
   - id: CVE-2026-116587
     paths: ["usr/local/bin/tflint"]
     statement: "HIGH in github.com/go-jose/go-jose/v4 compiled into upstream tflint 0.65.0; no fixed upstream release."
+    expired_at: 2026-12-01
+  - id: CVE-2026-78661
+    paths: ["usr/local/bin/gh", "usr/local/libexec/gh-real"]
+    statement: "HIGH in golang.org/x/net/html's parser (addText/fosterParent); x/net v0.60.0 is in upstream gh 2.103.3's module list; no fixed gh release (trunk is on v0.61.0). The binary has no html.Parse, html.(*parser) or html.fosterParent symbol: it links the tokenizer only (#496)."
+    expired_at: 2026-12-01
+  - id: CVE-2026-78661
+    paths: ["usr/local/bin/betterleaks"]
+    statement: "HIGH in golang.org/x/net/html's parser (addText/fosterParent); x/net v0.60.0 is in upstream betterleaks 2.0.0-rc.6's module list; no fixed release (rc.7 is still on v0.60.0). The binary has no html.Parse, html.(*parser) or html.fosterParent symbol: no x/net/html package is linked at all (#496)."
+    expired_at: 2026-12-01
+  - id: CVE-2026-78661
+    paths: ["usr/local/bin/tofu"]
+    statement: "HIGH in golang.org/x/net/html's parser (addText/fosterParent); x/net v0.57.0 is in upstream tofu 1.13.2's module list; no fixed release (1.13.9 is still on v0.57.0). The binary has no html.Parse, html.(*parser) or html.fosterParent symbol: no x/net/html package is linked at all (#496)."
+    expired_at: 2026-12-01
+  - id: CVE-2026-78661
+    paths: ["usr/local/bin/tflint"]
+    statement: "HIGH in golang.org/x/net/html's parser (addText/fosterParent); x/net v0.60.0 is in upstream tflint 0.65.0's module list; no newer tflint release. The binary has no html.Parse, html.(*parser) or html.fosterParent symbol: no x/net/html package is linked at all (#496)."
     expired_at: 2026-12-01
