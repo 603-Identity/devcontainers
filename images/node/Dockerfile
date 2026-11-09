@@ -47,51 +47,15 @@ RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-l
 # image until each takes npm 12 in CI (#27). The tarball is verified against the
 # registry's published sha512 `integrity`, the same check `npm ci` applies to every
 # package.
-# Drop this block once the image's Node major bundles npm >= 12.2.1.
-ARG NPM_VERSION=12.2.1
-ARG NPM_INTEGRITY=sha512-bKCmFRVT/BB+YPEYbZwQ1XUI3N5t4xKSpU1MxOjo7z3iWzKBJ0ZXRC1xFdEN+TC7N5TdywaBzf2dMXGJq/e2PQ==
+# Drop this block once the image's Node major bundles npm >= 12.2.2 (the first npm 12
+# whose bundled undici, 6.29.1, carries the CVE fixes the image used to swap in).
+ARG NPM_VERSION=12.2.2
+ARG NPM_INTEGRITY=sha512-KglgbZyacf7jH+FHuNRqVuCzQi8VhI2a7J87Ix43FsPTuZoGWmIXXGdZtBUOA79vwL+IJREqURVzupA7PsQTcA==
 RUN curl -fsSL "https://registry.npmjs.org/npm/-/npm-${NPM_VERSION}.tgz" -o /tmp/npm.tgz \
     && test "sha512-$(openssl dgst -sha512 -binary /tmp/npm.tgz | base64 -w0)" = "${NPM_INTEGRITY}" \
     && npm install -g --no-audit --no-fund /tmp/npm.tgz \
     && rm /tmp/npm.tgz \
     && test "$(npm --version)" = "${NPM_VERSION}"
-
-# --- A package bundled inside npm 12.2.1 carries HIGH CVEs, and no npm release bundles a
-# fixed copy yet, so it is replaced in place with a fixed registry release, checked
-# against that release's published sha512 `integrity` exactly as the npm tarball is.
-#   undici 6.29.0 -> 6.29.1 (CVE-2026-87018, CVE-2026-109383 and CVE-2026-109869, fixed
-#     in 6.29.1). The bundled node-gyp requires ^6.25.0; 6.29.1 is the newest 6.x.
-# undici has no dependencies. The replaced version is asserted after the swap.
-# (npm 12.2.1 bundles brace-expansion 5.0.12, the version this block used to swap in, so
-# that swap was removed with the npm 12.2.0 -> 12.2.1 bump.)
-# Once npm bundles a package at or above its pin here, the build fails rather than let the
-# swap downgrade it: remove that package's swap line and ARGs, and the whole block when
-# none remains.
-ARG UNDICI_VERSION=6.29.1
-ARG UNDICI_INTEGRITY=sha512-EvRlUt/QqAEvXdQeRMYUfwOQsfzpDztykrG2owGEE/rBOBoYv9uF39ZzsNDh4lTFHhTr2XOZjKkYgueD12ZmGA==
-RUN set -eu; \
-    npm_modules=/usr/local/lib/node_modules/npm/node_modules; \
-    swap() { \
-        name="$1"; version="$2"; integrity="$3"; \
-        bundled="$(node -p "require('${npm_modules}/${name}/package.json').version")"; \
-        rc=0; \
-        node -e "process.exit(require(process.argv[1]).gte(process.argv[2], process.argv[3]) ? 3 : 0)" \
-            "${npm_modules}/semver" "${bundled}" "${version}" || rc=$?; \
-        if [ "$rc" -eq 3 ]; then \
-            echo "npm bundles ${name} ${bundled}, at or above ${version}: drop this swap" >&2; exit 1; \
-        elif [ "$rc" -ne 0 ]; then \
-            echo "could not compare ${name} ${bundled} with ${version}" >&2; exit 1; \
-        fi; \
-        curl -fsSL "https://registry.npmjs.org/${name}/-/${name}-${version}.tgz" -o /tmp/pkg.tgz; \
-        test "sha512-$(openssl dgst -sha512 -binary /tmp/pkg.tgz | base64 -w0)" = "${integrity}"; \
-        rm -rf "${npm_modules:?}/${name}"; \
-        mkdir "${npm_modules}/${name}"; \
-        tar -xzf /tmp/pkg.tgz -C "${npm_modules}/${name}" --strip-components=1 --no-same-owner; \
-        rm /tmp/pkg.tgz; \
-        test "$(node -p "require('${npm_modules}/${name}/package.json').version")" = "${version}"; \
-    }; \
-    swap undici "${UNDICI_VERSION}" "${UNDICI_INTEGRITY}"; \
-    test "$(npm --version)" = "${NPM_VERSION}"
 
 # npm's download cache lives in the per-repo home volume (~/.local/npm-cache), NOT in the
 # shared tofu cache volume. Only `npm ci` verifies tarballs against package-lock.json's sha512
