@@ -138,11 +138,15 @@ smoke() { # smoke <flavor>
 # token with a bad character and one too short (WOW_MODES). Each is a fresh container: the
 # layer must hold on every one.
 smoke_devapp() { # smoke_devapp <flavor>
-  local m mounts tok
+  local m mounts net tok
   make_wow_fixtures
   for m in "${WOW_MODES[@]}"; do
     mounts=()
     [ "$m" = without ] || mounts=(-v "$root/out/wow/$m:/run/wow:ro")
+    # `with` runs without a network (#503): its plugin-install.sh checks must fail fast, not reach
+    # GitHub. None of its other assertions needs the network.
+    net=()
+    [ "$m" != with ] || net=(--network none)
     # In the #492 modes the dev token is the file's own line 1, so "served" and "never printed"
     # are checked against the token that is actually there.
     tok="$DEVC_FIXTURE_TOKEN"
@@ -151,7 +155,7 @@ smoke_devapp() { # smoke_devapp <flavor>
     DEVC_FIXTURE_TOKEN="$tok" docker run --rm \
       -e EXPECT_GH -e EXPECT_TOFU -e EXPECT_TFLINT -e EXPECT_CLAUDE -e EXPECT_CLAUDE_SHA256 \
       -e DEVC_FIXTURE_TOKEN -e DEVC_DECOY_TOKEN \
-      "${mounts[@]}" -v "$root/tests:/tests:ro" "$(ref "$1")" sh /tests/smoke-devapp.sh "$1" "$m"
+      "${net[@]}" "${mounts[@]}" -v "$root/tests:/tests:ro" "$(ref "$1")" sh /tests/smoke-devapp.sh "$1" "$m"
   done
 }
 

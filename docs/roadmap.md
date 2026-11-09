@@ -167,6 +167,10 @@ the threat model.
 its version pinned. `base`, `tofu` and `node` still ship no CLI, and the plugin repair below
 is unchanged for them.
 
+*Superseded in part by #503 (DEVC-D10):* a dev-App container installs and repairs pinned plugins
+through `plugin-install.sh`, which uses only the CLI and never the internal state files. The legacy
+recipe stands.
+
 **Context.** A container kept loading an old way-of-working plugin version through two pin
 bumps. The documented fix (refresh the marketplace, reinstall the plugin) needs the CLI, and
 the container had none, so plugin state was repaired by hand-editing the CLI's internal
@@ -457,6 +461,61 @@ behaviour: B (#442), C and D. PR A changes only the passages already true at its
 Invariant 6 (this repo's own `main`) is unchanged. "Approvals are the merge control" belongs
 to the consumer-verification section, which PR C writes. `docs/adopting.md` is frozen to the
 legacy route until PR D rewrites it. The tag v1.6 closes #393.
+
+#### DEVC-D10: The pinned Claude Code plugin is installed at the end of every start, and that one start step may fail
+
+**Recorded** 2026-11-09 from the design of record on #503 (its spec comment; #504 shipped in the same PR).
+
+**Context.** A dev-App repo pins a Claude Code plugin in its tracked `.claude/settings.json`
+(`extraKnownMarketplaces` with a `ref`, and `enabledPlugins`), but Claude Code never installs it
+from project settings without a folder-trust prompt, and a session started without it carries
+no hooks or skills (#503). Running the CLI by hand against the workspace also rewrote the
+tracked file: `marketplace remove` with no `--scope` emptied both keys (measured, claude
+2.1.319).
+
+**Decision.** An image script, `/usr/local/share/devc/plugin-install.sh` (devapp layer only),
+installs every pinned plugin at user scope and the template's `postStartCommand` calls it
+**last**.
+- **At the end of postStart, not in postCreate, and it may fail the start.** The devcontainer
+  CLI stops at the first non-zero hook. A failing postCreate would skip all of postStart (the
+  forwarded-credential cleanup, owner-check, devapp-check, git-identity), and the CLI writes its
+  markers before it runs each command, so a failed postCreate is never retried. At the tail of
+  postStart every security step has already run, and a failure makes `up` exit non-zero. This is
+  the **single exception** to the exit-0 rule of the other start-up scripts. DEVC-D6 gives
+  owner-check's reason (by postStart the token is mounted, so blocking would protect nothing and
+  would break the legitimate rename and transfer cases); `devapp-check.sh` and `gpg-check.sh`
+  add in their comments that a failed postStartCommand buries its own message. Neither reason
+  carries over: failing this step skips nothing, because it runs last, and on the supported entry (the devcontainer CLI or the launcher) `up`'s own log
+  carries the postStart output. VS Code would bury it, but VS Code attach is unsupported (DEVC-D9).
+- **User scope only (spec D4).** Every `claude` call that takes `--scope` gets `--scope user`, and the
+  script never falls back to an unscoped call.
+- **No `claude` call runs in the workspace (spec D5/D6).** Each runs from a fresh empty directory, with a
+  fixed `PATH` and `TMPDIR`, `GIT_CONFIG_GLOBAL=/dev/null`, a git ceiling at `TMPDIR`, a short list of
+  git and loader variables removed (the list is in `cl()`), and `CLAUDE_CONFIG_DIR` unset. The script refuses to run when `TMPDIR` holds a
+  `.git` or `.claude`.
+- **Detect, never restore (spec D7).** The script hashes the tracked file before and after, fails
+  loudly on a mismatch and keeps a snapshot, and never writes the workspace.
+- Unpinned user-scope plugins are reported, never removed (spec D10).
+
+**Alternatives rejected.** postCreate (it skips postStart and is never retried); exit 0 with a
+banner only (a session would start silently without the plugin, which is #503's failure);
+restore-after (it would silently undo the user's own edit, and its write path into the
+workspace is itself a symlink and TOCTOU surface).
+
+**Consequences.**
+- *Retry.* The postStart marker is keyed on the container's start time, so a second `up` on the
+  still-running container does not re-run the step. A retry needs `docker stop` then `up`, or
+  the recovery command run by hand (README, step 6 of Using an image). The launcher must treat a non-zero `up` as a failed start: that is an open
+  dependency on glunk-works/claude-workbench#1339.
+- *Older images fail.* Under an older image the start fails because `sh` cannot open the script.
+  This deliberately differs from DEVC-D6's "a new template on an older image skips the missing
+  script", which stands as history. The template change therefore ships in one consumer PR with
+  the image bump and the verify-pin bump, after the next release.
+- *Measured on 2.1.316.* A scoped `marketplace remove` also uninstalls the plugin, so a ref bump
+  removes the plugin's saved options and data before the reinstall; the script's always-update
+  step then has nothing to do. 2.1.319 was recorded as leaving the plugin installed; the end state is the
+  same either way.
+- `.ai/state.json` work stays with claude-workbench (#1370, #1349, #1377).
 
 ### Org-wide IAC-D decisions that bind this repo
 

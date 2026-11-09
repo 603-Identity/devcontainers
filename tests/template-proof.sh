@@ -30,6 +30,9 @@
 #     shares <folder>-home, gets the collision banner while the marker still names the first
 #     repo (the mismatch the check exists for, not a simulation);
 #   * tofu is the version the image pins, and pre-commit install ran in the workspace;
+#   * plugin-install.sh ran in postStart and reported `nothing pinned` (that it runs last is held by
+#     devapp_test.go's exact postStartCommand comparison) (the fixture has no
+#     .claude/settings.json); a networked install is not part of this proof (#503);
 #   * a negative `up`: with no token directory on the host, either `up` fails (the CLI's --mount
 #     refuses a missing source) or the container starts with an EMPTY /run/wow and every
 #     credential path fails closed; which one depends on the daemon, and both are accepted;
@@ -260,6 +263,7 @@ expect_tofu="$(sed -n 's/^ARG TOFU_VERSION=//p' "$root/images/tofu/Dockerfile")"
 [ -n "$expect_tofu" ] || { echo "::error::could not read TOFU_VERSION from images/tofu/Dockerfile"; exit 1; }
 check "tofu version" "OpenTofu v$expect_tofu" "$(dxs "tofu version | head -n 1")"
 check "pre-commit install ran in the fixture" 1 "$([ -x "$fixture/.git/hooks/pre-commit" ] && echo 1 || echo 0)"
+check "plugin-install ran and found nothing pinned" 1 "$(grep -qF -- 'plugin-install: nothing pinned' "$work/up-a.log" && echo 1 || echo 0)"
 
 # --- a negative `up`: no token directory on the host. Depending on the daemon, Docker either
 # refuses a bind mount whose source does not exist (Docker Desktop on Windows: "bind source path

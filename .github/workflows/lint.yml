@@ -59,7 +59,7 @@ jobs:
           persist-credentials: false
       # shellcheck is preinstalled on ubuntu-latest runners.
       - name: shellcheck
-        run: shellcheck images/base/files/*.sh images/devapp/files/gh images/devapp/files/dev-token images/devapp/files/devapp-check.sh images/devapp/files/claude-fetch.sh tests/*.sh .github/scripts/*.sh tools/*.sh tools/tests/*.sh .claude/hooks/*.sh
+        run: shellcheck images/base/files/*.sh images/devapp/files/gh images/devapp/files/dev-token images/devapp/files/devapp-check.sh images/devapp/files/claude-fetch.sh images/devapp/files/plugin-install.sh tests/*.sh .github/scripts/*.sh tools/*.sh tools/tests/*.sh .claude/hooks/*.sh
 
   zizmor:
     name: zizmor (workflow security)

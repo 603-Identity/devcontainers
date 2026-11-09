@@ -21,6 +21,8 @@
 #     marker below;
 #   * `claude` is installed from a binary verified against Anthropic's signature, with
 #     root-owned managed settings that turn off its updater and pin its version;
+#   * `plugin-install.sh` installs the repo's pinned Claude Code plugins at user scope, at the end
+#     of every start, and fails the start loudly when it cannot (#503);
 #   * the usual GNU coreutils replace Ubuntu 26.04's Rust ones on PATH.
 #
 # BASE_IMAGE is always passed by digest in CI; the default is for local builds only.
@@ -91,6 +93,7 @@ RUN install -d -m 0755 /usr/local/libexec \
 COPY --chmod=0755 files/dev-token /usr/local/libexec/dev-token
 COPY --chmod=0755 files/gh /usr/local/bin/gh
 COPY --chmod=0755 files/devapp-check.sh /usr/local/share/devc/devapp-check.sh
+COPY --chmod=0755 files/plugin-install.sh /usr/local/share/devc/plugin-install.sh
 
 # System git: the helper list is reset, then dev-token is the only helper, for every host (it
 # answers `quit=1` to all but https github.com, which stops git trying anything else). base's

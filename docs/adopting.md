@@ -83,7 +83,14 @@ keeps the approval count at 1 or more and leaves auto-merge off.
 
 1. Copy [`template/.devcontainer/`](../template/.devcontainer/) into the repo, and
    [`template/.gitattributes`](../template/.gitattributes) to the repo root (or merge it into an
-   existing `.gitattributes`).
+   existing `.gitattributes`). **Release order (#503):** the template's `postStartCommand` ends
+   with `plugin-install.sh`, so the `.devcontainer/` change can be taken only after the first
+   release (`vX.Y` tag) cut after #503 merged, and after the repo's own
+   `devcontainer-image.yml` pin moves to that release (until then `verify / verify` compares the
+   file with the v1.6 template or snapshot and fails it). It also needs a devapp image built
+   after that change. Take the image bump, the verify-pin bump and the template change in **one**
+   PR: under an older image the start fails because `sh` cannot open the script. The
+   `.gitattributes` has none of these limits.
 2. Change **only** two things in `devcontainer.json` and the `FROM`. In `devcontainer.json`, replace `OWNER/REPO` in the token mount
    with the repo's `github.repository`, in GitHub's case (`verify / verify` fails any other
    spelling). In the `Dockerfile`, set `FROM` to `devcontainer-devapp` or
@@ -188,6 +195,9 @@ container](../README.md#checking-a-container):
 - `/home/app` is owned by `app` and the volumes survive a rebuild (`/tmp` is root-owned, mode
   1777: that is normal);
 - `~/.vscode-server` does not exist (step 6 removed it, or the home volume is new; the CLI entry does not create it);
+- the pinned plugin is installed at user scope (`claude plugin list --json` shows it with
+  `"scope": "user"` and `"enabled": true`) and `git status --porcelain .claude/settings.json`
+  is empty;
 - a commit works and is unsigned (`git log --format=%G?` prints `N`);
 - the repo's own gate runs in the container with CI's tool versions: for a tofu repo,
   `tofu init`, then `tofu test -filter=<mocked file>`, then restore the lock;

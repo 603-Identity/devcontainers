@@ -109,6 +109,14 @@ anyway, inspect it first, without host git or VS Code: `.devcontainer/`, `.devco
    held to rules instead, step 3). That includes the volume
    mounts the repo does not use (`node_modules`, `.venv`): leave them, an unused named volume
    is empty and costs nothing.
+   **Release order (#503).** The `postStartCommand` in the template ends with
+   `plugin-install.sh`. A consumer can take that `devcontainer.json` change **only after the
+   first release (`vX.Y` tag) cut after #503 merged**, and after its own
+   `devcontainer-image.yml` pin moves to that release: until then `verify / verify` compares the
+   file with the v1.6 template or snapshot and fails it. It also needs a devapp image built
+   after that change (the script must exist in the image). Take the image bump, the verify-pin
+   bump and the template change in **one** consumer PR: under an older image the start fails
+   because `sh` cannot open the script. `template/.gitattributes` has none of these limits.
 3. In the `Dockerfile`, set `FROM` to `devcontainer-devapp` or `devcontainer-devapp-tofu`, by
    tag **and** digest. Take both from the latest *Build images* run summary. CI verifies every
    digest on every pull request (step 4), so a bad one fails the PR. To check one by hand first:
@@ -155,7 +163,7 @@ anyway, inspect it first, without host git or VS Code: `.devcontainer/`, `.devco
         that count must be `0`.
      3. **Restore an existing Windows checkout**, once that commit is on the branch it follows
         and with the tree clean: `git rm --cached -r -q . && git reset --hard`. Then
-        `git ls-files --eol | grep -c 'w/crlf'` must print `0`.
+        `git ls-files --eol | grep -c 'w/crlf'` must print `0` (a repo that deliberately pins some paths to CRLF, such as `*.cmd`, expects the number of those files instead).
    - **Ignore `.terraform-devcontainer/`** in tofu repos. The tofu image sets
      `TF_DATA_DIR=.terraform-devcontainer` so the container's `tofu init` stays apart from
      the host's `.terraform`, and it lands untracked in the workspace.
@@ -168,6 +176,15 @@ anyway, inspect it first, without host git or VS Code: `.devcontainer/`, `.devco
 6. Start the container from the launcher (until it ships, see the interim entry above). There is no `gh auth login` step: the dev token is
    already at `/run/wow/dev-token`, and `gh` and git read it from there (see
    [Credentials](#credentials)). Without it they refuse.
+   **Every start ends with `plugin-install.sh`.** It installs the repo's pinned Claude Code
+   plugins (the ones `extraKnownMarketplaces` pins by `ref` and `enabledPlugins` turns on) at
+   user scope, in the home volume, and fails the start (`up` exits non-zero) when it cannot.
+   Once the pins are installed, a start **needs no network**; offline, a start fails only while
+   a pin is missing or its `ref` moved. After a failure, a second `up` on the still-running
+   container does not re-run the step (the CLI keys postStart on the container's start time):
+   stop the container and `up` again, or run `sh /usr/local/share/devc/plugin-install.sh` in
+   it from the workspace root, then start a fresh `claude` session. The launcher must treat a non-zero `up` as a failed
+   start (open dependency: glunk-works/claude-workbench#1339).
 
 ### Checking a container
 
@@ -209,6 +226,9 @@ What a healthy container looks like (from the terraform-cloudflare-dns pilot):
   (`git ls-files --eol` shows `i/lf w/crlf`), and `git status` hides it. Re-checkout it:
   `git rm --cached -r -q . && git reset --hard`, with the tree clean first, and after the
   renormalisation commit ([Using an image](#using-an-image-in-a-repo), step 5) is on the branch.
+- **The pinned plugin is installed at user scope.** `claude plugin list --json` shows each
+  pinned plugin with `"scope": "user"` and `"enabled": true`, and
+  `git status --porcelain .claude/settings.json` is empty.
 - **The dev token cannot do admin work.** Check it from inside the container:
   `gh api repos/<owner>/<repo>/branches/main/protection` must return 403 (it needs
   `administration=read`, which the dev App is not granted). Do not use `GET .../rulesets` (any token with `metadata=read` gets a
@@ -749,8 +769,12 @@ which key a repo uses.
 
 `base`, `tofu` and `node` ship no `claude` CLI (DEVC-D4); the devapp images do, at
 `/usr/local/bin/claude` (see the table at the top), and the dev-App template installs no
-editor extension. In a dev-App container run the commands below with plain `claude` in place
-of `"$claude"`, and skip the `ls`. In a legacy container, when it keeps loading an old plugin
+editor extension. In a dev-App container, run `sh /usr/local/share/devc/plugin-install.sh`
+from the workspace root instead: it re-points the marketplace at user scope after a `ref` bump (the CLI's scoped
+`marketplace remove` also uninstalls the plugin, measured on 2.1.316, so a ref bump deletes the
+plugin's saved options and data before the reinstall) and updates the plugin.
+**Never run `claude plugin marketplace remove` without `--scope user`.** It also deletes the
+declaration from the tracked `.claude/settings.json` (measured on 2.1.319). In a legacy container, when it keeps loading an old plugin
 version, the documented fix (refresh the marketplace, then reinstall the plugin) still
 works: the Claude Code extension the legacy template installs carries its own native `claude`
 binary, the same release as the extension, with no node or npm needed. Close the Claude
