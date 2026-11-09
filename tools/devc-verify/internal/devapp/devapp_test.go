@@ -454,9 +454,16 @@ func TestRealTemplateShape(t *testing.T) {
 	if !slices.Equal(top.Mounts, wantMounts) {
 		t.Errorf("mounts = %q, want %q", top.Mounts, wantMounts)
 	}
-	// The credential-file cleanup runs first in postStartCommand, before any other start-up step.
-	if !strings.Contains(tmpl, `"postStartCommand": "rm -f /tmp/vscode-remote-containers-*.js; sh /usr/local/share/devc/owner-check.sh;`) {
-		t.Errorf("postStartCommand does not start with the credential-file cleanup")
+	// The credential-file cleanup runs first in postStartCommand, before any other start-up step,
+	// and the pinned-plugin install (#503) runs last, so that its failure skips nothing. The exact
+	// value covers both.
+	var postStart string
+	if err := json.Unmarshal(raw["postStartCommand"], &postStart); err != nil {
+		t.Fatal(err)
+	}
+	const wantPostStart = "rm -f /tmp/vscode-remote-containers-*.js; sh /usr/local/share/devc/owner-check.sh; sh /usr/local/share/devc/devapp-check.sh; sh /usr/local/share/devc/git-identity.sh; sh /usr/local/share/devc/plugin-install.sh"
+	if postStart != wantPostStart {
+		t.Errorf("postStartCommand = %q, want the credential-file cleanup first and plugin-install.sh last: %q", postStart, wantPostStart)
 	}
 	// The attach notice (VS Code attach is unsupported) stays.
 	if !strings.Contains(tmpl, `"postAttachCommand": "echo 'devapp: open this repo through the launcher only' >&2"`) {

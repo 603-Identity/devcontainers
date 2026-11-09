@@ -1,0 +1,9 @@
+# Copy this file to the repo root (merge it into an existing .gitattributes, keeping these two
+# rules). Every tracked text file is LF, whatever the checkout host's core.autocrlf says: the dev
+# container's git has no autocrlf, so a CRLF working tree on a Windows host shows as modified
+# inside the container (#504). text=auto leaves files git detects as binary unconverted.
+# A repo that ships Windows scripts that must stay CRLF adds rules for them below these, for
+# example `*.cmd text eol=crlf` and `*.bat text eol=crlf`.
+# The .devcontainer rule stays as the stricter pin: verify / verify rejects CR there.
+* text=auto eol=lf
+.devcontainer/** text eol=lf

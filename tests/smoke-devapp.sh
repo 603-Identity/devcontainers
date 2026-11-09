@@ -4,7 +4,9 @@
 # sign, a verified `claude`, GNU coreutils. build-and-test.sh runs it once per /run/wow the host
 # could present, each in a fresh container:
 #
-#   with       a valid dev-token, and decoys beside it (admin-token, token) that must never be read
+#   with       a valid dev-token, and decoys beside it (admin-token, token) that must never be read.
+#              build-and-test.sh runs this mode with `--network none` (#503): it also checks that
+#              plugin-install.sh exits 1 for a pinned plugin it cannot fetch, and 0 for none
 #   without    no /run/wow at all
 #   empty      /run/wow mounted, but empty
 #   expired    a dev-token whose expires_at has passed
@@ -272,6 +274,38 @@ check "the unsigned marker" "root:root 644" "$(stat -c '%U:%G %a' /usr/local/sha
 for f in git-identity.sh owner-check.sh; do
     check "$f stays" 1 "$(yes_no test -x "/usr/local/share/devc/$f")"
 done
+
+# plugin-install.sh (#503). This mode runs with NO network, so a pinned plugin cannot be fetched.
+PI=/usr/local/share/devc/plugin-install.sh
+check "plugin-install.sh owner and mode" "root:root 755" "$(stat -c '%U:%G %a' "$PI")"
+check "the app user cannot write plugin-install.sh" 0 "$(yes_no test -w "$PI")"
+# No settings file: nothing to do, exit 0.
+pdir=$(mktemp -d)
+rc=0; (cd "$pdir" && timeout 60 sh "$PI") >/dev/null 2>&1 || rc=$?
+check "plugin-install: no settings file exits 0" 0 "$rc"
+# A pinned plugin and no network: it fails (exit 1), leaves the file byte-identical, and is bounded.
+mkdir -p "$pdir/.claude"
+cat >"$pdir/.claude/settings.json" <<'EOF'
+{
+  "extraKnownMarketplaces": {
+    "claude-workbench": { "source": { "source": "github", "repo": "glunk-works/claude-workbench", "ref": "v0.30.0" } }
+  },
+  "enabledPlugins": { "way-of-working@claude-workbench": true }
+}
+EOF
+psum=$(sha256sum <"$pdir/.claude/settings.json")
+rc=0; (cd "$pdir" && timeout 150 sh "$PI") >/dev/null 2>"$pdir/err" || rc=$?
+check "plugin-install: a pinned plugin with no network exits 1 (not the 150 s timeout)" 1 "$rc"
+check "plugin-install: it got as far as adding the marketplace (step 7)" 1 "$(yes_no grep -q 'could not add the marketplace' "$pdir/err")"
+check "plugin-install: the settings file is byte-identical afterwards" "$psum" "$(sha256sum <"$pdir/.claude/settings.json")"
+# A stray claude first on the caller's PATH never runs: the script fixes its own PATH (spec D6).
+mkdir -p "$pdir/stray"
+printf '#!/bin/sh\ntouch "%s/marker"\nexit 0\n' "$pdir" >"$pdir/stray/claude"
+chmod 755 "$pdir/stray/claude"
+rc=0; (cd "$pdir" && PATH="$pdir/stray:$PATH" timeout 150 sh "$PI") >/dev/null 2>"$pdir/err2" || rc=$?
+check "plugin-install: the stray-PATH run also reached step 7" 1 "$(yes_no grep -q 'could not add the marketplace' "$pdir/err2")"
+check "plugin-install: a stray claude on the caller's PATH never runs" 0 "$(yes_no test -e "$pdir/marker")"
+rm -rf "$pdir"
 
 # claude: the verified binary, root-owned, and the settings that pin it.
 check "claude path" /usr/local/bin/claude "$(command -v claude)"
