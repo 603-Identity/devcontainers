@@ -72,8 +72,8 @@ USER 0
 # grep is what ties the verified file to the pin: a valid signature on one copy of
 # SHA256SUMS says nothing about a sha taken from another. Record the resolved sha as the
 # source commit above.
-ARG TOFU_VERSION=1.13.2
-ARG TOFU_SHA256=723bebb0df8411daff1e5fc3862e28ff5581fe5634087f4c29a9aa41d78208b5
+ARG TOFU_VERSION=1.13.9
+ARG TOFU_SHA256=bc44eb6b06446ba83bd4072114891987f590f66cca712737a7f1147c50c539ce
 RUN curl -fsSL "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.zip" \
         -o /tmp/tofu.zip \
     && echo "${TOFU_SHA256}  /tmp/tofu.zip" | sha256sum -c - \
