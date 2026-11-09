@@ -98,8 +98,11 @@ anyway, inspect it first, without host git or VS Code: `.devcontainer/`, `.devco
    approving review, code-owner review required, a `CODEOWNERS` file, and no bypass actors
    (see [What the consuming repo needs](#what-the-consuming-repo-needs)). `verify / verify`
    reads the first two and fails without them.
-2. Copy [`template/.devcontainer/`](template/.devcontainer/) into the repo and change **only**
-   two things: `OWNER/REPO` in the token mount of `devcontainer.json` (the repo's
+2. Copy [`template/.devcontainer/`](template/.devcontainer/) into the repo, **and**
+   [`template/.gitattributes`](template/.gitattributes) to the repo root (or merge it into an
+   existing `.gitattributes`). A consumer can take the `.gitattributes` at any time: unlike the
+   `devcontainer.json` change, it does not depend on a release. Change **only**
+   two things in the `.devcontainer/` copy: `OWNER/REPO` in the token mount of `devcontainer.json` (the repo's
    `github.repository`, in GitHub's case), and the `FROM` line of the `Dockerfile`. An optional
    third, a loopback-only `appPort`, is below. Everything else in `devcontainer.json` must stay
    as it is: `verify / verify` compares that file with the template exactly (the Dockerfile is
@@ -142,8 +145,17 @@ anyway, inspect it first, without host git or VS Code: `.devcontainer/`, `.devco
 5. Repo-side housekeeping the pilot of terraform-cloudflare-dns turned up:
    - **Force LF checkouts.** On a Windows host with `core.autocrlf=true`, every file in the
      bind mount is CRLF, so the container's git (no `autocrlf`) reports the whole tree as
-     modified and a gate that reads the git index fails. Add `* text=auto eol=lf` to `.gitattributes` (this repo does), or at least
-     `.devcontainer/** text eol=lf`, which `verify / verify` needs anyway (it rejects CR).
+     modified and a gate that reads the git index fails. Three parts:
+     1. Ship [`template/.gitattributes`](template/.gitattributes). The `.devcontainer/**`-only
+        rule is no longer an accepted alternative: every other file then follows the host's
+        `core.autocrlf`, and the container's git shows them as modified (#504).
+     2. **Renormalise once, as the adoption PR's first commit, with nothing else in it:**
+        `git add --renormalize . && git commit -m "chore: normalise line endings to LF"`. Before
+        it, `git ls-files --eol | grep -c 'i/crlf'` counts the files stored as CRLF. After it,
+        that count must be `0`.
+     3. **Restore an existing Windows checkout**, once that commit is on the branch it follows
+        and with the tree clean: `git rm --cached -r -q . && git reset --hard`. Then
+        `git ls-files --eol | grep -c 'w/crlf'` must print `0`.
    - **Ignore `.terraform-devcontainer/`** in tofu repos. The tofu image sets
      `TF_DATA_DIR=.terraform-devcontainer` so the container's `tofu init` stays apart from
      the host's `.terraform`, and it lands untracked in the workspace.
@@ -195,7 +207,8 @@ What a healthy container looks like (from the terraform-cloudflare-dns pilot):
   init. Restore it; never commit it.
 - **A Windows checkout from before `.gitattributes` forced LF stays CRLF** in the working tree
   (`git ls-files --eol` shows `i/lf w/crlf`), and `git status` hides it. Re-checkout it:
-  `git rm --cached -r -q . && git reset --hard`, with the tree clean first.
+  `git rm --cached -r -q . && git reset --hard`, with the tree clean first, and after the
+  renormalisation commit ([Using an image](#using-an-image-in-a-repo), step 5) is on the branch.
 - **The dev token cannot do admin work.** Check it from inside the container:
   `gh api repos/<owner>/<repo>/branches/main/protection` must return 403 (it needs
   `administration=read`, which the dev App is not granted). Do not use `GET .../rulesets` (any token with `metadata=read` gets a

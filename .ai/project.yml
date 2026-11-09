@@ -48,7 +48,7 @@ load_bearing_docs:
 # or what a consuming repo's container does at runtime.
 code_paths:
   - images/
-  - template/            # copied unchanged into every consuming repo's .devcontainer/
+  - template/            # copied into consuming repos (`.devcontainer/`, the two `.github/workflows/` callers, the root `.gitattributes`)
   - tests/               # the smoke test is the pre-push gate on every image
   - tools/               # devc-verify and the gate scripts: they decide what a consumer PR may
                          # merge, and the rendered gate template is checked against them.

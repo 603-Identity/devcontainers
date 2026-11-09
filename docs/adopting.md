@@ -81,7 +81,9 @@ count and the repo's "Allow auto-merge" setting in the adoption PR description (
 ruleset JSON, which lists bypass actors), so a reader can see the adoption lowered neither: step 9
 keeps the approval count at 1 or more and leaves auto-merge off.
 
-1. Copy [`template/.devcontainer/`](../template/.devcontainer/) into the repo.
+1. Copy [`template/.devcontainer/`](../template/.devcontainer/) into the repo, and
+   [`template/.gitattributes`](../template/.gitattributes) to the repo root (or merge it into an
+   existing `.gitattributes`).
 2. Change **only** two things in `devcontainer.json` and the `FROM`. In `devcontainer.json`, replace `OWNER/REPO` in the token mount
    with the repo's `github.repository`, in GitHub's case (`verify / verify` fails any other
    spelling). In the `Dockerfile`, set `FROM` to `devcontainer-devapp` or
@@ -106,8 +108,10 @@ what the new version changes before moving a pin.
 
 From [step 5 of Using an image in a repo](../README.md#using-an-image-in-a-repo):
 
-- `.gitattributes` forces LF (`* text=auto eol=lf`, or at least `.devcontainer/** text eol=lf`).
-  An existing Windows checkout stays CRLF until re-checked-out (see [Checking a
+- Ship [`template/.gitattributes`](../template/.gitattributes), make the renormalisation commit
+  the PR's first commit, and restore any existing Windows checkout. The commands are in
+  [step 5 of Using an image in a repo](../README.md#using-an-image-in-a-repo); an existing
+  checkout stays CRLF until restored (see [Checking a
   container](../README.md#checking-a-container)).
 - Tofu repos: ignore `.terraform-devcontainer/`.
 - Do not commit the `.terraform.lock.hcl` change `tofu init` makes in the container, unless it
