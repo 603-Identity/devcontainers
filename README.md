@@ -934,6 +934,13 @@ reusable workflows, the gate template, or the org secret-scan rules and scanner 
    `release-tags` ruleset, so only the Repository admin role can create, move or delete them.
    Never move a published tag: consumers' pins name the commit, and the lint checks that the
    tag still peels to it.
+   **Then publish its GitHub Release** (DEVC-D8). Write the notes as `docs/releases/vX.Y.md`,
+   in a docs PR that gets the usual fresh-session review. Lead with the consumer upgrade steps
+   (re-pin, re-copy, re-lint), then the behaviour changes, image changes and known gaps; check
+   each claim against the code at the tag. Once that PR is merged, run `gh release create vX.Y
+   --verify-tag --title vX.Y --notes-file docs/releases/vX.Y.md`. `--verify-tag` refuses to
+   mint a tag, so the release can only attach to the signed one. Release immutability is on (its tag
+   can never move), and by DEVC-D8 a mistake ships as the next version, never as an edit.
 2. **Bump this repo's own pins to it, in one PR.** Dependabot never bumps these, because they
    point at this repo's own releases (#125). There are five copies of one pin:
    `tools/gate-template.yml.in` (the gate skeleton's `decide`), the two gates rendered from
