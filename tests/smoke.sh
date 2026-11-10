@@ -187,8 +187,9 @@ check "python3" 3.14 "$(python3 -c 'import sys; print("%d.%d" % sys.version_info
 check "tools venv" /opt/devc/tools/bin/pre-commit "$(readlink /usr/local/bin/pre-commit)"
 check "safe.directory" /workspace "$(git config --system --get-all safe.directory)"
 check "setuid/setgid binaries" 0 "$(find / -xdev -perm /6000 -type f 2>/dev/null | wc -l)"
-# The template mounts /home/app (per-repo), /home/app/.cache/tofu-plugins (shared) and
-# the two dependency directories as volumes. Docker copies the image path's ownership into
+# The legacy template mounts /home/app (per-repo), /home/app/.cache/tofu-plugins (shared)
+# and the two dependency directories as volumes; the dev-App template mounts the same
+# minus tofu-plugins. Docker copies the image path's ownership into
 # an empty volume, so each mount point must exist in the image and be app-owned, or it
 # comes up root-owned and unwritable as uid 1000. ~/.cache is the shared mount's parent,
 # seeded into the home volume, so it must be app-owned too.

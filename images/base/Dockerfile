@@ -148,7 +148,8 @@ COPY --chmod=0755 files/owner-check.sh files/git-identity.sh files/gpg-check.sh 
 # --- Mount points for named volumes, pre-created app-owned. Docker initialises an
 # empty named volume from the image directory at its mount point, ownership
 # included; a path missing from the image comes up root-owned and unwritable as
-# uid 1000. The template mounts (see its devcontainer.json):
+# uid 1000. The legacy template mounts these (the dev-App template mounts the home
+# volume but no tofu-plugins volume; see each devcontainer.json):
 #   ~/ (/home/app)     per-repo home volume. It holds every user-scoped file: the gh
 #                      credential, Claude sessions, the editor server and extensions, uv's
 #                      interpreters and cache, the pre-commit and tflint caches. The
