@@ -148,7 +148,8 @@ COPY --chmod=0755 files/owner-check.sh files/git-identity.sh files/gpg-check.sh 
 # --- Mount points for named volumes, pre-created app-owned. Docker initialises an
 # empty named volume from the image directory at its mount point, ownership
 # included; a path missing from the image comes up root-owned and unwritable as
-# uid 1000. The template mounts (see its devcontainer.json):
+# uid 1000. The legacy template mounts these (the dev-App template mounts the home
+# volume but no tofu-plugins volume; see each devcontainer.json):
 #   ~/ (/home/app)     per-repo home volume. It holds every user-scoped file: the gh
 #                      credential, Claude sessions, the editor server and extensions, uv's
 #                      interpreters and cache, the pre-commit and tflint caches. The
@@ -176,7 +177,7 @@ RUN install -d -o app -g app -m 0755 /home/app/.gitconfig.d /home/app/.local \
 # the first command in a fresh shell:
 #   * GitHub HTTPS credentials come from gh, whose credential lives in the
 #     per-repo volume above. (The dev-App flavour, images/devapp, replaces this helper
-#     with dev-token and unsets this entry; base and the plain template keep it.) The helper is an absolute path because ~/.local/bin
+#     with dev-token and unsets this entry; base and the legacy template keep it.) The helper is an absolute path because ~/.local/bin
 #     (writable by app) leads PATH, so a bare `gh` could be shadowed by accident, e.g. a
 #     `uv tool install` entry point named gh. This is hygiene, not a boundary against
 #     code running as app (see docs/threat_model.md, boundary 8);

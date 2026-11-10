@@ -43,13 +43,20 @@ USER 0
 # 5 HIGH findings, all allowlisted in .trivyignore.yaml (CVE-2026-56864, CVE-2026-56865,
 # CVE-2026-84445, plus CVE-2026-78669 and CVE-2026-116587, published since 1.13.0).
 #
-# The checksum file itself was verified for 1.13.2 (2026-11-02), by hand, with cosign
-# v3.1.3 against the release's keyless signature (the .sig and .pem beside
-# tofu_1.13.2_SHA256SUMS), checked against the Rekor transparency log; 1.13.0 was
-# verified the same way on 2026-10-02 (#58):
+# 1.13.9 (from 1.13.2, 2026-11-09, #505): the newest release (2026-11-05), a patch bump.
+# Checksum from the release's own tofu_1.13.9_SHA256SUMS. 1.13.3 to 1.13.7 were never
+# published; 1.13.8 fixes the `-v` alias regression and a panic on invalid
+# state-encryption config, 1.13.9 fixes local-backend state persistence after a crashed
+# first apply. Nothing breaking. go.mod is unchanged since 1.13.2, so Trivy reports the
+# same findings (see .trivyignore.yaml).
+#
+# The checksum file itself was verified for 1.13.9 (2026-11-09, #511), by hand, with
+# cosign v3.1.3 against the release's keyless signature (the .sig and .pem beside
+# tofu_1.13.9_SHA256SUMS), checked against the Rekor transparency log; 1.13.2 (2026-11-02)
+# and 1.13.0 (2026-10-02, #58) were verified the same way:
 #   signer identity: https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/heads/v1.13
 #   OIDC issuer:     https://token.actions.githubusercontent.com
-#   source commit:   765062032c46cacab116b36d714db098b806dede (the v1.13.2 tag)
+#   source commit:   c83e7e50daff10ac704cb0811e9ffd0ad2523759 (the v1.13.9 tag)
 # The image does not check this, and bump-binaries.sh does not either: it rewrites the
 # two ARGs below and leaves this comment alone. A pin at any other version is
 # unverified until someone repeats the check and updates this record (see
@@ -97,7 +104,7 @@ RUN curl -fsSL "https://github.com/terraform-linters/tflint/releases/download/v$
 # a Windows-host `tofu init` through the bind mount. (A host-side init leaves a backend
 # record behind, and `-backend=false` REUSES that record rather than ignoring it.)
 #
-# TF_PLUGIN_CACHE_DIR is ~/.cache/tofu-plugins, which the template mounts as the one
+# TF_PLUGIN_CACHE_DIR is ~/.cache/tofu-plugins, which the legacy template mounts as the one
 # volume SHARED by every repo on the host, in every org, so each provider version is
 # downloaded and stored once per machine. Sharing a cache between repos is safe only
 # because tofu verifies every cached provider against the repo's own

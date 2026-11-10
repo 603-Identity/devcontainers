@@ -13,7 +13,7 @@
 # of this directory fails: claude-export is a named context, not a stage or an image.
 #
 # What this layer changes, and only in this flavour (base, tofu and node are untouched, and
-# the plain template keeps working on them):
+# the legacy template keeps working on them):
 #   * `gh` is a wrapper and git's credential helper is dev-token. Both read ONLY
 #     /run/wow/dev-token, and refuse when it is absent or stale: they fail closed;
 #   * gpg, gpg-agent, gpgconf, gpg-connect-agent and gpgsm are removed (gpgv stays), so no
