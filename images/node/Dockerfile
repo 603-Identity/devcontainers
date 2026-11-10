@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1.28@sha256:bb22d9815c728170f72750f4e5b0d672e06176142e1d602c7e66c050100b7e5b
 #
-# Shared devcontainer NODE image: base + Node.js 24 + npm 12. Node matches consuming
-# repos' CI (`node-version: 24`); npm does not until they take npm 12 (#27).
+# Shared devcontainer NODE image: base + Node.js 26 + npm 12. Consuming repos' CI pins
+# (`node-version: 24`) do not match Node until each moves to 26 (milestone 9 left that
+# to the owner), nor npm until each takes npm 12 (#27).
 #
 # BASE_IMAGE is always passed by digest; see images/tofu/Dockerfile.
 ARG BASE_IMAGE=devcontainer-base:local
@@ -9,7 +10,7 @@ ARG BASE_IMAGE=devcontainer-base:local
 FROM ${BASE_IMAGE}
 
 LABEL org.opencontainers.image.source="https://github.com/603-Identity/devcontainers" \
-      org.opencontainers.image.description="Shared devcontainer: base + Node.js 24 + npm 12"
+      org.opencontainers.image.description="Shared devcontainer: base + Node.js 26 + npm 12"
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 USER 0
@@ -41,10 +42,10 @@ RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-l
     && rm /tmp/node.tar.xz \
     && node --version && npm --version
 
-# --- npm 12. Node 24.22.2 bundles npm 11.19.1; we move to npm 12, the standard the
-# fleet is taking (#27). This is a major above what Node 24 bundles, so consuming
-# repos' CI (`setup-node`, `node-version: 24`, npm 11 bundled) no longer matches the
-# image until each takes npm 12 in CI (#27). The tarball is verified against the
+# --- npm 12. Node 26.13.0 bundles npm 11.20.0; we move to npm 12, the standard the
+# fleet is taking (#27). This is a major above what Node bundles, so consuming
+# repos' CI (`setup-node`, npm 11 bundled) does not match the image until each takes
+# npm 12 in CI (#27). The tarball is verified against the
 # registry's published sha512 `integrity`, the same check `npm ci` applies to every
 # package.
 # Drop this block once the image's Node major bundles npm >= 12.2.2 (the first npm 12

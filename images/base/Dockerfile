@@ -176,7 +176,7 @@ RUN install -d -o app -g app -m 0755 /home/app/.gitconfig.d /home/app/.local \
 # the first command in a fresh shell:
 #   * GitHub HTTPS credentials come from gh, whose credential lives in the
 #     per-repo volume above. (The dev-App flavour, images/devapp, replaces this helper
-#     with dev-token and unsets this entry; base and the plain template keep it.) The helper is an absolute path because ~/.local/bin
+#     with dev-token and unsets this entry; base and the legacy template keep it.) The helper is an absolute path because ~/.local/bin
 #     (writable by app) leads PATH, so a bare `gh` could be shadowed by accident, e.g. a
 #     `uv tool install` entry point named gh. This is hygiene, not a boundary against
 #     code running as app (see docs/threat_model.md, boundary 8);
