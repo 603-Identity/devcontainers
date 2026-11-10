@@ -935,8 +935,8 @@ reusable workflows, the gate template, or the org secret-scan rules and scanner 
    Never move a published tag: consumers' pins name the commit, and the lint checks that the
    tag still peels to it.
    **Then publish its GitHub Release** (DEVC-D8). Write the notes as `docs/releases/vX.Y.md`,
-   in a docs PR that gets the usual fresh-session review. Lead with the consumer upgrade steps
-   (re-pin, re-copy, re-lint), then the behaviour changes, image changes and known gaps; check
+   in a docs PR, and have it reviewed in a fresh session (no gate requires review for `docs/`,
+   so ask for one). Lead with the consumer upgrade steps (re-copy, re-pin, re-lint), then the behaviour changes, image changes and known gaps; check
    each claim against the code at the tag. Once that PR is merged, run `gh release create vX.Y
    --verify-tag --title vX.Y --notes-file docs/releases/vX.Y.md`. `--verify-tag` refuses to
    mint a tag, so the release can only attach to the signed one. Release immutability is on (its tag
