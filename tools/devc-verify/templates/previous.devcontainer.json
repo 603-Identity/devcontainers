@@ -52,8 +52,10 @@
 
   // On every START: delete VS Code's forwarded-credential helper scripts, then run the owner
   // check (a folder-name collision warning), the dev-App check (stale credentials, an SSH
-  // agent, an unexpected claude binary) and the git identity projection.
-  "postStartCommand": "rm -f /tmp/vscode-remote-containers-*.js; sh /usr/local/share/devc/owner-check.sh; sh /usr/local/share/devc/devapp-check.sh; sh /usr/local/share/devc/git-identity.sh",
+  // agent, an unexpected claude binary), the git identity projection, and LAST the pinned
+  // Claude Code plugin install (plugin-install.sh, #503), which fails the start loudly when a
+  // pinned plugin cannot be installed. It runs last so that a failure there skips nothing.
+  "postStartCommand": "rm -f /tmp/vscode-remote-containers-*.js; sh /usr/local/share/devc/owner-check.sh; sh /usr/local/share/devc/devapp-check.sh; sh /usr/local/share/devc/git-identity.sh; sh /usr/local/share/devc/plugin-install.sh",
   "postCreateCommand": "if [ -f .pre-commit-config.yaml ]; then pre-commit install; fi",
   "postAttachCommand": "echo 'devapp: open this repo through the launcher only' >&2"
 }

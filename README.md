@@ -110,10 +110,10 @@ anyway, inspect it first, without host git or VS Code: `.devcontainer/`, `.devco
    mounts the repo does not use (`node_modules`, `.venv`): leave them, an unused named volume
    is empty and costs nothing.
    **Release order (#503).** The `postStartCommand` in the template ends with
-   `plugin-install.sh`. A consumer can take that `devcontainer.json` change **only after the
-   first release (`vX.Y` tag) cut after #503 merged**, and after its own
-   `devcontainer-image.yml` pin moves to that release: until then `verify / verify` compares the
-   file with the v1.6 template or snapshot and fails it. It also needs a devapp image built
+   `plugin-install.sh`. A consumer can take that `devcontainer.json` change **only once its own
+   `devcontainer-image.yml` pin is on v1.7 or later** (v1.7 is the first release cut after #503
+   merged): on an older pin `verify / verify` compares the file with the v1.6 template or
+   snapshot and fails it. It also needs a devapp image built
    after that change (the script must exist in the image). Take the image bump, the verify-pin
    bump and the template change in **one** consumer PR: under an older image the start fails
    because `sh` cannot open the script. `template/.gitattributes` has none of these limits.

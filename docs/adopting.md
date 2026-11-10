@@ -84,10 +84,10 @@ keeps the approval count at 1 or more and leaves auto-merge off.
 1. Copy [`template/.devcontainer/`](../template/.devcontainer/) into the repo, and
    [`template/.gitattributes`](../template/.gitattributes) to the repo root (or merge it into an
    existing `.gitattributes`). **Release order (#503):** the template's `postStartCommand` ends
-   with `plugin-install.sh`, so the `.devcontainer/` change can be taken only after the first
-   release (`vX.Y` tag) cut after #503 merged, and after the repo's own
-   `devcontainer-image.yml` pin moves to that release (until then `verify / verify` compares the
-   file with the v1.6 template or snapshot and fails it). It also needs a devapp image built
+   with `plugin-install.sh`, so the `.devcontainer/` change can be taken only once the repo's own
+   `devcontainer-image.yml` pin is on v1.7 or later, the first release cut after #503 merged (on
+   an older pin `verify / verify` compares the file with the v1.6 template or snapshot and fails
+   it). It also needs a devapp image built
    after that change. Take the image bump, the verify-pin bump and the template change in **one**
    PR: under an older image the start fails because `sh` cannot open the script. The
    `.gitattributes` has none of these limits.
