@@ -19,7 +19,7 @@
 #   * tflint has no entries: 0.66.0 ships go-jose/v4 4.1.6 and x/net 0.62.0, which fix
 #     both findings 0.65.0 carried (#516).
 #   * betterleaks carries only CVE-2026-78661 (below). rc.7 is built with the current Go
-#     release, which cleared the 25 Go stdlib findings rc.6 carried on Go 1.26.0 (#509).
+#     release, which cleared the 26 Go stdlib findings rc.6 carried on Go 1.26.0 (#509).
 #     (rc.3 and later are needed for `stdin --git-diff`, which tools/secret-scan.sh uses,
 #     #449.)
 #   * tofu 1.13.9 is the newest release (2026-11-05) and carries 5 besides CVE-2026-78661.
