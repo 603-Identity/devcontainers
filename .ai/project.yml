@@ -78,22 +78,51 @@ gates:
     - { cwd: ".", run: "bash tests/template-proof.sh" }
 
 # ── branch protection ────────────────────────────────────────────────────────
-# `main-required-checks` (ruleset id 24183176), created 2026-09-29, `enforcement: active`,
-# read back live via `GET /repos/603-Identity/devcontainers/rules/branches/main`. Same shape as
-# terraform-cloudflare-dns's: a `pull_request` rule plus a `required_status_checks` rule, no
-# bypass actors, so `--admin` never skips a required check. The check names are the jobs' own `name:` fields, not typed from memory
-# (IAC-D14's absent-check trap).
+# Both branch rulesets on `main`, read back live 2026-11-15 by id through
+# `GET /repos/603-Identity/devcontainers/rulesets/<id>`: `enforcement: active`, no bypass actors.
+#   main-approval (27334996): holds the `pull_request` rule (code-owner review, stale reviews
+#     dismissed on push, last-push approval, 1 approving review), plus `deletion` and
+#     `non_fast_forward`; on ~DEFAULT_BRANCH.
+#   main-required-checks (24183176): `required_status_checks`, every check pinned to GitHub
+#     Actions (integration_id 15368). It also still carries its own 0-approval `pull_request`
+#     rule, which is to be removed from the live ruleset after this change merges:
+#     ruleset-drift.sh judges the approval parameters on every ruleset carrying one.
+# The check names are the jobs' own `name:` fields, not typed from memory (IAC-D14's
+# absent-check trap); `architect-review` is the context review.ci_gate.check names, posted by
+# the gate workflows, not a job name.
 #
 # build.yml's "Build, test, push and attest" job is deliberately absent: it runs only on
 # push to main, the schedule and manual dispatch, never on a pull request.
 #
-# Stated residual: a second ruleset, `restrict-updates-to-main` (rule `update`, one bypass
-# actor: the admin role in `pull_request` mode), also protects `main`. This `ruleset:` key takes
-# one name, so resume's drift check does not watch it. Deleting it or widening its bypass mode
-# to `always` would go unnoticed there; docs/threat_model.md invariant 6 records it.
+# The tag ruleset `release-tags` is not declared here yet; it gets its own issue.
+rulesets:
+  - name: main-approval
+    source: repo
+    rule_types: [pull_request, deletion, non_fast_forward]
+  - name: main-required-checks
+    source: repo
+    rule_types: [required_status_checks]
+    required_checks:
+      - "hadolint (Dockerfiles)"
+      - "Trivy misconfiguration (Dockerfiles)"
+      - "shellcheck (scripts)"
+      - "zizmor (workflow security)"
+      - "Build and smoke-test (no push)"
+      - "architect-review"
+      - "selftest"
+    check_integrations:
+      "hadolint (Dockerfiles)": 15368
+      "Trivy misconfiguration (Dockerfiles)": 15368
+      "shellcheck (scripts)": 15368
+      "zizmor (workflow security)": 15368
+      "Build and smoke-test (no push)": 15368
+      "architect-review": 15368
+      "selftest": 15368
+# The legacy alias, still what most readers use: kept in step with the main-required-checks
+# entry above by hand (the checker does not compare them).
 ruleset:
   name: main-required-checks
-  rule_types: [pull_request, required_status_checks]
+  rule_types: [required_status_checks]
   required_checks:
     - "hadolint (Dockerfiles)"
     - "Trivy misconfiguration (Dockerfiles)"
@@ -101,12 +130,13 @@ ruleset:
     - "zizmor (workflow security)"
     - "Build and smoke-test (no push)"
     - "architect-review"
-    - "selftest"   # verify-selftest.yml's final job; the owner adds it to the live ruleset.
+    - "selftest"   # verify-selftest.yml's final job.
 
 # ── the fresh-session review gate ────────────────────────────────────────────
-# architect-review-gate.yml, rendered from tools/ (see the triggers_on note). Event values
-# reach its shell through env, not inline expressions, so the workflow passes this repo's
-# zizmor lint.
+# Two workflows post `check` until the cutover's PR 2 merges: architect-review-gate.yml, rendered
+# from tools/ (see the triggers_on note), and review-gate.yml, the plugin's gate copied at
+# claude-workbench v0.36.0, which reads `identities.reviewer_app` and these strings from the
+# default branch's copy of this file. PR 2 removes architect-review-gate.yml.
 review:
   ci_gate:
     check: architect-review
@@ -133,5 +163,15 @@ orchestration: null   # the loop never dispatches into this repo (way-of-working
                       # migration; absent prompts).
 
 # ── declared identities ──────────────────────────────────────────────────────
-identities: null   # not cut over to App identities yet (way-of-working v0.18.0 migration).
-                   # The cutover PR replaces this with the map (claude-workbench#411, #398).
+# The cutover's PR 1 (claude-workbench#411 step 6, #398). Each id is a numeric account id read
+# back from the API: the maintainer's from `gh api users/JaredGroves-603`, each App's from
+# `gh api users/<slug>[bot]` (the `user.id` on its reviews and PRs, not the App ID its settings
+# page shows). The dev App exists but is not installed on this repo, and is not added to the
+# token broker, until the approval side is confirmed (reference/cutover.md § The approval side).
+identities:
+  maintainer:
+    - { login: JaredGroves-603, id: 281693088 }
+  # commit_route api: the dev App's pushes replay through bin/api-commit.sh, so GitHub signs them (WB-D36).
+  dev_app: { login: "603id-dev[bot]", id: 340163647, commit_route: api }
+  reviewer_app: { login: "603id-review[bot]", id: 340164886 }
+  loop_app: null   # orchestration is null: nothing acts as a loop App here.
