@@ -120,6 +120,8 @@ review:
 # ── agents ───────────────────────────────────────────────────────────────────
 agents:
   enabled: [architect, coder, security-critic, docs-consistency]
+  diff_rule: null   # critic-gate's diff mode proposes and the human picks (way-of-working
+                    # v0.26.0 migration; the maintainer's answer, 2026-11-15).
 models:
   architect: opus
   coder: sonnet
@@ -129,3 +131,7 @@ models:
 # ── the sprint-orchestrator loop ─────────────────────────────────────────────
 orchestration: null   # the loop never dispatches into this repo (way-of-working v0.17.0
                       # migration; absent prompts).
+
+# ── declared identities ──────────────────────────────────────────────────────
+identities: null   # not cut over to App identities yet (way-of-working v0.18.0 migration).
+                   # The cutover PR replaces this with the map (claude-workbench#411, #398).
