@@ -80,10 +80,13 @@ gates:
 # ── branch protection ────────────────────────────────────────────────────────
 # Both branch rulesets on `main`, read back live 2026-11-15 by id through
 # `GET /repos/603-Identity/devcontainers/rulesets/<id>`: `enforcement: active`, no bypass actors.
-#   main-approval (27334996): `pull_request` (code-owner review, stale reviews dismissed on push,
-#     last-push approval, 1 approving review), `deletion`, `non_fast_forward`; on ~DEFAULT_BRANCH.
-#   main-required-checks (24183176): a `pull_request` rule (0 approvals) plus
-#     `required_status_checks`, every check pinned to GitHub Actions (integration_id 15368).
+#   main-approval (27334996): holds the `pull_request` rule (code-owner review, stale reviews
+#     dismissed on push, last-push approval, 1 approving review), plus `deletion` and
+#     `non_fast_forward`; on ~DEFAULT_BRANCH.
+#   main-required-checks (24183176): `required_status_checks`, every check pinned to GitHub
+#     Actions (integration_id 15368). It also still carries its own 0-approval `pull_request`
+#     rule, which is to be removed from the live ruleset after this change merges:
+#     ruleset-drift.sh judges the approval parameters on every ruleset carrying one.
 # The check names are the jobs' own `name:` fields, not typed from memory (IAC-D14's
 # absent-check trap); `architect-review` is the context review.ci_gate.check names, posted by
 # the gate workflows, not a job name.
@@ -98,7 +101,7 @@ rulesets:
     rule_types: [pull_request, deletion, non_fast_forward]
   - name: main-required-checks
     source: repo
-    rule_types: [pull_request, required_status_checks]
+    rule_types: [required_status_checks]
     required_checks:
       - "hadolint (Dockerfiles)"
       - "Trivy misconfiguration (Dockerfiles)"
@@ -119,7 +122,7 @@ rulesets:
 # entry above by hand (the checker does not compare them).
 ruleset:
   name: main-required-checks
-  rule_types: [pull_request, required_status_checks]
+  rule_types: [required_status_checks]
   required_checks:
     - "hadolint (Dockerfiles)"
     - "Trivy misconfiguration (Dockerfiles)"
@@ -168,6 +171,7 @@ orchestration: null   # the loop never dispatches into this repo (way-of-working
 identities:
   maintainer:
     - { login: JaredGroves-603, id: 281693088 }
-  dev_app: { login: "603id-dev[bot]", id: 340163647 }
+  # commit_route api: the dev App's pushes replay through bin/api-commit.sh, so GitHub signs them (WB-D36).
+  dev_app: { login: "603id-dev[bot]", id: 340163647, commit_route: api }
   reviewer_app: { login: "603id-review[bot]", id: 340164886 }
   loop_app: null   # orchestration is null: nothing acts as a loop App here.
