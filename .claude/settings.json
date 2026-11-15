@@ -12,7 +12,11 @@
       "Bash(git push --no-verify:*)",
       "PowerShell(git commit --no-verify:*)",
       "PowerShell(git commit -n:*)",
-      "PowerShell(git push --no-verify:*)"
+      "PowerShell(git push --no-verify:*)",
+	  "Read(~/.config/603id-identity/**)",
+	  "Read(~/.config/glunk-identity/**)",
+	  "Bash(*603id-identity*)",
+	  "Bash(*glunk-identity*)"
     ]
   },
   "hooks": {
@@ -36,7 +40,7 @@
       "source": {
         "source": "github",
         "repo": "glunk-works/claude-workbench",
-        "ref": "v0.17.0"
+        "ref": "v0.36.0"
       }
     }
   }
