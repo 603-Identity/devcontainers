@@ -11,7 +11,6 @@ suite check-self-pins
 CHECK="$TOOLS_DIR/check-self-pins.sh"
 FILES=(
   tools/gate-template.yml.in
-  .github/workflows/architect-review-gate.yml
   template/.github/workflows/architect-review-gate.yml
   template/.github/workflows/devcontainer-image.yml
   template/.github/workflows/secret-scan.yml

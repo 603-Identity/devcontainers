@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Checks this repo's own pins of its reusable workflows (#125): the `decide` pin in the gate
-# skeleton and the rendered gates, and the verify and secret-scan pins in the template's callers.
+# skeleton and the template gate rendered from it, and the verify and secret-scan pins in the
+# template's callers.
 # Dependabot never bumps these here (they point at this repo's own releases), so a release can
 # leave the template shipping a stale or inconsistent verifier to new adopters, who copy
 # template/ from `main`.
@@ -41,7 +42,6 @@ export LC_ALL=C
 UPSTREAM_URL="https://github.com/603-Identity/devcontainers.git"
 FILES=(
   tools/gate-template.yml.in
-  .github/workflows/architect-review-gate.yml
   template/.github/workflows/architect-review-gate.yml
   template/.github/workflows/devcontainer-image.yml
   template/.github/workflows/secret-scan.yml

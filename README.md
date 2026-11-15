@@ -942,12 +942,11 @@ reusable workflows, the gate template, or the org secret-scan rules and scanner 
    mint a tag, so the release can only attach to the signed one. Release immutability is on (its tag
    can never move), and by DEVC-D8 a mistake ships as the next version, never as an edit.
 2. **Bump this repo's own pins to it, in one PR.** Dependabot never bumps these, because they
-   point at this repo's own releases (#125). There are five copies of one pin:
-   `tools/gate-template.yml.in` (the gate skeleton's `decide`), the two gates rendered from
-   it (`template/.github/workflows/architect-review-gate.yml`, regenerate it with
-   `tools/render-gate.sh`, and this repo's own `.github/workflows/architect-review-gate.yml`,
-   the same one-line edit; `render-gate-test.sh` checks both against the skeleton), and
-   `template/.github/workflows/devcontainer-image.yml` and `secret-scan.yml`. All five become
+   point at this repo's own releases (#125). There are four copies of one pin:
+   `tools/gate-template.yml.in` (the gate skeleton's `decide`), the gate rendered from it
+   (`template/.github/workflows/architect-review-gate.yml`, regenerate it with
+   `tools/render-gate.sh`; `render-gate-test.sh` checks it against the skeleton), and
+   `template/.github/workflows/devcontainer-image.yml` and `secret-scan.yml`. All four become
    `@<sha> # vX.Y`. If the release changed
    `CurrentSyntax`, move `template/.devcontainer/Dockerfile`'s line 1 in this PR too.
    **Rotate the template snapshot in the same PR** (#418 owner decision 5): copy the template

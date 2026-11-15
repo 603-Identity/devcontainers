@@ -89,7 +89,7 @@ gates:
 #     ruleset-drift.sh judges the approval parameters on every ruleset carrying one.
 # The check names are the jobs' own `name:` fields, not typed from memory (IAC-D14's
 # absent-check trap); `architect-review` is the context review.ci_gate.check names, posted by
-# the gate workflows, not a job name.
+# review-gate.yml, not a job name.
 #
 # build.yml's "Build, test, push and attest" job is deliberately absent: it runs only on
 # push to main, the schedule and manual dispatch, never on a pull request.
@@ -133,19 +133,17 @@ ruleset:
     - "selftest"   # verify-selftest.yml's final job.
 
 # ── the fresh-session review gate ────────────────────────────────────────────
-# Two workflows post `check` until the cutover's PR 2 merges: architect-review-gate.yml, rendered
-# from tools/ (see the triggers_on note), and review-gate.yml, the plugin's gate copied at
-# claude-workbench v0.36.0, which reads `identities.reviewer_app` and these strings from the
-# default branch's copy of this file. PR 2 removes architect-review-gate.yml.
+# Only review-gate.yml posts `check`: the plugin's gate copied at claude-workbench v0.36.0, which
+# reads `identities.reviewer_app` and these strings from the default branch's copy of this file.
+# The cutover's PR 2 removed this repo's own architect-review-gate.yml; the template/ copy for
+# consumers stays.
 review:
   ci_gate:
     check: architect-review
     header: "**Opus/Architect HITL review (automated)**"
     attestation: "*Fresh-session review: this session did not author the diff.*"
-    triggers_on: null   # the gate fires on code_paths. architect-review-gate.yml mirrors that
-                        # list by hand in its `>>> CONSUMER: code_paths` region (the rest of the
-                        # file is rendered from tools/, checked by `render-gate.sh --check-masked`);
-                        # keep the two in sync.
+    triggers_on: null   # review-gate.yml fires on code_paths, read from the default branch's
+                        # copy of this file.
 
 # ── agents ───────────────────────────────────────────────────────────────────
 agents:
