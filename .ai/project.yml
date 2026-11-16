@@ -161,6 +161,13 @@ models:
 orchestration: null   # the loop never dispatches into this repo (way-of-working v0.17.0
                       # migration; absent prompts).
 
+# ── parallel lanes ───────────────────────────────────────────────────────────
+# The directory that holds coder-lane worktrees, one per task issue. lane.sh, wow-lane.ps1 and
+# resume's Lanes line read it from the default branch's copy of this file. /tmp is the per-repo
+# named volume both dev container files already mount, so no mount is added.
+lanes:
+  dir: /tmp/lanes
+
 # ── declared identities ──────────────────────────────────────────────────────
 # The cutover's PR 1 (claude-workbench#411 step 6, #398). Each id is a numeric account id read
 # back from the API: the maintainer's from `gh api users/JaredGroves-603`, each App's from
