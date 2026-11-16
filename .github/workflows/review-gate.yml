@@ -2,7 +2,7 @@ name: review-gate
 
 # Copied from glunk-works/claude-workbench .github/workflows/architect-review-gate.yml at v0.36.0
 # (6921024), per reference/cutover.md § The gate workflow. Edits: this file name and `name:`, since
-# architect-review-gate.yml (the existing gate, removed by the cutover's PR 2) holds that path.
+# architect-review-gate.yml (the earlier gate, since removed by the cutover's PR 2) held that path.
 
 # The fresh-session review gate (WB-D24 item 7, WB-D37, #458). Posts the commit status named by
 # the default branch's `review.ci_gate.check` against the PR's head: `success` for a PR that
