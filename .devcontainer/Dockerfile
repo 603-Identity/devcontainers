@@ -1,0 +1,82 @@
+# syntax=docker/dockerfile:1.28@sha256:bb22d9815c728170f72750f4e5b0d672e06176142e1d602c7e66c050100b7e5b
+#
+# This repo's dev-App devcontainer (DEVC-D9): one published shared image, pinned by tag AND
+# digest, plus this repo's own extras (if any) between the FROM and the final USER line.
+# A Dependabot docker bump of the FROM line is checked by `verify / verify` like any other
+# change, and `decide` never auto-merges it for a dev-App repo: a human approves it.
+#
+# Choose ONE image: devcontainer-devapp (no OpenTofu) or devcontainer-devapp-tofu. Take the
+# tag@digest from the latest "Build images" run summary in 603-Identity/devcontainers.
+#
+# Every pull request is checked by `verify / verify` (.github/workflows/devcontainer-image.yml).
+# In dev-App mode the FROM line must be one of the two images above, by tag and digest, with
+# signed provenance and an SBOM from that repo's build.yml on main, and its MINOR may not be
+# below the base branch's. The file must keep this shape or the check fails:
+#   - the `# syntax=` line above, unchanged, and no other directive;
+#   - ASCII only, no CR (LF line endings), no NUL, no BOM, and at most 1 MiB;
+#   - one stage only: no second FROM, no ARG before FROM, no `$` in the image reference;
+#   - a plain FROM: no `AS <name>` and no `--platform`;
+#   - no `COPY --from`, `RUN --mount from=` or ONBUILD, and no `LABEL devcontainer.metadata`;
+#   - the file ends with `USER 1000:1000`; everything between the FROM and it is this repo's
+#     extras. The extras may COPY files from this directory (regular files only, at most 64 of
+#     at most 1 MiB each) and may not ADD a local file;
+#   - the extras may not write the identity layer (/run/wow, /usr/local/libexec,
+#     /usr/local/bin/gh and claude, /etc/gitconfig, /etc/claude-code, /usr/local/share/devc),
+#     set GIT_*, HTTP_PROXY, HTTPS_PROXY, ALL_PROXY or ANTHROPIC_BASE_URL, or run
+#     `git config --system`.
+#     That list catches accidents, not attacks: a human reviews the extras.
+# devcontainer.json is held to the same template exactly (see its header), no other
+# devcontainer.json may exist anywhere in the repo, and the default branch must require an
+# approval and a code-owner review. Do not bypass any of it: it is what makes a new digest safe
+# to take. It also accepts only an image from a first-attempt `build.yml` run (a re-run's
+# digest fails), which the command below does not check, so a digest that passes it can still
+# fail the PR. For a first look by hand, for the digest on the FROM line:
+#   gh attestation verify oci://ghcr.io/603-identity/devcontainer-devapp-tofu@sha256:<digest> \
+#     --repo 603-Identity/devcontainers \
+#     --cert-identity https://github.com/603-Identity/devcontainers/.github/workflows/build.yml@refs/heads/main \
+#     --cert-oidc-issuer https://token.actions.githubusercontent.com \
+#     --source-ref refs/heads/main --deny-self-hosted-runners
+FROM ghcr.io/603-identity/devcontainer-devapp:4.661@sha256:b7a6d96a660b9f929ff0554103e2084af3375e8c78b6366abd6d2613322e23ff
+
+# The mount points for the home and dependency volumes in devcontainer.json are
+# pre-created app-owned in the shared images, so there is nothing to add here for them.
+# The container's root filesystem is read-only at run time (devcontainer.json runArgs):
+# install anything extra in this Dockerfile, not in a running container. Install it outside
+# /home/app: the home volume copies the image's /home/app once, at first mount, so an
+# install there never reaches an existing volume, and a root install that writes there
+# (npm's cache, ~/.local) leaves it root-owned and breaks the app user. As root, send
+# caches elsewhere, for example (this one assumes a node toolchain you installed yourself; a
+# package that downloads a browser also needs PUPPETEER_CACHE_DIR=/tmp/... as root):
+#   USER 0
+#   RUN npm install -g --prefix /usr/local --cache /tmp/npm-cache <pkg>@<ver> \
+#       && rm -rf /tmp/npm-cache
+#   USER 1000:1000
+# Repo-specific extras go here, following the same rules as the shared images:
+# version plus sha256 from the upstream checksum file, never trust-on-first-use.
+#
+# This repo's extras: the two tools gates.green runs that the image lacks. The gate's other
+# steps (hadolint, trivy, zizmor, the image builds and the template proof) run in Docker, which
+# this container has no access to by design; they run on the host and in CI. The gate tests'
+# claude-fetch suite needs gpg, which the dev-App flavour removes on purpose: it runs there too.
+USER 0
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# --- shellcheck, from Ubuntu's signed archive. Upstream publishes no checksum file, so a
+# release download would be trust-on-first-use; lint.yml runs the runner's apt shellcheck.
+# hadolint ignore=DL3008
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y shellcheck \
+    && rm -rf /var/lib/apt/lists/*
+
+# --- Go, the version every workflow's setup-go pins (devc-verify's go test). The sha256 is
+# go.dev's published checksum for the tarball (go.dev/dl, and dl.google.com's .sha256 file).
+ARG GO_VERSION=1.26.8
+ARG GO_SHA256=d0f743b33e8d8945e6b1f432edd15785c70507121d6e2a723b21285eddf8b57b
+RUN curl -fsSL "https://dl.google.com/go/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tar.gz \
+    && echo "${GO_SHA256}  /tmp/go.tar.gz" | sha256sum -c - \
+    && tar -xzf /tmp/go.tar.gz -C /usr/local \
+    && ln -s /usr/local/go/bin/go /usr/local/bin/go \
+    && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt \
+    && rm -f /tmp/go.tar.gz
+
+USER 1000:1000
