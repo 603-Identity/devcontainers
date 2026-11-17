@@ -14,9 +14,11 @@
 #     is left in the build.
 # apt packages are the one deliberate exception (see the apt block).
 #
-# Ubuntu 26.04. Its system Python 3.14 is the Python standard for consuming repos. The
-# major tracks GitHub's `ubuntu-latest` runner. Re-pin it deliberately, together with
-# tests/smoke.sh's Python check.
+# Ubuntu 26.04. The Ubuntu major tracks GitHub's `ubuntu-latest` runner. The Python
+# standard for consuming repos is the pinned interpreter installed below (its version is
+# the PYTHON_VERSION ARG), not Ubuntu's apt Python 3.14, which stays only for apt's own
+# tools and the tools venv. Re-pin the interpreter deliberately, together with
+# tests/smoke.sh's major.minor checks and DEVC-D11.
 FROM ubuntu:26.04@sha256:6a06111c3b0a8600feadb270aec771dc239bf407b25625f93f44ab00e11f4d3c
 
 LABEL org.opencontainers.image.source="https://github.com/603-Identity/devcontainers" \
@@ -102,8 +104,10 @@ COPY --chmod=0644 files/secret-scan/org.toml /usr/local/share/devc/secret-scan/o
 
 # --- uv, the project manager for every Python repo. The sha256 is the release's own
 # published `.sha256` asset (also verifiable with `gh attestation verify --repo
-# astral-sh/uv`). uv provisions an older interpreter only for a repo whose
-# `.python-version` asks for one; the image itself carries no alternate interpreter.
+# astral-sh/uv`). The image carries two interpreters (the pinned 3.15 below and Ubuntu's
+# 3.14); uv downloads one only when neither satisfies the request (another minor, or an
+# exact patch other than the pinned one). uv prefers interpreters it manages, so one
+# already installed in the home volume is used ahead of the image's.
 ARG UV_VERSION=0.13.8
 ARG UV_SHA256=5acfd9177cfecf0bf87578f059728215ccc884388988f55f7a65041b57387d91
 RUN curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" \
@@ -113,12 +117,51 @@ RUN curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/
     && install -m 0755 /tmp/uv-x86_64-unknown-linux-gnu/uv /tmp/uv-x86_64-unknown-linux-gnu/uvx /usr/local/bin/ \
     && rm -rf /tmp/uv.tar.gz /tmp/uv-x86_64-unknown-linux-gnu
 
+# --- The Python standard for consuming repos: a pinned CPython from astral-sh/python-build-standalone,
+# pinned by version AND sha256 like every binary here. The sha256 is the asset's line in the release's own
+# published SHA256SUMS, not computed from a first download. Ubuntu 26.04 and `ubuntu-latest` stay on
+# 3.14, so this cannot come from apt. Nothing refreshes it: the weekly apt rebuild does not touch it and
+# neither Dependabot nor bump-binaries.sh knows it, so it is re-pinned by hand (DEVC-D11).
+# The `+` between version and build tag is `%2B` in the URL.
+# `tar --no-same-owner` keeps the files root-owned (as root, tar would keep the archive's uid, which could
+# be 1000, the app user). pip is deleted to keep today's surface (Ubuntu's Python has no pip module);
+# `python3 -m venv` still gives each venv its own pip from the stdlib's ensurepip wheel. The
+# EXTERNALLY-MANAGED file (PEP 668) makes installers that honour it refuse to write into this interpreter.
+# /usr/local/bin precedes /usr/bin on PATH, so a bare `python3`/`python` (and an `env python3` shebang)
+# resolves to this one, unless an entry in ~/.local/bin, which leads PATH, shadows it. apt's scripts keep
+# their absolute /usr/bin/python3 shebangs and stay on 3.14.
+ARG PYTHON_VERSION=3.15.2
+ARG PYTHON_BUILD=20261110
+ARG PYTHON_SHA256=ad23d1b73fac26440b0306ae06911031344c49a90ec19716c8362e7fa40cae43
+RUN curl -fsSL "https://github.com/astral-sh/python-build-standalone/releases/download/${PYTHON_BUILD}/cpython-${PYTHON_VERSION}%2B${PYTHON_BUILD}-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz" \
+        -o /tmp/python.tar.gz \
+    && echo "${PYTHON_SHA256}  /tmp/python.tar.gz" | sha256sum -c - \
+    && install -d -m 0755 /opt/devc \
+    && tar --no-same-owner -xzf /tmp/python.tar.gz -C /opt/devc \
+    && rm -f /tmp/python.tar.gz \
+    && py_minor="${PYTHON_VERSION%.*}" \
+    && rm -rf "/opt/devc/python/lib/python${py_minor}/site-packages/pip" \
+        "/opt/devc/python/lib/python${py_minor}"/site-packages/pip-*.dist-info \
+    && rm -f /opt/devc/python/bin/pip* \
+    && chmod -R go-w /opt/devc/python \
+    && printf '[externally-managed]\nError=This interpreter is part of the devcontainer image. Create a virtual environment (python3 -m venv, or uv venv) and install there.\n' \
+        > "/opt/devc/python/lib/python${py_minor}/EXTERNALLY-MANAGED" \
+    && for n in python3 "python${py_minor}" python; do \
+        ln -s "/opt/devc/python/bin/python${py_minor}" "/usr/local/bin/$n"; \
+    done
+
 # --- Python tools (pre-commit, zizmor) in their own venv, NOT the
 # system site-packages. That avoids --break-system-packages, and it keeps a repo's own
 # `python3 -m venv .venv` from inheriting them. Installed only from tools/uv.lock:
 # `uv sync --locked` fails on any drift from pyproject.toml and verifies every hash.
-# They land on the system interpreter; --no-cache keeps uv's cache out of the image and
-# --no-build refuses source builds, whose build requirements are not in the lock.
+# They land on Ubuntu's 3.14 at its apt path (/usr/bin/python3), not the pinned 3.15 above:
+# pre-commit depends on PyYAML, whose current release (6.0.3, the one uv.lock resolves)
+# publishes no CPython 3.15 wheel, and this step refuses source builds. The tools venv moves
+# to 3.15 when the lock can resolve a 3.15 wheel for every package. One consequence:
+# pre-commit's own Python hooks default to the interpreter pre-commit runs on, so they run on
+# 3.14 unless a repo sets `default_language_version`.
+# --no-cache keeps uv's cache out of the image and --no-build refuses source builds, whose
+# build requirements are not in the lock.
 COPY tools/pyproject.toml tools/uv.lock /opt/devc/tools-src/
 RUN UV_PYTHON_DOWNLOADS=never UV_PROJECT_ENVIRONMENT=/opt/devc/tools \
         uv sync --locked --no-cache --no-build --python /usr/bin/python3 --project /opt/devc/tools-src \

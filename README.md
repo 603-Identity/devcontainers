@@ -6,7 +6,7 @@ costs almost no disk, because the image layers are stored once per machine.
 
 | Image | Contents |
 |---|---|
-| `ghcr.io/603-identity/devcontainer-base` | Ubuntu, non-root `app` (uid 1000), git, gh, jq, yq, Python (system), uv, pre-commit, betterleaks, zizmor |
+| `ghcr.io/603-identity/devcontainer-base` | Ubuntu, non-root `app` (uid 1000), git, gh, jq, yq, Python 3.15 (pinned), uv, pre-commit, betterleaks, zizmor |
 | `ghcr.io/603-identity/devcontainer-tofu` | base + OpenTofu + tflint |
 | `ghcr.io/603-identity/devcontainer-node` | base + Node.js + npm |
 | `ghcr.io/603-identity/devcontainer-devapp` | base + the dev-App identity layer (below) + `claude` |
@@ -921,6 +921,7 @@ images and devc-verify first, then a release, then the template's line with the 
 (see "Cutting a release").
 
 Dependabot handles the base image digest, the GitHub Actions pins, and the Python tool lock (`uv` ecosystem on `images/base/tools`).
+The Python interpreter's three ARGs in `images/base/Dockerfile` (`PYTHON_VERSION`, `PYTHON_BUILD`, `PYTHON_SHA256`) are moved by neither Dependabot nor `bump-binaries.sh`, so they are re-pinned by hand from the release's `SHA256SUMS`, together with the smoke test's major.minor check when the minor changes (DEVC-D11).
 
 ## Cutting a release
 

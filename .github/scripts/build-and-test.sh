@@ -36,16 +36,17 @@ arg() { sed -n "s/^ARG $2=//p" "$root/images/$1/Dockerfile"; }
 lockver() { # lockver <package>: the version uv.lock resolved for it
   sed -n "/^name = \"$1\"\$/{n;s/^version = \"\(.*\)\"\$/\1/p;q;}" "$root/images/base/tools/uv.lock"
 }
-export EXPECT_GH EXPECT_YQ EXPECT_UV EXPECT_TOFU EXPECT_TFLINT EXPECT_NODE EXPECT_NPM
+export EXPECT_PYTHON EXPECT_GH EXPECT_YQ EXPECT_UV EXPECT_TOFU EXPECT_TFLINT EXPECT_NODE EXPECT_NPM
 export EXPECT_PRE_COMMIT EXPECT_ZIZMOR EXPECT_BETTERLEAKS EXPECT_CLAUDE EXPECT_CLAUDE_SHA256
 EXPECT_GH="$(arg base GH_VERSION)"
 EXPECT_UV="$(arg base UV_VERSION)"
+EXPECT_PYTHON="$(arg base PYTHON_VERSION)"
 EXPECT_BETTERLEAKS="$(arg base BETTERLEAKS_VERSION)"
 EXPECT_PRE_COMMIT="$(lockver pre-commit)"
 EXPECT_ZIZMOR="$(lockver zizmor)"
 EXPECT_CLAUDE="$(arg devapp CLAUDE_VERSION)"
 EXPECT_CLAUDE_SHA256="$(arg devapp CLAUDE_SHA256)"
-for v in EXPECT_UV EXPECT_BETTERLEAKS EXPECT_PRE_COMMIT EXPECT_ZIZMOR EXPECT_CLAUDE EXPECT_CLAUDE_SHA256; do
+for v in EXPECT_PYTHON EXPECT_UV EXPECT_BETTERLEAKS EXPECT_PRE_COMMIT EXPECT_ZIZMOR EXPECT_CLAUDE EXPECT_CLAUDE_SHA256; do
   [ -n "${!v}" ] || { echo "::error::could not read $v from a Dockerfile or images/base/tools/uv.lock"; exit 1; }
 done
 EXPECT_YQ="$(arg base YQ_VERSION)"
@@ -126,7 +127,7 @@ make_wow_fixtures() {
 
 smoke() { # smoke <flavor>
   docker run --rm \
-    -e EXPECT_GH -e EXPECT_YQ -e EXPECT_UV -e EXPECT_PRE_COMMIT \
+    -e EXPECT_PYTHON -e EXPECT_GH -e EXPECT_YQ -e EXPECT_UV -e EXPECT_PRE_COMMIT \
     -e EXPECT_ZIZMOR -e EXPECT_BETTERLEAKS -e EXPECT_TOFU -e EXPECT_TFLINT -e EXPECT_NODE -e EXPECT_NPM \
     -v "$root/tests:/tests:ro" "$(ref "$1")" sh /tests/smoke.sh "$1"
   case "$1" in devapp|devapp-tofu) smoke_devapp "$1" ;; esac
