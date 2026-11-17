@@ -193,8 +193,21 @@ check "python resolves to python3" "$py_real" "$(readlink -f "$(command -v pytho
 check "python3.15 resolves to python3" "$py_real" "$(readlink -f "$(command -v python3.15)")"
 check "apt python3 (the tools venv's interpreter)" 3.14 "$(/usr/bin/python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
 py_root=$(dirname "$(dirname "$py_real")")
+check "python root" /opt/devc/python "$py_root"
+py_find_rc=0
+py_bad=$(find "$py_root" ! -type l \( ! -user root -o -perm /022 \) -print) || py_find_rc=$?
+check "python ownership scan completed (find exit)" 0 "$py_find_rc"
 check "python files not owned by root or writable by group/others" 0 \
-    "$(find "$py_root" ! -type l \( ! -user root -o -perm /022 \) 2>/dev/null | wc -l)"
+    "$(printf '%s' "$py_bad" | grep -c . || true)"
+py_tls=$(python3 -c '
+import os, ssl
+p = ssl.get_default_verify_paths()
+found = bool((p.cafile and os.path.isfile(p.cafile)) or (p.capath and os.path.isdir(p.capath)))
+n = ssl.create_default_context().cert_store_stats()["x509_ca"]
+lazy = bool(p.capath and os.path.isdir(p.capath) and os.listdir(p.capath))
+print(1 if found and (n > 0 or lazy) else 0)
+' 2>/dev/null || echo 0)
+check "python3 TLS context loads CA certificates from the image's store" 1 "$py_tls"
 py_pip=0
 python3 -c 'import pip' >/dev/null 2>&1 || py_pip=1
 check "python3 has no pip module" 1 "$py_pip"
@@ -202,11 +215,7 @@ py_marker=0
 [ -f "$(python3 -c 'import sysconfig; print(sysconfig.get_path("stdlib"))')/EXTERNALLY-MANAGED" ] && py_marker=1
 check "python3 EXTERNALLY-MANAGED marker" 1 "$py_marker"
 uv_py=$(UV_PYTHON_DOWNLOADS=never uv python find 3.15 2>/dev/null || true)
-case "$uv_py" in
-    ""|/home/app/*) uv_py_ok=0 ;;
-    *) uv_py_ok=1 ;;
-esac
-check "uv finds the image's 3.15 outside the home directory (got '$uv_py')" 1 "$uv_py_ok"
+check "uv finds the image's python3 for 3.15 (got '$uv_py')" "$py_real" "$([ -n "$uv_py" ] && readlink -f "$uv_py" || true)"
 check "tools venv" /opt/devc/tools/bin/pre-commit "$(readlink /usr/local/bin/pre-commit)"
 check "safe.directory" /workspace "$(git config --system --get-all safe.directory)"
 check "setuid/setgid binaries" 0 "$(find / -xdev -perm /6000 -type f 2>/dev/null | wc -l)"

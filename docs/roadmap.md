@@ -537,7 +537,7 @@ workspace is itself a symlink and TOCTOU surface).
 
 **Consequences.**
 - The default interpreter and the libraries built into it are refreshed by no weekly rebuild and bumped by no automation (`bump-binaries.sh` and Dependabot do not know it). A security fix in CPython or its bundled libraries reaches the image only by a hand re-pin.
-- The image scan covers only the components Trivy identifies in the interpreter; the packages it lists under `/opt/devc/python` are recorded in the description of the PR that ships this decision (pending: this wording is finalised from that record before merge).
+- The image scan does not cover the interpreter. Trivy (the gate's pinned 0.74.0) identifies no component under `/opt/devc/python`: not CPython, not the OpenSSL python-build-standalone links into it, not its bundled ensurepip wheels (recorded on #557). The OpenSSL and Python packages the scan does list are Ubuntu's apt copies, which this interpreter does not load. So no gate here sees a vulnerability in it, and the image's SBOM does not list it. A fix reaches the image only by a hand re-pin.
 - The tools venv stays on 3.14 until PyYAML ships a 3.15 wheel, and pre-commit's own Python hooks therefore run on 3.14 unless a repo sets `default_language_version`.
 - A repo that already installed a 3.15 through uv keeps using that home-volume copy until it is uninstalled or the volume is wiped.
 - A consumer obligation this entry cites but does not decide: consuming repos' CI is expected to use `actions/setup-python` at the same version. That rule belongs in an IAC-D entry in infrastructure-core's log, pending, with each repo's move tracked on #556.
