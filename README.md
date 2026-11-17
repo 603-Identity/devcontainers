@@ -49,14 +49,25 @@ take about 2.2 GB. The devapp images add the `claude` binary (about 330 MB, the 
 difference) and the GNU coreutils to base or tofu.
 
 Work on these images is planned on this repo's issues and milestones. See
-[`docs/roadmap.md`](docs/roadmap.md) for status, next action and decisions. This repo has
-no devcontainer of its own and is worked on from the host: its local gate (`gates.green`
-in [`.ai/project.yml`](.ai/project.yml)) runs `docker run` and `shellcheck`, and a
-container built from the template has neither a Docker daemon nor shellcheck.
+[`docs/roadmap.md`](docs/roadmap.md) for status, next action and decisions. This repo has a
+dev-App devcontainer of its own ([`.devcontainer/`](.devcontainer/)): the dev-App template plus
+shellcheck and Go. All authoring happens in it, git and gh for this checkout included (through
+the dev token, which the host broker serves for this repo). The steps of the local gate
+(`gates.green` in [`.ai/project.yml`](.ai/project.yml)) that need Docker (hadolint, Trivy, zizmor,
+the image builds and smoke tests, the template proof) or gpg (the claude-fetch gate suite) cannot
+run in the container, and run in CI's required checks, so a change made in the container ships with
+them named as pending in its PR. A change under `.github/workflows/` is pushed from the elevated
+window (`603id-admin[bot]`), because the dev token lacks the Workflows permission, and the owner
+approves and merges it: `main-approval` requires approval of the last push from a code owner other
+than the pusher (the threat model's elevated-token row says what that bound assumes). The signed release tag, `gh release create` and ruleset changes are steps for the
+owner's login. The Credentials section below (its Workflows paragraphs) and
+[`docs/adopting.md`](docs/adopting.md) keep workflow pushes off a container's token too, but name
+the host login as the pusher; on this repo it is the elevated window instead.
 
-Repos that get no container from these images (glunk-works/loop-orchestrator, this repo,
-org profile, archived and demo repos) are listed under
-[Exceptions](docs/threat_model.md#exceptions) in the threat model.
+Repos that get no container from these images (glunk-works/loop-orchestrator, org profile,
+archived and demo repos) are listed under [Exceptions](docs/threat_model.md#exceptions) in the
+threat model, which also records this repo's partial exception for the Docker- and gpg-dependent
+gate steps.
 
 ## Using an image in a repo
 
@@ -140,7 +151,8 @@ anyway, inspect it first, without host git or VS Code: `.devcontainer/`, `.devco
      scanning](#secret-scanning-190), which sets the order for requiring it).
    - **Do not copy `architect-review-gate.yml`.** A dev-App repo's review gate comes from the
      way-of-working plugin (`review.ci_gate`), which posts the same check name,
-     `architect-review`. The template gate serves this repo and the legacy route, and
+     `architect-review`. The template gate serves the legacy route only (this repo runs
+     `.github/workflows/review-gate.yml`, the plugin's gate), and
      `tools/check-consumer-workflows.sh` fails a dev-App repo that carries its jobs.
    - Add `.devcontainer` to `.github/dependabot.yml` under the `docker` ecosystem, and
      configure the `github-actions` ecosystem too. Image bumps and verify-pin bumps then
@@ -253,7 +265,7 @@ edits on top, or `unknown` if git cannot say; only a commit that CI built is a p
 ### What the consuming repo needs
 
 [`devcontainer-image.yml`](template/.github/workflows/devcontainer-image.yml) and the review
-gate (the way-of-working plugin's for a dev-App repo; for the legacy route this repo's
+gate (the way-of-working plugin's for a dev-App repo; for the legacy route the
 [template gate](template/.github/workflows/architect-review-gate.yml)) only mean something with
 these in place. `tools/check-consumer-workflows.sh` lints the workflow shapes named below. (The gate rules in
 it, and the `code_paths` spot check against the gate's `case` block, apply to the legacy template gate; a dev-App
