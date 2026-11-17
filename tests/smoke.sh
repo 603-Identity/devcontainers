@@ -211,6 +211,33 @@ check "python3 TLS context loads CA certificates from the image's store" 1 "$py_
 py_pip=0
 python3 -c 'import pip' >/dev/null 2>&1 || py_pip=1
 check "python3 has no pip module" 1 "$py_pip"
+# pip is deleted from the interpreter itself, so `python3 -m venv` must still seed pip from the
+# bundled ensurepip wheel; a cleanup that removed that wheel would break every consumer's venv.
+# The --without-pip venv is the negative control: it proves the exit-status capture and the shape
+# test below do report a venv with no pip.
+venv_dir=$(mktemp -d /tmp/devc-venv.XXXXXX)
+venv_rc=0
+python3 -m venv "$venv_dir/pos" >/dev/null 2>&1 || venv_rc=$?
+pos_rc=0
+pos_out=$(PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 "$venv_dir/pos/bin/python" -m pip --version 2>/dev/null) || pos_rc=$?
+pos_shape=0
+printf '%s\n' "$pos_out" | sed -n 1p | grep -Eq '^pip [0-9][0-9.]*( |$)' && pos_shape=1
+python3 -m venv --without-pip "$venv_dir/neg" >/dev/null 2>&1
+neg_rc=0
+neg_out=$(PIP_NO_INDEX=1 PIP_DISABLE_PIP_VERSION_CHECK=1 "$venv_dir/neg/bin/python" -m pip --version 2>/dev/null) || neg_rc=$?
+neg_shape=0
+printf '%s\n' "$neg_out" | sed -n 1p | grep -Eq '^pip [0-9][0-9.]*( |$)' && neg_shape=1
+neg_failed=0
+[ "$neg_rc" -ne 0 ] && neg_failed=1
+rm -rf "$venv_dir"
+venv_gone=0
+[ ! -e "$venv_dir" ] && venv_gone=1
+check "python3 -m venv creation exit status" 0 "$venv_rc"
+check "venv pip --version exit status" 0 "$pos_rc"
+check "venv pip --version output is a version line" 1 "$pos_shape"
+check "venv made with --without-pip: pip run fails" 1 "$neg_failed"
+check "venv made with --without-pip: output is not a version line" 0 "$neg_shape"
+check "temporary venv directory removed" 1 "$venv_gone"
 py_marker=0
 [ -f "$(python3 -c 'import sysconfig; print(sysconfig.get_path("stdlib"))')/EXTERNALLY-MANAGED" ] && py_marker=1
 check "python3 EXTERNALLY-MANAGED marker" 1 "$py_marker"
