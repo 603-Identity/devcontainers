@@ -517,6 +517,33 @@ workspace is itself a symlink and TOCTOU surface).
   same either way.
 - `.ai/state.json` work stays with claude-workbench (#1370, #1349, #1377).
 
+#### DEVC-D11: The base image's default Python is a pinned interpreter, not Ubuntu's apt Python
+
+**Recorded** 2026-11-17 from the design of record on #556 (its spec comment). Status: decided; the image change ships with #556, and the release is cut by a maintainer after merge.
+
+**Context.** The Python standard for consuming repos was Ubuntu 26.04's system Python 3.14, an apt package that the weekly `apt-get upgrade` rebuild keeps patched. Ubuntu 26.04 and GitHub's `ubuntu-latest` stay on 3.14, so a 3.15 standard cannot come from apt.
+
+**Decision.** This records only what this repo's images ship and check.
+- The base image's default `python3` and `python` are a pinned CPython (3.15, the `PYTHON_VERSION` ARG in `images/base/Dockerfile`) from astral-sh/python-build-standalone, installed under `/opt/devc/python` and pinned by version and sha256, the sha256 read from the release's own `SHA256SUMS`.
+- pip is removed from it (Ubuntu's Python has none either) and a PEP 668 `EXTERNALLY-MANAGED` file is added. `/usr/local/bin/python3`, `python3.15` and `python` are root-owned symlinks to it.
+- Ubuntu's 3.14 stays at its apt path for apt's own tools and for the tools venv, which cannot move yet: PyYAML 6.0.3, the release `uv.lock` resolves for pre-commit, publishes no CPython 3.15 wheel and the install refuses source builds.
+- `tests/smoke.sh` pins the major.minor of both interpreters and the exact 3.15 patch. The interpreter is re-pinned deliberately, together with the smoke test's major.minor when the minor changes.
+
+**Alternatives rejected.**
+- Ubuntu's apt Python: 3.14 only on 26.04.
+- `uv python install` at build time: its sha256 table lives inside the uv binary, so the interpreter pin would move with every uv bump instead of on its own line.
+- Building CPython from source in the image: build time, and a compiler toolchain in the image.
+- A run-time uv download: it sits outside the image and its build-time hash.
+
+**Consequences.**
+- The default interpreter and the libraries built into it are refreshed by no weekly rebuild and bumped by no automation (`bump-binaries.sh` and Dependabot do not know it). A security fix in CPython or its bundled libraries reaches the image only by a hand re-pin.
+- The image scan covers only the components Trivy identifies in the interpreter; the packages it lists under `/opt/devc/python` are recorded in the description of the PR that ships this decision (pending: this wording is finalised from that record before merge).
+- The tools venv stays on 3.14 until PyYAML ships a 3.15 wheel, and pre-commit's own Python hooks therefore run on 3.14 unless a repo sets `default_language_version`.
+- A repo that already installed a 3.15 through uv keeps using that home-volume copy until it is uninstalled or the volume is wiped.
+- A consumer obligation this entry cites but does not decide: consuming repos' CI is expected to use `actions/setup-python` at the same version. That rule belongs in an IAC-D entry in infrastructure-core's log, pending, with each repo's move tracked on #556.
+
+**Why DEVC-D and not IAC-D.** Under DEVC-D1's test, and following DEVC-D9's pattern, this records only what this repo publishes and checks. What consuming repos must do is cited, not decided, and is left to the pending IAC-D entry, as DEVC-D1 requires for a toolchain version other repos follow.
+
 ### Org-wide IAC-D decisions that bind this repo
 
 Each of these is recorded in full in infrastructure-core's log. They are cited here only.

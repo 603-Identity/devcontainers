@@ -24,8 +24,10 @@
 # Expected versions are read from the Dockerfiles' own ARG lines by the CI step and
 # passed in as environment variables. That keeps one source of truth: a version
 # bumped in a Dockerfile but not built would fail here. The Python tools' versions come
-# from images/base/tools/uv.lock the same way. One is hardcoded below, by design: the
-# system Python's major.minor (the standard for consuming repos; apt moves the patch).
+# from images/base/tools/uv.lock the same way. Two major.minor values are hardcoded below, by
+# design: 3.15, the Python standard for consuming repos (the pinned interpreter; its patch comes
+# from the Dockerfile's PYTHON_VERSION like every other pin), and 3.14, Ubuntu's apt Python, which
+# the tools venv is built on (apt moves its patch).
 set -eu
 
 flavor="${1:?usage: smoke.sh <base|tofu|node|devapp|devapp-tofu>}"
@@ -183,7 +185,28 @@ bl_scan no-such-rev "$bl2" > /dev/null || bl_rc=$?
 check "betterleaks scan with a failing git is an error, not a clean stream" 125 "$bl_rc"
 rm -rf "$bl" "$bl2"
 check "PATH has ~/.local/bin" 1 "$(printf '%s' ":$PATH:" | grep -c ':/home/app/.local/bin:')"
-check "python3" 3.14 "$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
+check "python3" 3.15 "$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
+check "python3 full version" "$EXPECT_PYTHON" "$(python3 -c 'import platform; print(platform.python_version())')"
+check "python3 path" /usr/local/bin/python3 "$(command -v python3)"
+py_real=$(readlink -f "$(command -v python3)")
+check "python resolves to python3" "$py_real" "$(readlink -f "$(command -v python)")"
+check "python3.15 resolves to python3" "$py_real" "$(readlink -f "$(command -v python3.15)")"
+check "apt python3 (the tools venv's interpreter)" 3.14 "$(/usr/bin/python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
+py_root=$(dirname "$(dirname "$py_real")")
+check "python files not owned by root or writable by group/others" 0 \
+    "$(find "$py_root" ! -type l \( ! -user root -o -perm /022 \) 2>/dev/null | wc -l)"
+py_pip=0
+python3 -c 'import pip' >/dev/null 2>&1 || py_pip=1
+check "python3 has no pip module" 1 "$py_pip"
+py_marker=0
+[ -f "$(python3 -c 'import sysconfig; print(sysconfig.get_path("stdlib"))')/EXTERNALLY-MANAGED" ] && py_marker=1
+check "python3 EXTERNALLY-MANAGED marker" 1 "$py_marker"
+uv_py=$(UV_PYTHON_DOWNLOADS=never uv python find 3.15 2>/dev/null || true)
+case "$uv_py" in
+    ""|/home/app/*) uv_py_ok=0 ;;
+    *) uv_py_ok=1 ;;
+esac
+check "uv finds the image's 3.15 outside the home directory (got '$uv_py')" 1 "$uv_py_ok"
 check "tools venv" /opt/devc/tools/bin/pre-commit "$(readlink /usr/local/bin/pre-commit)"
 check "safe.directory" /workspace "$(git config --system --get-all safe.directory)"
 check "setuid/setgid binaries" 0 "$(find / -xdev -perm /6000 -type f 2>/dev/null | wc -l)"
