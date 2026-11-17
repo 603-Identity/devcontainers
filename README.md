@@ -59,7 +59,7 @@ run in the container, and run in CI's required checks, so a change made in the c
 them named as pending in its PR. A change under `.github/workflows/` is pushed from the elevated
 window (`603id-admin[bot]`), because the dev token lacks the Workflows permission, and the owner
 approves and merges it: `main-approval` requires approval of the last push from a code owner other
-than the pusher (the threat model's elevated-token row says what that bound assumes). The signed release tag, `gh release create` and ruleset changes are steps for the
+than the pusher (but `main-approval` does not bound the elevated window itself: see the threat model's elevated-token row). The signed release tag, `gh release create` and ruleset changes are steps for the
 owner's login. The Credentials section below (its Workflows paragraphs) and
 [`docs/adopting.md`](docs/adopting.md) keep workflow pushes off a container's token too, but name
 the host login as the pusher; on this repo it is the elevated window instead.
@@ -652,10 +652,10 @@ per-repository dev App installation token, which the host broker writes to
 that file, and refuse when it is absent or stale, so there is nothing to log in with and nothing
 to leave in the home volume (`devapp-check.sh` deletes a leftover `hosts.yml` and
 `.git-credentials` at every start). Reviewer tokens never enter a dev container. The token
-directory holds other files for the broker's own use (an elevated token, say): the image's tools read
+directory holds other files (an elevated token that `wow-admin` writes, say): the image's tools read
 none of them, but the directory is mounted whole, so any process in a running container of that repo can open
 them for as long as they exist (threat model, Credential holders). The
-host broker, its elevated-token window and the launcher are not in this repo; the threat model
+host broker, `wow-admin`'s elevated-token window and the launcher are not in this repo; the threat model
 lists what they must hold.
 
 The rest of this section is the **legacy PAT route** (frozen, DEVC-D9). Each legacy container
