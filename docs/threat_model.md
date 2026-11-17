@@ -36,7 +36,7 @@ at build and publish time, before any consumer pulls.
 | Python tools | `uv sync --locked` in the base image | Installed only from `images/base/tools/uv.lock`, which carries hashes; `--locked` fails on any drift from `pyproject.toml`. |
 | npm | the node image | Checked against the registry's sha512 `integrity` value, pinned as an `ARG`. |
 | Pull-request content | `pull_request` runs of `build.yml` and `lint.yml` | The PR job holds `contents: read` only, never a write token, and pushes nothing. |
-| Issue, PR and review text | `architect-review-gate.yml`, on every trigger (`pull_request`, `issue_comment`, `pull_request_review`) | Read as data by a substring match. Event values reach the shell through `env`, never inline expressions. The repo is **public**, so anyone can post a comment, but no comment counts toward the gate: only a formal review on the head SHA whose author's numeric user ID is in the gate's `REVIEWER_IDS` allowlist does. A comment from an allowlisted author only re-runs the gate; any other author, or a missing ID, is ignored. |
+| Issue, PR and review text | `review-gate.yml`, this repo's gate (the way-of-working plugin's), on `pull_request` (to `main`; its types include `edited`) and `pull_request_review` of type `submitted`, never on `issue_comment`; in every legacy-route consumer, the template's `architect-review-gate.yml` on every trigger | Read as data. Event values reach the shell through `env`, never inline expressions. The repo is **public**, so anyone can post a comment or a review, but no comment counts. `review-gate.yml` reads from review text only: it counts a review in state `COMMENTED` on the head SHA by the declared reviewer App's numeric id (`identities.reviewer_app.id`, read from the default branch's `.ai/project.yml`, in place of the template gate's `REVIEWER_IDS` allowlist) whose body's first and third lines equal the configured header and attestation, by exact line match; of the latest such review it reads the fifth line, and only exactly `Review verdict: pass` gives `success`. Besides review text it reads the changed-file names from the compare API, to match them against the trigger paths. The template gate (legacy route) matches review text by substring, counts a formal review on the head SHA from an allowlisted user ID, and re-runs on an allowlisted author's comment; any other author, or a missing ID, is ignored. |
 | Anthropic's `claude` release, and the release signing key | `images/devapp/Dockerfile`, build time, in the `claude-fetch` stage (`images/devapp/files/claude-fetch.sh`) | The binary, its version and its sha256 are pinned (`CLAUDE_VERSION`, `CLAUDE_SHA256`), and before ANYTHING is pushed `gpgv` must report exactly one good signature on Anthropic's `manifest.json`, by the committed key (`images/devapp/files/claude-release.asc`, one primary key, fingerprint `31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE` as published in Anthropic's setup docs), with the status stream parsed and none of BADSIG, ERRSIG, EXPKEYSIG, REVKEYSIG or NO_PUBKEY; the manifest's version and linux-x64 checksum must equal the pins and the downloaded file's sha256. A download or signature failure stops `build-and-test.sh` before the first push. Stated limits: a committed key cannot learn that Anthropic revoked it; a session can always fetch its own binary (a copy in `~/.local/bin` leads `PATH`, which `devapp-check.sh` warns about but cannot prevent); and the organisation settings Anthropic's servers push to a logged-in `claude` are not verified here. |
 | Claude Code marketplace and plugins named by the repo's `.claude/settings.json` | `plugin-install.sh`, at the end of every start of a dev-App container (`images/devapp/files/plugin-install.sh`, DEVC-D10) | **Trust root:** the tree checked out at container start, not reviewed `main`; trust is granted at start, with no folder-trust prompt. **Persistence:** the install lives in `<repo>-home` and outlives branch switches and rebuilds. A plugin enabled on a branch stays installed after the switch back to `main`, and is reported (a warning banner), never removed; remove it with `claude plugin uninstall <P@M> --scope user` and `claude plugin marketplace remove <M> --scope user`, or wipe `<repo>-home`. A branch that declares a familiar marketplace name with another `repo` makes the next start re-point it (the success line prints `repo#ref`; the extras warning, which also prints `repo#ref`, covers only marketplaces this tree does not pin); the check compares ids and scope, not installed content, so after reviewing such a branch wipe `<repo>-home`. **The ref** pins only the marketplace catalogue, and it is a tag (mutable upstream) unless the repo pins a SHA; a plugin entry in `marketplace.json` can point at another repo or ref. **What runs:** installing runs no plugin code, and marketplace-declared install commands are refused (the script never passes `-y`, `--yes` or `--accept-command`, and has no TTY), but the installed plugin's hooks and MCP servers run in every later session. **Fetches** go over HTTPS through system git with no global git config (`GIT_CONFIG_GLOBAL=/dev/null`); `dev-token` offers the per-repo token only on an auth challenge from github.com, and that token reads only this repo. **Isolation:** no `claude` call runs in the workspace or from a `PATH` the home volume controls; the script fixes `PATH` and `TMPDIR`, unsets `CLAUDE_CONFIG_DIR`, removes `GIT_CONFIG`, `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT`, `GIT_CONFIG_SYSTEM`, `GIT_CONFIG_NOSYSTEM`, `GIT_DIR`, `GIT_WORK_TREE`, `GIT_EXEC_PATH`, `GIT_ASKPASS`, `GIT_SSH_COMMAND`, `LD_PRELOAD`, `LD_LIBRARY_PATH`, `LD_AUDIT`, `BASH_ENV` and `ENV` from the calls' environment (other variables still pass: the proxy ones, `NODE_OPTIONS`, `NODE_PATH`, `GIT_SSL_*` and `SSL_CERT_FILE`), sets a git ceiling at `TMPDIR` and refuses to run when `TMPDIR` holds a `.git` or `.claude`, so neither a Dockerfile extra nor the repo can move the scratch space or `CLAUDE_CONFIG_DIR`. `HOME` and the rest of the environment the start was launched with are not fixed (the verifier's env filter catches accidents, not attacks), so the user scope follows `HOME`. The user-scope `~/.claude/settings.json` in the home volume still reaches these calls, as it reaches any session. The tracked file is checked (not a symlink, a regular file, at most 64 KiB) and hashed before and after, never written. |
 | The token directory `/run/wow` | the host's broker, mounted read-only into a dev-App container | `dev-token` reads the one file `/run/wow/dev-token` (two lines, LF, at most 2048 bytes, an installation token -- `ghs_` then 36 or more of `[A-Za-z0-9._-]`, the classic and the stateless format (#492) -- then UTC `expires_at`, replaced by atomic rename; refused from 60 s before `expires_at`, so the broker must replace it earlier), refuses a symlink, a malformed or oversized file, a wrong kind of token and an expired one, and answers `quit=1` to every host and protocol except https github.com. Nothing else in the directory is read: `admin-token` is the elevated token and the flavour never opens it. A missing or empty directory fails closed. |
@@ -53,7 +53,7 @@ at build and publish time, before any consumer pulls.
 | `ghcr.io/603-identity/devcontainer-*` | `build.yml`'s publish job, on a push to `main` that changed an image-affecting path since the last successful publish (`.github/scripts/last-publish-sha.sh` finds that commit, `.github/scripts/image-scope.sh` diffs against it; a failed or empty lookup builds), the weekly schedule, or manual dispatch on `main` | The image is built, smoke-tested and scanned before any push. The job never runs on a pull request. |
 | Attestations (build provenance, CycloneDX SBOM) | `actions/attest`, per pushed digest | Signed with Sigstore through the job's OIDC token, and stored on GitHub and in the registry. |
 | Code scanning (SARIF) | the publish job | Carries the full findings, including unfixed and allowlisted ones, so nothing the gate lets through is hidden. |
-| Commit statuses (`architect-review`) | `architect-review-gate.yml`, here and in every legacy-route consumer's copy (a dev-App repo runs the way-of-working plugin's gate instead, #418 owner decision 6, and `tools/check-consumer-workflows.sh` fails if this template gate appears there) | The gate is the rendered template (`tools/render-gate.sh --check-masked` fails when it drifts outside its `CONSUMER` regions), so its `post` job holds `statuses: write` plus `contents` and `pull-requests: write` here too, as in every consumer. The two extra scopes arm or disarm auto-merge, which is off (see below), and never fire here: with no candidate PR the job is always in plain mode, so arming is unreachable, and only its error row could disarm, which `resolve` succeeding rules out. A candidate needs a `.devcontainer/Dockerfile` and a Dependabot docker bump of it, and this repo has neither (held by convention, not by a check). Arming would also need the admin-only tag `devc-automerge-on` (ruleset `release-tags`), and the repo has `allow_auto_merge` off. The job runs on `issue_comment` events with `main`'s copy, and on `pull_request` and `pull_request_review` events with a same-repo PR's own copy (any writer can already add a workflow asking for these scopes, DEVC-D7). It has `run:` steps only and no checkout. `--check-masked` checks nothing inside the `CONSUMER` regions (their bodies are unconstrained code); `render-gate-test.sh` pins this repo's three regions to the expected shapes, and a human merge covers the rest. It fails closed when it cannot look. |
+| Commit statuses (`architect-review`) | `review-gate.yml`, this repo's own gate: the way-of-working plugin's, one job with `statuses: write`, `contents: read` and `pull-requests: read`. A legacy-route consumer writes it from its copy of the template's `architect-review-gate.yml` instead (a dev-App repo runs the plugin's gate, #418 owner decision 6, and `tools/check-consumer-workflows.sh` fails if the template gate appears there). `.github/workflows/` here has no `architect-review-gate.yml`: it exists only as `template/.github/workflows/architect-review-gate.yml`, for the legacy route | `review-gate.yml` holds no `contents` or `pull-requests` write, so main's copy cannot arm or disarm auto-merge. No convention is needed to keep the template gate's arming scopes from mattering here: this repo now has a `.devcontainer/Dockerfile`, but `.github/dependabot.yml` has no `docker` entry for `.devcontainer`, and although the repo setting `allow_auto_merge` is on (see Boundary 6), arming needs `pull-requests: write`, which main's copy of the gate does not hold. Arming the template gate's chain would also need the tag `devc-automerge-on`, which does not exist (it sits under the `release-tags` ruleset). Every run of the gate, on `pull_request` (to `main`) and on `pull_request_review` (type `submitted` only; never `issue_comment`), executes the PR's own copy of the workflow file, with only its config read from the default branch's `.ai/project.yml`, so a same-repo PR can still add a workflow asking for write scopes on its own run (any human writer can already do that, DEVC-D7; on this repo the workflow pusher is the elevated window, which DEVC-D7's split does not yet place, see the elevated-token row; the dev token cannot, and neither can the authoring container except while an elevated window is open, see "The elevated token shares the mount"). It has `run:` steps only and no checkout. A config or API error posts nothing and fails the job, so any earlier status on that head stands, and with none the check stays unset and the PR stays blocked. For the template gate, `tools/render-gate.sh --check-masked` fails when it drifts outside its `CONSUMER` regions and checks nothing inside them; `render-gate-test.sh` pins its three regions to the expected shapes, and a human merge covers the rest. |
 | Auto-merge armed on a consumer PR | a consumer gate's `post` job, only for a verified candidate while the tag `devc-automerge-on` exists in this repo | Not created, so never. The tag sits under a tag ruleset (admin-only). See [Consumer verification](#consumer-verification-and-the-bump-gate-30). |
 
 ## Credential holders
@@ -62,15 +62,16 @@ at build and publish time, before any consumer pulls.
 |---|---|---|
 | `GITHUB_TOKEN` with `packages: write`, `id-token: write`, `attestations: write`, `artifact-metadata: write`, `security-events: write` | `build.yml`'s publish job only | Push to this org's GHCR packages, and sign attestations for this repo. Scoped per job; every workflow sets `permissions: {}` at the top. |
 | `GITHUB_TOKEN` with `actions: read` | `build.yml`'s scope job only (`verify-selftest.yml`'s `live` job holds the same read for its own purpose) | List `build.yml`'s runs on `main` and their jobs, to find the last run whose publish job succeeded (#159). Read-only, and it names no secret. The result only picks the commit `image-scope.sh` diffs against, so a wrong or forged answer can at worst make a publish run that was not needed or skip one that was; the lookup fails toward building, and the weekly schedule and manual dispatch always build. The commit id is checked as 40 hex, must be an ancestor of HEAD (a run on a tag named `main`, which `release-tags` does not cover, runs that tag's own workflow file and could fake a successful publish job; as an ancestor it can only carry a historical `build.yml` of main, which has guarded publish with `github.ref == 'refs/heads/main'` since b4a490b, so the tag run skips it. This relies on squash-only merges: with merge commits a PR branch's unreviewed commits would be ancestors too. A tag run at a commit older than that guard really publishes, which only widens the next diff and so builds), and is fetched before use. |
-| `GITHUB_TOKEN` with `statuses`, `contents` and `pull-requests: write` for the gate's `post` job only, and reads | `architect-review-gate.yml` | Post commit statuses on this repo. The two other write scopes are unused here (see the commit-status row above). The job has no `uses:`, `container:` or `services:`. |
+| `GITHUB_TOKEN` with `statuses: write`, and `contents: read` and `pull-requests: read` | `review-gate.yml`'s single job | Post commit statuses on this repo, and nothing else: no write to contents or pull requests. The job has no `uses:`, `container:` or `services:`. The template gate's `post` job, in a legacy-route consumer, holds more (next row). |
 | A consuming repo's `GITHUB_TOKEN`: `contents: read` for `verify`; `statuses`, `contents` and `pull-requests: write` for the gate's `post` job only (legacy route: a dev-App repo has no `post` job, its status writer is the plugin gate's job, whose only write is `statuses`) | the consumer's `devcontainer-image.yml` and gate, running this repo's reusable workflows | `verify` and `decide` hold no write token and read this repo's public attestations cross-org. In dev-App mode `verify` also reads the default branch's rules with it (repository metadata, which every token can read). `post` can post statuses and arm or disarm auto-merge on that consumer's own PRs, and holds the token in a job with no `uses:`, `container:` or `services:`, so no third-party action or image shares its GitHub-hosted runner (checked by `tools/check-consumer-workflows.sh` when it is run, not continuously). |
-| GitHub App installation token, `contents: write` + `pull-requests: write`, scoped to this repo only | `bump-binaries.yml` | **Can do more than the job uses it for**: push or delete any non-`main` branch, create tags outside `v*` and `devc-automerge-*`, create releases, and comment on a PR. It cannot change `main` or the protected tags: in the owner's live test (2026-10-07, #327) the token was refused when it tried to merge a PR into `main` (`405`), to update the `main` ref (`422`), and to delete a `v*` tag (`422`). The controls are `restrict-updates-to-main` for `main` and `release-tags` for the tags; the Repository admin role is the only listed bypass actor of each, and the App is not on either list. `main-required-checks` has no bypass actors at all. Only deleting a `v*` tag was tried live; the other tag operations rest on the ruleset read-back. The real residuals are non-`main` branches, tags outside the protected patterns, releases, and PR comments. The job only pushes a `bump/<tool>-<version>` branch (python's is `bump/python-<version>-<build>`) and opens its PR; the rest is this credential's reach if ever leaked or (see Known gaps) if the write step's own untrusted input were ever to reach it. Needed at all because a PR opened with the ambient `GITHUB_TOKEN` never triggers the required-check workflows (GitHub's own anti-recursion rule) -- and on this repo a job-scoped `GITHUB_TOKEN` could not even open the PR in the first place ("Allow GitHub Actions to create and approve pull requests" is off; `can_approve_pull_request_reviews: false`), so a dedicated identity is the only way to get this PR opened at all, let alone checked. Revoked at job end (the token action's default). The app's private key is a secret of the `bump-binaries` Environment, restricted to deployments from `main` (the job declares `environment: bump-binaries`), so a workflow run on any other branch cannot read it; it is held outside any container. The job runs only when the repo-level variable `BUMP_BINARIES_CLIENT_ID` (the App's Client ID) is set (#87). |
+| GitHub App installation token, `contents: write` + `pull-requests: write`, scoped to this repo only | `bump-binaries.yml` | **Can do more than the job uses it for**: push or delete any non-`main` branch, create tags outside `v*` and `devc-automerge-*`, create releases, and comment on a PR. In the owner's live test (2026-10-07, #327) the token was refused when it tried to merge a PR into `main` (`405`), to update the `main` ref (`422`), and to delete a `v*` tag (`422`); those refusals were observed under the rulesets live on that date and are no evidence for today's control on `main`. Today `main-approval` stops a push to `main`, the merge of a PR without a current code-owner approval of its last push, and deletion or non-fast-forward of `main`, and `release-tags` covers the protected tags. What it does not stop is this App, or any account with write access, merging a PR that already has a current code-owner approval and green required checks: no live branch ruleset has an `update` rule (deduced from the rule types, not re-tested). The dated 2026-11-15 owner read-back that `.ai/project.yml`'s branch-protection comment records shows no bypass actors on `main-approval` or `main-required-checks`. Only deleting a `v*` tag was tried live; the other tag operations rest on the ruleset read-back. The real residuals are non-`main` branches, tags outside the protected patterns, releases, PR comments, and the merge of an approved, green PR. The job only pushes a `bump/<tool>-<version>` branch (python's is `bump/python-<version>-<build>`) and opens its PR; the rest is this credential's reach if ever leaked or (see Known gaps) if the write step's own untrusted input were ever to reach it. Needed at all because a PR opened with the ambient `GITHUB_TOKEN` never triggers the required-check workflows (GitHub's own anti-recursion rule) -- and on this repo a job-scoped `GITHUB_TOKEN` could not even open the PR in the first place ("Allow GitHub Actions to create and approve pull requests" is off; `can_approve_pull_request_reviews: false`), so a dedicated identity is the only way to get this PR opened at all, let alone checked. Revoked at job end (the token action's default). The app's private key is a secret of the `bump-binaries` Environment, restricted to deployments from `main` (the job declares `environment: bump-binaries`), so a workflow run on any other branch cannot read it; it is held outside any container. The job runs only when the repo-level variable `BUMP_BINARIES_CLIENT_ID` (the App's Client ID) is set (#87). |
 | Per-repo fine-grained PAT | a consuming repo's container, in the `<repo>-home` volume | That repo only. The hub's token also covers the repos it coordinates. It expires after 90 days at most and is recorded in the owning org's credential ledger (603-Identity: infrastructure-core's; glunk-works: none yet, see Known gaps). Admin work (rulesets, repo settings) never uses a container token. |
-| The dev token, `/run/wow/dev-token` (dev-App flavour) | the host's broker mints it per repository; the container reads it | A GitHub App installation token for that one repository, short-lived (the `expires_at` on line 2). It lives on a host-side read-only mount, never in a volume, so it is not in `<repo>-home`. Only `/usr/local/libexec/dev-token` reads it, for `git` and the `gh` wrapper; code running as `app` can read the file too (it is the same uid), so this is scoping and expiry, not secrecy from the container. |
-| The elevated token, `/run/wow/admin-token` (dev-App host mounts) | the host's broker, for an elevated window | Never read by anything in the image. It shares the mount with the dev token, so a process in the container that opens it directly can: the flavour keeps its own tools from reading it and tests that they do not (decoy files in `tests/smoke-devapp.sh`), and anything an elevated window leaves in the home volume persists into later windows: nothing in this image clears it. |
+| The dev token, `/run/wow/dev-token` (dev-App flavour) | the host's broker mints it per repository; the container reads it | A GitHub App installation token for that one repository, short-lived (the `expires_at` on line 2). It lives on a host-side read-only mount, never in a volume, so it is not in `<repo>-home`. Only `/usr/local/libexec/dev-token` reads it, for `git` and the `gh` wrapper; code running as `app` can read the file too (it is the same uid), so this is scoping and expiry, not secrecy from the container. **On this repo** the broker serves this repo's own token to its devcontainer (`tokens/603-Identity/devcontainers`), so git and gh for this checkout act as the dev App, with `identities.dev_app.commit_route: api` replaying its commits through the API so that GitHub signs them. Its reach here: push any non-`main` branch and open PRs; edit a review body, so the reviewer App's verdict line (assumed from the same API call as the bump-binaries App's, not tested); arm auto-merge on its own PRs, which the repo setting `allow_auto_merge` allows; and merge a PR that already has a current code-owner approval and green required checks (Boundary 6). The dev App lacks the Workflows permission, so the dev token cannot push a change under `.github/workflows/`: a dev-App-authored branch cannot edit `review-gate.yml`, and such changes come from the elevated window (next row). That bounds the dev token, not the authoring container: while an elevated window is open, a process in the container can read the elevated token (Known gaps, "The elevated token shares the mount"). The dev App is a new non-human writer driven by a model that reads untrusted text, and DEVC-D7's split of trusted human writers and the untrusted bump-binaries App does not yet place it; that is a follow-up for the maintainer. |
+| The elevated token, `/run/wow/admin-token` (dev-App host mounts) | `wow-admin` on the host, for an elevated window (it writes the token into the repo's token directory, so the container's `/run/wow`; by default with Administration, Contents and Pull requests write, and with Workflows write only when asked; `wow-admin <repo> --revoke` revokes it and removes the file) | Never read by anything in the image. It shares the mount with the dev token, so a process in the container that opens it directly can: the flavour keeps its own tools from reading it and tests that they do not (decoy files in `tests/smoke-devapp.sh`), and anything an elevated window leaves in the home volume persists into later windows: nothing in this image clears it. **On this repo** the elevated window, acting as `603id-admin[bot]`, is the route for changes under `.github/workflows/` (it opened #530 and #532): its reach here includes pushing a branch that edits any workflow, `review-gate.yml` included, and opening its PR. `603id-admin[bot]` holds Administration, Environments, Actions and Workflows write as well as Contents and Pull requests write (its App settings, `gh api apps/603id-admin`, read 2026-11-17), so `main-approval` does not bound it: it can edit or disable any ruleset, add a bypass actor, and change an environment's protection rules, a required reviewer included. What bounds the elevated window is that the owner mints it on the host for a single task and revokes it afterwards; where its key is held is outside this repo's record. The branch's workflow also runs on its own events before any approval, with the `GITHUB_TOKEN` scopes it requests (never Workflows): it can post every required check, `architect-review` included, as GitHub Actions, the integration they are all pinned to, on any commit and not only its own head, push a package or a non-protected ref, and, with `contents: write` or `pull-requests: write`, merge or arm auto-merge on any PR that already has a current code-owner approval (the reach the dev-token row lists for the dev token). Neither `main-approval` nor the diff review holds that. DEVC-D7's split does not yet place `603id-admin[bot]` either; that is part of the same follow-up. |
 | The Claude login (dev-App flavour) | `claude`, in the home volume | The user's own login, kept in `~/.claude`. It is not scanned and not covered by the dev token's expiry. |
 | A leftover PAT or `gh` login (dev-App flavour) | `~/.config/gh/hosts.yml`, `~/.git-credentials` in a home volume that outlived the image | From an earlier non-dev-App run of the same repo. The `gh` wrapper ignores it (`GH_TOKEN` wins) and `devapp-check.sh` deletes both files at every start. |
-| Owner's org login | the host, outside any container | Admin. It is the only identity that merges PRs or changes rulesets and package visibility, which must stay public for consumers in other orgs. |
+| Owner's org login | the host, outside any container | Admin: rulesets, repo settings, package visibility (which must stay public for consumers in other orgs) and the protected tags. It keeps the signed release tag, `gh release create` and ruleset changes. It is the one code owner (`.github/CODEOWNERS`), so its approval of the last push is required on every PR, including the workflow-file PRs the elevated window pushes (`main-approval` does not bound the elevated window itself, see the elevated-token row); on dev-App PRs with auto-merge armed that approval is the merge. Who merges is not an enforced control: no live branch ruleset restricts it (Boundary 6). |
+| The declared reviewer App (`identities.reviewer_app`) | the way-of-working plugin's review step; where its key is held is outside this repo's record | A review it posts on a PR head, with the configured header, attestation and a `Review verdict: pass` line, turns `architect-review` green for that head. What still bounds it is `main-approval`'s code-owner approval of the last push; who merges is a practice (Boundary 6). |
 
 ## Boundaries meant to hold
 
@@ -149,19 +150,28 @@ at build and publish time, before any consumer pulls.
    The host's identity files are shared by design: every container mounts the whole
    `~/.gitconfig.d`, and identity is host-wide (see Known gaps).
 
-6. **Changes to `main` are reviewed.** The `main-required-checks` ruleset requires a pull
-   request, the lint, build and smoke-test checks, and `architect-review` on any change to
-   `code_paths`. `main-required-checks` has no bypass actors, so `gh pr merge --admin` never skips a
-   required check. A second ruleset, `restrict-updates-to-main` (rule `update`), refuses every
-   update of `main`, a PR merge included, except by its one bypass actor: the Repository admin
-   role, in mode `pull_request`, so an admin can merge a PR but cannot push to `main`; that is why
-   resume merges its cursor-sync PR with `--admin` (#262). `.ai/project.yml` names only
-   `main-required-checks`, because its `ruleset:` key takes one name, so resume's drift check does
-   not watch `restrict-updates-to-main`: deleting it, or widening its bypass mode to `always`,
-   would go unnoticed there (stated residual). `architect-review` counts only a formal review, made against the PR's head SHA whose body also carries the line `Reviewed against head <that SHA>` (#278), from a
-   user ID in the gate's `REVIEWER_IDS` allowlist (today, only the owner's user ID), so a stranger on
-   this public repo cannot turn it green by pasting the header and attestation strings. It is still an existence gate: it never reads
-   what the review concluded, and the human's merge is the approval.
+6. **Changes to `main` are reviewed.** Two live branch rulesets cover `main`. `main-approval`
+   requires a pull request with one approving review, a code-owner review (`.github/CODEOWNERS`
+   names the one human owner) and approval of the last push, dismisses stale approvals on push,
+   and refuses deletion and non-fast-forward. `main-required-checks` (read live 2026-11-17: it carries only its `required_status_checks` rule; `.ai/project.yml`'s comment that it still holds a 0-approval `pull_request` rule is stale) requires the lint,
+   build-and-smoke-test and `selftest` checks and `architect-review` (every check from GitHub
+   Actions, integration 15368). The dated 2026-11-15 owner read-back that `.ai/project.yml`'s
+   branch-protection comment records shows no bypass actors on either; the dev App's token reads
+   none. `.ai/project.yml`'s `rulesets` block declares both rulesets (its legacy `ruleset:` alias
+   still names only `main-required-checks`), and the tag ruleset `release-tags` is not declared
+   there yet. `architect-review` is posted by `review-gate.yml`: it is green for a PR that
+   changes nothing under the trigger paths (by default `code_paths`), and otherwise only when the
+   declared reviewer App has reviewed the head SHA with a passing verdict line (see Untrusted
+   inputs), so a stranger on this public repo cannot turn it green by pasting the header and
+   attestation strings. That is a fresh-session review, not the approval: the enforced approval
+   is `main-approval`'s code-owner approval of the last push. **Who merges is a practice, not a
+   control.** No live branch ruleset has an `update` rule, so nothing restricts who merges to
+   `main`: `main-approval` does not stop any account with write access (the bump-binaries App, the
+   dev App) from merging a PR that already has a current code-owner approval and green required
+   checks. This is deduced from the rule types, not re-tested. The repo setting `allow_auto_merge`
+   is on, and the dev App arms auto-merge on its own PRs through the way-of-working ship skill, so
+   on those PRs GitHub merges as soon as a current code-owner approval and green required checks
+   are in: the code owner's approval is then the merge.
 
 7. **OS security fixes arrive on a schedule.** apt packages aren't version-pinned, so a
    weekly scheduled rebuild picks them up. Each rebuild publishes new digests under a new
@@ -243,11 +253,15 @@ What each piece trusts, and what it leaves open:
   breaks a rule is caught by review alone. The gate defends against Dependabot-shaped
   forgeries, outsiders and wrong images, and against forks only to the extent that auto-merge
   never acts on a fork PR. DEVC-D7 records this split: human writers are trusted, while the
-  bump-binaries App is not and is bounded by its permissions, plus `restrict-updates-to-main`, which
-  stops it changing `main` (the App is not a bypass actor, and its merge into `main` was refused
-  with `405`, #327; invariant 6), plus the head-SHA binding (#92), plus the review-editor check (#94, see Known gaps). The reviewer-App check run that was to be required
-  before auto-merge went on (#267) is superseded, and nothing replaces it for this repo's own gate
-  (see the auto-merge bullet below). Dev-App repos run the way-of-working plugin's gate (DEVC-D9).
+  bump-binaries App is not and is bounded by its permissions and by `main-approval`, which refuses a
+  push to `main` and the merge of a PR without a current code-owner approval of its last push, but
+  not the merge of a PR that already has one and green checks (deduced, not re-tested; invariant 6;
+  its 2026-10-07 `405`, #327, was observed under the rulesets live then). On the legacy template
+  gate it is bounded further by the head-SHA binding (#92) and the review-editor check (#94, see
+  Known gaps); this repo's own gate has the head-SHA binding but not the review-editor check. The reviewer-App check run that was to be required
+  before auto-merge went on (#267) is superseded; for this repo's own gate what stands in its place
+  against a forged status is the declared reviewer App's review, counted by `review-gate.yml` (see the auto-merge bullet
+  below). Dev-App repos run the way-of-working plugin's gate.
   The other route to a non-forgeable status, a ruleset-required workflow, was rejected
   because it needs GitHub Team.
 - **Forks and same-named checks.** A fork PR from a returning contributor needs no approval to
@@ -261,16 +275,18 @@ What each piece trusts, and what it leaves open:
 - **No soak.** A bad attested image can reach every opted-in consumer within minutes of
   Dependabot's run. The limits are the fail-closed kill switch, same-MAJOR only, the exact
   signer, issuer and repository-id pins, and attempt-1-only provenance.
-- **Auto-merge is off and stays off until its preconditions are met.** The fail-closed kill
-  switch makes "not created yet" the off state. When it is on, this repo's `main`, then the
+- **Auto-merge is off and stays off until its preconditions are met.** This is the
+  `devc-automerge-on` kill switch for the Dependabot image-bump chain, not the repo setting
+  `allow_auto_merge`, which is on (the dev App arms auto-merge on its own PRs, Boundary 6). The
+  fail-closed kill switch makes "not created yet" the off state. When it is on, this repo's `main`, then the
   publish, then a consumer merge becomes an unattended chain whose only human control is this
-  repo's own `architect-review`, an existence gate with known gaps (#93, and the skill half of #278). The owner
+  repo's own `architect-review` (`review-gate.yml`, which reads the verdict line but has known gaps: the review-edit and #278 residuals below, and #93). The owner
   creates `devc-automerge-on` only when #396's preconditions are met (#396 absorbs #139; #267 is
   superseded): among them a pilot that has taken real bumps through the review path, a private
   repo that confirms the arming, and `disarm()` in every row (#126, #132). Nothing in #396 closes
   #93 or F9b, which #267 was to close: turning the switch on accepts them at the root of the chain,
-  and what stands behind a forgeable `architect-review` is a writer's merge to this repo's `main`
-  (by practice the owner's), which the ruleset does not enforce. No dev-App bump is
+  and what stands behind a forgeable `architect-review` is `main-approval`'s code-owner approval of
+  the last push; who merges is still a practice, which the rulesets do not enforce. No dev-App bump is
   ever armed, because `decide` refuses those images. Docs-only pushes no longer publish: a push
   to `main` publishes only when an image-affecting path changed since the last successful
   publish (#124, #159), so a docs-only merge ships no new tag set. The base is the commit of the
@@ -408,18 +424,37 @@ Every repo in both orgs gets a container from these images unless one of these a
   repo's `<repo>-home` volume, token included on the legacy route (a direct breach of boundary 5), and the
   sandbox resolves worktree paths inside the container that a host daemon cannot see. The
   rule for that container: it mounts no other repo's volumes.
-- **603-Identity/devcontainers has no devcontainer.** Building and smoke-testing its images
-  needs a Docker daemon, which in a container means docker-in-docker (`--privileged`, a
-  breach of boundary 4) or the host socket (a breach of boundary 5): the same reasoning as
-  the loop-orchestrator exception above. A devcontainer would cover only lint and the gate
-  suites, and the repo would still need a host Linux shell for builds. That shell is the
-  Ubuntu WSL2 distro (`tools/wsl-setup.sh`, README "Working on this repo from Windows"):
-  host-side like PowerShell, so it adds no boundary to hold. It is not a sandbox either: with
-  Docker Desktop's WSL integration on, the distro reaches the host Docker daemon exactly as
-  PowerShell does, so code run there (a PR branch's test scripts, the npm-installed
-  devcontainer CLI) can mount any repo's `-home` volume. Only run code from checkouts you trust there. Revisit if a
-  second contributor or machine joins, or the WSL setup drifts from CI (a lint-and-test-only
-  devcontainer would still exclude image builds).
+- **603-Identity/devcontainers has a dev-App devcontainer, and two groups of its local gate's
+  steps run outside it (a partial exception to "every repo gets a container").** `.devcontainer/` is the dev-App template with this repo's token mount
+  (`tokens/603-Identity/devcontainers`, read-only at `/run/wow`); its Dockerfile adds shellcheck
+  and the pinned Go release to `devcontainer-devapp`. All authoring happens in it: editing, Claude
+  Code, git and gh for this checkout (through the dev token: the broker serves this repo's token,
+  and `identities.dev_app.commit_route` is `api`, so GitHub signs the dev App's commits),
+  shellcheck, `go test` for `tools/devc-verify`, and every gate suite except the claude-fetch
+  suite. The other steps run in CI's required checks, each for its own reason. The Docker steps
+  (the hadolint and Trivy config scans, the digest-pinned zizmor image step, the image builds and
+  smoke tests, the template proof) would need docker-in-docker in the container (`--privileged`, a
+  breach of boundary 4) or the host socket (a breach of boundary 5): the same reasoning as the
+  loop-orchestrator exception above. The claude-fetch suite of `tools/tests/run-gate-tests.sh`
+  needs gpg, which the dev-App flavour removes on purpose (`gpgv` stays), so `bash
+  tools/tests/run-gate-tests.sh` as a whole exits 1 in the container. CI runs them in `lint.yml`'s
+  jobs, the `gate-tests` job of `verify-selftest.yml` (aggregated by `selftest`), and `build.yml`'s
+  `Build and smoke-test (no push)`, which builds the images and runs the template proof when the PR
+  changes an image, the template or another path `.github/scripts/image-scope.sh` scopes in; a change made in the container ships with those steps named as
+  pending in its PR. Nothing but review holds this repo's own `.devcontainer/`:
+  `.github/dependabot.yml` has no `docker` entry for it, no workflow here calls
+  `verify-devcontainer-image.yml` on this repo's own pull requests, and no CI lint covers
+  `.devcontainer/Dockerfile` (`lint.yml`'s hadolint reads `images/*/Dockerfile` and
+  `template/.devcontainer/Dockerfile`, and its Trivy config scan covers `images` and `template`
+  only), so its `FROM` line and its Go download change only by a hand-made PR under the
+  `code_paths` review and `main-approval`. **Residual:** an ad hoc host run of one of those steps
+  (for example a host Trivy scan) must use a checkout no container mounts, since code in the
+  container can plant hooks or `.git/config` entries in the checkout it mounts; and because such a
+  run executes the branch's own tracked scripts (for example `.github/scripts/build-and-test.sh` or
+  `tests/template-proof.sh`) with the host Docker daemon's reach, which can mount any repo's
+  volumes and read the token directories, it runs only at a commit whose diff has been reviewed.
+  Revisit if a second contributor or machine joins, or the Docker-dependent steps need to run
+  locally often enough that CI alone is too slow.
 - **A host that holds the token directory runs no privileged container.** Every dev-App
   container mounts only its own repo's `tokens/<owner>/<repo>`, but a container with `--privileged`,
   the Docker socket or a bind of `%USERPROFILE%` can read every repo's directory, and the
@@ -543,8 +578,8 @@ These are stated plainly so nobody trusts the setup for more than it does:
   checks the registry's integrity value for the tarball it resolves, but nothing here pins
   that value, so a tarball the registry served differently for the same version would run.
   In CI that is the build job, which holds no write permission and no secret, but it does reach the runner's Docker socket and the checkout. The same
-  script is in `gates.green`, so it also runs on a developer's machine as that user, with
-  access to the Docker daemon. The CLI itself has no dependencies and no install scripts.
+  script is in `gates.green`, so an ad hoc host run executes it as that user, with access to the
+  Docker daemon (the Exceptions residual applies); the devcontainer has no Docker. The CLI itself has no dependencies and no install scripts.
 - **Verifying a new digest is automatic only in a repo that has adopted #30's workflows.** A
   repo that has not copied `devcontainer-image.yml` and does not require `verify / verify`
   still takes whatever digest a Dependabot image bump proposes, including a branch-built
@@ -585,22 +620,30 @@ These are stated plainly so nobody trusts the setup for more than it does:
 - **glunk-works has no credential ledger yet**, so its tokens have no recorded home.
 - **The broad OAuth token** that containers used before this model can still be live
   until it is revoked (#439), which waits for every container that used it to be rebuilt on a shared image or retired.
-- **The `main` ruleset's `pull_request` rule requires 0 approvals**, and
-  `architect-review-gate.yml` counts a formal review only from a user ID in its
-  `REVIEWER_IDS` allowlist (#14): today the owner's user ID alone. It is an ID list, not
-  `author_association`, because the owner's 603-Identity membership is private and the
-  workflow's token reads it as `CONTRIBUTOR` (seen live on #89); IDs rather than logins,
-  because a released login can be re-registered. The bump-binaries App token (above)
-  is not on the list, so a review it posts doesn't count. It cannot merge a PR to `main` at all
-  (refused with `405`, #327). Comments no longer count, so editing an owner comment into a qualifying one
-  (#94) does nothing. A writer can edit someone else's formal review body (verified on #94),
-  so a review with any editor not in `REVIEWER_IDS` does not count either (see below).
-  Quoted lines (`> ...`) are ignored, so quote-replying someone else's pasted strings
-  doesn't qualify. A second reviewer means a PR adding their ID, which that PR's own edited
-  gate checks (see below), so the human's merge is the control on it. The owner's
-  login staying "the only identity that merges PRs" is still a practice, not something
-  this ruleset enforces.
-- **A review is bound to the head SHA, not a date (#92 and #94 closed).** The gate used to
+- **Approval is enforced by `main-approval`; who merges is a practice (Boundary 6).**
+  `main-approval` requires one approving review, a code-owner review and approval of the last push,
+  and dismisses stale approvals on push; the one human owner is in `.github/CODEOWNERS`. A PR that
+  changes the reviewer App's id in `.ai/project.yml` is held by that approval of its last push, and
+  the config is read from the default branch, so the change takes effect only once merged.
+  `review-gate.yml` counts a review only from the declared reviewer App's numeric id
+  (`identities.reviewer_app.id`, from the default branch's `.ai/project.yml`). The template gate's
+  counterpart, for the legacy route, is its `REVIEWER_IDS` allowlist (#14): an ID list, not
+  `author_association`, because the owner's 603-Identity membership is private and the workflow's
+  token reads it as `CONTRIBUTOR` (seen live on #89); IDs rather than logins, because a released
+  login can be re-registered. The bump-binaries App token (above) is not the reviewer App, so a
+  review it posts doesn't count. It was refused when it tried to merge a PR to `main` (`405`, #327,
+  observed 2026-10-07 under the rulesets live on that date); today there is no control on who
+  merges an approved, green PR. Comments never count, so editing an owner comment into a
+  qualifying one (#94) does nothing. On the template gate, a writer can edit someone else's
+  formal review body (verified on #94), so a review with any editor not in `REVIEWER_IDS` does not
+  count either (see below); and quoted lines (`> ...`) are ignored there, so quote-replying
+  someone else's pasted strings doesn't qualify. `review-gate.yml` has no editor check (see the
+  bullet after next). Nothing enforces that only the owner's login merges PRs: merges by the dev App's armed auto-merge
+  and by other accounts have happened, and no ruleset restricts who merges.
+- **Legacy route (the template gate): a review is bound to the head SHA, not a date (#92 and #94
+  closed).** This bullet describes `architect-review-gate.yml`, the template gate; this repo runs
+  `review-gate.yml`, which has no editor, `Reviewed against head` or review-edit check (next
+  bullet). The template gate used to
   date a review against the head commit's committer date, which whoever creates the commit
   controls, so a backdated commit passed against an older review. It now counts only a formal PR
   review (not dismissed) whose `commit_id` equals the head SHA and whose author is in
@@ -634,14 +677,41 @@ These are stated plainly so nobody trusts the setup for more than it does:
   bump-binaries App's own ability to make the edit is the same call and was not tested; the fix does not depend on it. A human still reads the PR and merges. Consumers take the
   head-SHA binding (#92) in `v1.3` and the review-editor check (#94) in `v1.4`
   (DEVC-D7, DEVC-D8).
-- **A same-repo PR runs its own copy of the gate.** `pull_request` and
-  `pull_request_review` runs execute the PR's version of `architect-review-gate.yml`
-  (only `issue_comment` uses `main`'s), so a branch that edits the gate, or its
-  `REVIEWER_IDS`, is checked by the edited gate. Pushing a branch already takes write
-  access, and the edit shows in the diff the human reads before merging (#93). Accepted under
-  DEVC-D7: the gate does not defend against human writers. The reviewer-App check (#267) that was to
-  close it is superseded (DEVC-D9) with no replacement; the gap stays accepted for this repo and the
-  legacy route, including if auto-merge is ever turned on. #396 holds that switch's preconditions.
+- **This repo's gate, `review-gate.yml`: the head-SHA binding without the template gate's extra
+  checks (the review-edit residual and the #278 skill half).** It counts a review in state
+  `COMMENTED` whose `commit_id` equals the head SHA, by the declared reviewer App's id, with the
+  configured header and attestation lines, and reads the verdict line of the latest such review; a
+  push moves the head SHA, so every earlier review stops counting. It has no review-editor
+  (edit-history) check, no `Reviewed against head` line check, and no trigger on a review edit or
+  dismissal (`pull_request_review` runs on `submitted` only; `pull_request` includes `edited`, a PR
+  title or body edit). Two residuals follow, each held only by `main-approval`'s code-owner approval
+  of the last push (who merges is a practice). First, a review edit: a write account can edit the
+  reviewer App's review body (verified for a non-admin human write account on #94; for the
+  bump-binaries App's token, which holds `pull-requests: write`, and for the dev token, which the
+  authoring session holds, assumed from the same API call and not tested), for example turning a
+  blocking verdict line into `Review verdict: pass` with the header and attestation lines kept; the
+  gate reads no edit history and does not re-run on the edit, but its next `pull_request` run on the
+  same head (a PR title or body edit is enough) counts the edited review. Second, the #278 skill
+  half, wider here: `commit_id` is the head when the review is posted, not the commit the reviewer
+  read, and this gate matches only `commit_id` with no `Reviewed against head` line check, so a
+  review written against an earlier head and posted after a push counts for the new, unread head.
+  That residual is dropped only if the way-of-working plugin version this repo pins (the `ref` of
+  the `claude-workbench` marketplace entry in `.claude/settings.json`) has a posting skill that pins
+  `commit_id`; the condition names that pinned version, not this repo's tree.
+- **A same-repo PR runs its own copy of the gate.** Every run of `review-gate.yml`,
+  `pull_request` and `pull_request_review` alike, executes the PR's own version of the workflow
+  file, while its config (the `review.ci_gate` strings, the trigger list, `identities.reviewer_app.id`)
+  comes from the default branch's `.ai/project.yml`. So a branch that edits the gate is checked by
+  the edited gate. Pushing a branch already takes write access, and the edit shows in the diff the
+  human reads before approving (#93), though the edited workflow runs, with the scopes it requests, before that read (elevated-token row); a change to the workflow file itself is pushed from the elevated window
+  on this repo (the dev token lacks the Workflows permission, which bounds the dev token and not the
+  authoring container while an elevated window is open, see "The elevated token shares the mount"),
+  and `main-approval` does not bound that window (elevated-token row, Credential holders). Accepted under DEVC-D7 for human writers: the gate does not defend against them. For `603id-admin[bot]` and a container process that reads the elevated token, the acceptance waits on the DEVC-D7 placement follow-up. The
+  reviewer-App check (#267) that was to close this gap is superseded, and nothing else closes it (the
+  reviewer App's review does not, since the edited gate decides whether it counts); the gap stays
+  accepted for human writers on this repo and on the legacy route, including if the `devc-automerge-on` chain is ever turned on. #396 holds
+  that switch's preconditions. The template gate, on the legacy route, has the same shape, except
+  that its `issue_comment` runs use `main`'s copy.
 - **`bump-binaries.yml` is skipped until `BUMP_BINARIES_CLIENT_ID` is set** (#87, #102): the job's
   `if:` on that variable skips it. The variable must stay a repo-level one, never an Environment
   one: a job-level `if:` cannot see Environment variables, so the job would skip forever. The App's
@@ -695,7 +765,7 @@ These are stated plainly so nobody trusts the setup for more than it does:
   say `USER 0`. The verifier's filter catches accidents (writes to the identity paths, `ENV` of
   `GIT_*`, a proxy or `ANTHROPIC_BASE_URL`, a local `ADD`), not attacks; the approval rule and the
   human review hold the rest.
-- **The elevated token shares the mount.** The broker's elevated-token file sits in the same
+- **The elevated token shares the mount.** The elevated-token file `wow-admin` writes sits in the same
   directory as `dev-token`. The image's tools read only `dev-token`, but the directory is a live
   bind mount: while the file exists, any process in any running container of that repo can read it,
   including an ordinary long-running window the launcher reuses. Residue in the home volume from an
@@ -719,10 +789,12 @@ These are stated plainly so nobody trusts the setup for more than it does:
   caller names, so a PR may pin an older release, or one that predates dev-App mode and reads the
   repo as plain. In a dev-App repo what holds it is the approval rule and the dev App's lack of the
   Workflows permission, not a gate rule. Plain pins below v1.6 also have no mount rules.
-- **The WSL distro reads the token directories.** Docker Desktop's WSL integration and the distro
-  both reach `%USERPROFILE%` (`/mnt/c/Users/...`), so code run in the Ubuntu WSL2 distro (a PR
-  branch's test scripts) can read every repo's `dev-token`. The Exceptions section's advice stands:
-  only run code from checkouts you trust there.
+- **A host run of a branch's code reaches the token directories.** WSL is not a working
+  environment for this repo (see Exceptions), but any host-side run, in a Windows shell or a WSL
+  distro, of a branch's code (test scripts, the npm-installed devcontainer CLI) reaches the host
+  Docker daemon and `%USERPROFILE%` (`/mnt/c/Users/...` from WSL), so it can read every repo's
+  `dev-token` and mount any repo's `-home` volume. The Exceptions residual applies: use a checkout
+  no container mounts, at a commit whose diff has been reviewed.
 - **Volume names collide across orgs.** Per-repo volumes are named after the checkout folder, so
   same-named checkouts of different repos share `-home`, and with it a Claude login and sessions
   (the dev token is per repo and mounted from the host, so it is not shared). `owner-check.sh`
