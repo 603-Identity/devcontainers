@@ -1,0 +1,8 @@
+{
+  "state": "failure",
+  "total_count": 2,
+  "statuses": [
+    { "id": 11, "context": "architect-review", "state": "success" },
+    { "id": 12, "context": "selftest", "state": "failure" }
+  ]
+}

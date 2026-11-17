@@ -59,8 +59,9 @@ run in the container, and run in CI's required checks, so a change made in the c
 them named as pending in its PR. A change under `.github/workflows/` is pushed from the elevated
 window (`603id-admin[bot]`), because the dev token lacks the Workflows permission, and the owner
 approves and merges it: `main-approval` requires approval of the last push from a code owner other
-than the pusher (but `main-approval` does not bound the elevated window itself: see the threat model's elevated-token row). The signed release tag, `gh release create` and ruleset changes are steps for the
-owner's login. The Credentials section below (its Workflows paragraphs) and
+than the pusher (but `main-approval` does not bound the elevated window itself: see the threat model's elevated-token row). The release tag and the Release now come from the dispatched `release.yml`, whose `release`
+environment deployment the owner approves; ruleset changes, the break-glass edit included, stay
+steps for the owner's login. The Credentials section below (its Workflows paragraphs) and
 [`docs/adopting.md`](docs/adopting.md) keep workflow pushes off a container's token too, but name
 the host login as the pusher; on this repo it is the elevated window instead.
 
@@ -369,8 +370,11 @@ own, but only while the tag `devc-automerge-on` exists in *this* repo, and nobod
 it. Until the owner does (a separate decision with preconditions, tracked in #396), every bump
 takes the review path and a human merges it. Image bumps are armed only through `decide`
 and that kill switch, and a dev-App image bump is never armed (`decide` exits 3). The tags `v*` and `devc-automerge-*` are
-protected by a tag ruleset here: creating, moving or deleting one needs the Repository admin
-role.
+protected by the `release-tags` ruleset here, and its only bypass actor is the release App
+(DEVC-D12). `release.yml` never creates a `devc-automerge-*` tag, though its credential could
+(bounded by the `release` environment and its reviewer). The owner sets and clears the kill
+switch through the recorded ruleset edit described under "Cutting a release", so clearing it
+now means disabling the deletion rule first.
 
 **If the tag ever exists, and is then removed,** that stops later *arming* only. It does not
 disarm a pull request that is already armed: that merges whenever its remaining checks go
@@ -942,18 +946,51 @@ workflows (verify, decide, secret-scan) by that commit's SHA, with the tag as a
 `# vX.Y` comment. Cut one when a change consumers run has landed: devc-verify, the
 reusable workflows, the gate template, or the org secret-scan rules and scanner pin.
 
-1. **Tag `main`.** Make an annotated, signed tag on the commit (`git tag -s vX.Y -m vX.Y
-   <sha>`), check it (`git tag -v vX.Y`), and push it. Tags matching `v*` sit under the
-   `release-tags` ruleset, so only the Repository admin role can create, move or delete them.
-   Never move a published tag: consumers' pins name the commit, and the lint checks that the
-   tag still peels to it.
-   **Then publish its GitHub Release** (DEVC-D8). Write the notes as `docs/releases/vX.Y.md`,
-   in a docs PR, and have it reviewed in a fresh session (no gate requires review for `docs/`,
-   so ask for one). Lead with the consumer upgrade steps (re-copy, re-pin, re-lint), then the behaviour changes, image changes and known gaps; check
-   each claim against the code at the tag. Once that PR is merged, run `gh release create vX.Y
-   --verify-tag --title vX.Y --notes-file docs/releases/vX.Y.md`. `--verify-tag` refuses to
-   mint a tag, so the release can only attach to the signed one. Release immutability is on (its tag
-   can never move), and by DEVC-D8 a mistake ships as the next version, never as an edit.
+1. **Dispatch `release.yml` from `main`** (DEVC-D12). The workflow makes the `vX.Y` tag and its
+   GitHub Release in one call; nobody tags by hand. It takes `bump` (`minor` or `major`) and
+   `dry_run` (on by default), and no tag name: it counts from the newest `vX.Y` tag reachable
+   from the dispatched commit.
+   - **Notes first.** Curated notes go in `docs/releases/vX.Y.md`, through a reviewed docs PR
+     merged before the dispatch (no gate requires review for `docs/`, so ask for a fresh
+     session). Lead with the consumer upgrade steps (re-copy, re-pin, re-lint), then the
+     behaviour changes, image changes and known gaps; check each claim against the code at the
+     commit. The workflow builds notes from the commit log only when that file is absent; those
+     neither lead with upgrade steps nor get a docs-consistency pass.
+   - **Dry run first.** Dispatch from `main` with `dry_run` on. The read-only `verify` job refuses
+     a dispatch off the default branch, a commit that did not come from exactly one merged PR, a
+     required check (the `main-required-checks` list in `.ai/project.yml`) that was not green on
+     that PR, and a push run on `main` that did not succeed. It also refuses a range where
+     nothing a consumer pins has changed since the last tag; a dry run only warns about that.
+     It then shows the plan and the exact notes in its step summary. Read it, approve the
+     `release` environment's deployment (every run waits for that approval, dry runs included),
+     and check the dry run's result. It creates nothing.
+   - **Then dispatch for real,** and approve only after `verify`'s summary for that run shows the
+     same commit and tag as the dry run. The `release` job repeats the branch assert and every
+     tag refusal, then the release App creates the tag and the published Release at that commit.
+   - **A red or cancelled push run blocks the release.** A `lint.yml` or `verify-selftest.yml`
+     run may be re-run. A `build.yml` push run is never re-run (a re-run is attempt 2, and an
+     image it publishes fails every consumer's `verify / verify`, as above), so release a later
+     `main` commit instead. A commit that already carries a `v*` tag is refused, so a repeat
+     dispatch at the same commit does nothing.
+
+   Tags are unsigned and created by the release App: provenance is the reviewed `release`
+   environment run on `main`, not an admin's key. That is safe because consumers pin commit SHAs
+   and `tools/check-self-pins.sh` checks that a tag peels to its commit, lightweight or
+   annotated. Tags matching `v*` sit under the `release-tags` ruleset, whose only bypass actor
+   is the release App `603id-devcontainers-release` (installed on this repo only). Never move a
+   published tag: consumers' pins name the commit, and the lint checks that the tag still peels
+   to it. Release immutability is on (its tag can never move), and by DEVC-D8 a mistake ships as
+   the next version, never as an edit.
+
+   **Break-glass** (a tag by hand, or a deletion): only through a recorded ruleset edit. Disable
+   the one rule the operation needs in `release-tags` (the creation rule to create a tag, the
+   deletion rule to delete one), do it, publish the Release if the tag is a version, restore the
+   rule, and record the edit. While a rule is disabled every writer can perform that operation on
+   both `v*` and `devc-automerge-*`: any account with write access, the bump-binaries App token,
+   the dev App, `603id-admin[bot]` while an elevated window is open (and so any container process
+   that reads its token: the threat model's "The elevated token shares the mount"), and any
+   workflow's `GITHUB_TOKEN` with `contents: write`. Keep the window as short as the operation.
+   It is never a standing bypass.
 2. **Bump this repo's own pins to it, in one PR.** Dependabot never bumps these, because they
    point at this repo's own releases (#125). There are four copies of one pin:
    `tools/gate-template.yml.in` (the gate skeleton's `decide`), the gate rendered from it

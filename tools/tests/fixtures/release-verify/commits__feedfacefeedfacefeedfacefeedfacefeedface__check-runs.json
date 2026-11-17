@@ -1,0 +1,8 @@
+{
+  "total_count": 3,
+  "check_runs": [
+    { "id": 1, "name": "hadolint (Dockerfiles)", "status": "completed", "conclusion": "success" },
+    { "id": 2, "name": "selftest", "status": "completed", "conclusion": "success" },
+    { "id": 3, "name": "architect-review", "status": "completed", "conclusion": "failure" }
+  ]
+}

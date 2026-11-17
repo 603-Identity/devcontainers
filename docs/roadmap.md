@@ -354,6 +354,13 @@ preconditions.
 
 **Resolved** 2026-10-06 by the repo owner, when cutting `v1.3`.
 
+*Superseded in part 2026-11-17 by DEVC-D12 (#486):* DEVC-D12 replaces the signed-tag and
+`--verify-tag` parts: a tag is now made unsigned by the release App, from the dispatched
+`release.yml`, together with its Release. It also makes curated notes the norm rather than a
+requirement: when `docs/releases/vX.Y.md` is absent the workflow publishes notes built from the
+log, which neither lead with upgrade steps nor get a docs-consistency pass. Immutability
+stands, and so do the curated-notes rules for a curated file.
+
 **Context.** `v1.0`-`v1.2` were bare tags (`v1.0` and `v1.1` lightweight, `v1.2` signed and annotated),
 with no release notes. Consumers copy the gate from a tag and pin the reusable workflows to its
 SHA, so the upgrade steps for each version lived only in this roadmap. The `release-tags`
@@ -546,6 +553,70 @@ workspace is itself a symlink and TOCTOU surface).
 - A consumer obligation this entry cites but does not decide: consuming repos' CI is expected to use `actions/setup-python` at the same version. That rule belongs in an IAC-D entry in infrastructure-core's log, pending, with each repo's move tracked on #556.
 
 **Why DEVC-D and not IAC-D.** Under DEVC-D1's test, and following DEVC-D9's pattern, this records only what this repo publishes and checks. What consuming repos must do is cited, not decided, and is left to the pending IAC-D entry, as DEVC-D1 requires for a toolchain version other repos follow.
+
+#### DEVC-D12: A release is an App-created, unsigned tag made by a dispatched, reviewed workflow
+
+**Resolved** 2026-11-17 by the repo owner, on #486 (the design of record is its spec comment).
+
+**Context.** Each `vX.Y` tag was made by hand by an admin with a GPG key (DEVC-D8). The `release-tags`
+ruleset and release immutability already stop a published tag from moving, but the rest depended
+on the admin's discipline: release only from `main`, never go backwards, and write the Release.
+The ruleset also let the Repository admin role bypass it, so an admin could still delete or
+re-create a tag consumers had pinned.
+
+**Decision.**
+- A release is made by `.github/workflows/release.yml`, dispatched by hand (`workflow_dispatch`
+  only) with `bump` (`minor` or `major`) and `dry_run` (on by default), and no tag name. Its
+  read-only `verify` job refuses a dispatch off the default branch and a commit whose producing
+  PR, required checks or push runs on `main` are not all green, and shows the plan and the exact
+  notes in its step summary. Its `release` job runs behind the `release` environment (deployments
+  from `main` only, the maintainer as required reviewer, admin bypass off), repeats the
+  branch assert and every tag refusal, and has the release App create the tag and the published Release in one
+  `gh release create --target` call. Every run waits for the approval, dry runs included.
+- Tags are unsigned and created by that App. Provenance moves from the admin's key to a reviewed
+  environment run on `main`. That is safe because consumers pin commit SHAs and
+  `tools/check-self-pins.sh` already checks that a tag peels to its commit, lightweight or
+  annotated.
+- The dedicated release App `603id-devcontainers-release` (Contents read/write, Metadata read) is
+  installed on this repo only and is the `release-tags` ruleset's only bypass actor. The
+  Repository admin role's bypass is removed. This repo's release App is never installed on another
+  repo: each repo gets its own.
+- Break-glass is a recorded ruleset edit: temporarily disable the rule the operation needs (the
+  creation rule to create a tag, the deletion rule to delete one), do it by hand, restore the
+  rule, record the edit. It is never a standing bypass. The `devc-automerge-*` tags, the
+  auto-merge kill switch among them, are set and cleared the same way; the workflow has no input
+  for them.
+- Rejected: *a separate no-bypass ruleset for `devc-automerge-*`:* it would take the release
+  credential out of the kill switch's reach, at the cost of splitting the `release-tags` entry in
+  `.ai/project.yml` in two. Named as the alternative the owner may take later.
+- Rejected: *a temporary bypass entry for the Repository admin role as the break-glass form:* it
+  would confine the break-glass window to admins. Named as the narrower alternative the owner may
+  take later; it is not chosen because the owner's decision names disabling the rule.
+- Rejected: *keeping the signed, hand-made tag:* the rules above would stay a matter of the
+  admin's care, and the admin-role bypass would stay open.
+
+**Why DEVC-D and not IAC-D.** Only this repo's ruleset and release flow change. Consuming repos
+keep pinning commit SHAs and need no change. The one-App-per-repo rule is stated here only for
+this repo; any wider rule belongs in an IAC-D entry.
+
+**Consequences.**
+- Residual: the release credential can create the `devc-automerge-on` kill switch, because one
+  ruleset covers both tag patterns. That would arm auto-merge for every legacy-route consumer. The
+  `release` environment and its reviewer bound it.
+- Residual: while a break-glass rule is disabled, every writer can perform that operation on both
+  patterns: any account with write access, the bump-binaries App token, the dev App,
+  `603id-admin[bot]` while an elevated window is open, and any workflow's `GITHUB_TOKEN` with
+  `contents: write`. The window is kept as short as the operation.
+- Residual: the `release` environment's protection, `release-tags` and `release.yml` can
+  themselves be changed by the owner's admin login and by `603id-admin[bot]` (which holds
+  Administration, Environments, Actions and Workflows write, `docs/host-steps.md`), which could
+  then dispatch a release with no approval. The plugin's readback of the declared environment and
+  ruleset detects such a change after the fact; it does not prevent it. `.ai/project.yml`
+  declares both.
+- Tags `v1.0`-`v1.2` have no immutable Release, so the release credential could move them.
+- Releases made by the workflow without a `docs/releases/vX.Y.md` carry log-built notes (see
+  DEVC-D8's supersede line). Phases 2 and 3 (a script that prepares the pin-bump PR, and the
+  workflow that opens it) are separate work.
 
 ### Org-wide IAC-D decisions that bind this repo
 
