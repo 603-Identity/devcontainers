@@ -835,17 +835,17 @@ WSL integration for it (Settings, Resources, WSL integration).
 ## Updating a pinned tool
 
 `bump-binaries.yml` runs weekly, and on manual dispatch, for gh, yq, uv, tofu, tflint,
-node, npm and betterleaks. **`claude` is not covered yet** (`images/devapp/Dockerfile`): bump it by hand,
+node, npm, betterleaks and python. **`claude` is not covered yet** (`images/devapp/Dockerfile`): bump it by hand,
 see "Bumping `claude`" below. It needs a GitHub App (the private key is a secret of the `bump-binaries`
 Environment, restricted to `main`; docs/threat_model.md). Until the repo-level variable
 `BUMP_BINARIES_CLIENT_ID` (the App's Client ID) is set, the job is skipped (#87), and the fallback
 below is how to bump a tool. Set the variable last, after the Environment secret: with the variable
 set and the secret missing, the job runs and fails at the token step.
 The workflow resolves each tool's newest release (node: the current LTS line; npm:
-the newest release the current node pin supports), takes the sha256 from that release's
+the newest release the current node pin supports; python: the newest python-build-standalone build of the pinned major.minor), takes the sha256 from that release's
 own published checksum file (npm: the registry's `integrity` field) -- never from
 hashing the download -- and opens one PR per tool that is behind, with the release page
-and the URL the checksum was read from linked in the body (not a diff -- see step 1 below). To decline a version, close its PR and leave the `bump/<tool>-<version>` branch: the
+and the URL the checksum was read from linked in the body (not a diff -- see step 1 below). To decline a version, close its PR and leave the `bump/<tool>-<version>` branch (python's is `bump/python-<version>-<build>`, so closing its PR declines that build only and a later build of the same patch is proposed again): the
 next run skips that tool with a warning (#86), and deleting the branch proposes the version again. **betterleaks is the exception** (#190): while its pin is a release candidate (`X.Y.Z-rc.N`, today 2.0.0-rc.7) it
 takes the highest-versioned release among any GA release and the release candidates of its own `X.Y.Z` (never a later line's rc, #304), and once the pin is on a GA
 release it takes stable releases only, like every other tool (#208). It takes the sha256 only after `cosign verify-blob` accepts the
@@ -921,7 +921,7 @@ images and devc-verify first, then a release, then the template's line with the 
 (see "Cutting a release").
 
 Dependabot handles the base image digest, the GitHub Actions pins, and the Python tool lock (`uv` ecosystem on `images/base/tools`).
-The Python interpreter's three ARGs in `images/base/Dockerfile` (`PYTHON_VERSION`, `PYTHON_BUILD`, `PYTHON_SHA256`) are moved by neither Dependabot nor `bump-binaries.sh`, so they are re-pinned by hand from the release's `SHA256SUMS`, together with the smoke test's major.minor check when the minor changes (DEVC-D11).
+The Python interpreter's three ARGs in `images/base/Dockerfile` (`PYTHON_VERSION`, `PYTHON_BUILD`, `PYTHON_SHA256`) are not moved by Dependabot. `bump-binaries.yml` re-pins all three within the pinned major.minor (a new build tag alone counts as a bump, #561). A change of minor is still a hand re-pin from the release's `SHA256SUMS`, together with the smoke test's major.minor check (DEVC-D11).
 
 ## Cutting a release
 

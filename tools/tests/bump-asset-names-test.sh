@@ -30,8 +30,11 @@ tflint|tofu|TFLINT_VERSION|TFLINT_SHA256|v99.88.77
 node|node|NODE_VERSION|NODE_SHA256|v99.88.77
 betterleaks|base|BETTERLEAKS_VERSION|BETTERLEAKS_SHA256|v99.88.77'
 
-# A tool added to the script's dispatch must be added above (npm has no asset name).
-in_script="$(sed -nE 's/^  ([a-z0-9_-]+)\) +dockerfile_dir=.*/\1/p' "$SCRIPT" | grep -vx npm | sort | tr '\n' ' ')"
+# A tool added to the script's dispatch must be added above (npm has no asset name). python is
+# left out too: its asset name carries the build tag as well as the version, so it does not fit
+# this file's one-version-ARG shape; bump-python-test.sh covers its asset name, its large-file
+# and its failed-transfer cases.
+in_script="$(sed -nE 's/^  ([a-z0-9_-]+)\) +dockerfile_dir=.*/\1/p' "$SCRIPT" | grep -vxE 'npm|python' | sort | tr '\n' ' ')"
 in_test="$(cut -d'|' -f1 <<< "$TOOLS" | sort | tr '\n' ' ')"
 assert_eq "TOOLS covers every checksum-file tool bump-binaries.sh dispatches" "$in_script" "$in_test"
 

@@ -19,15 +19,24 @@
 # other tool (#208). Either way it takes the checksum only after cosign verifies the release's
 # sigstore bundle for its checksums.txt against the pinned signer identity.
 #
+# python (#561) stays on the pinned major.minor of images/base/Dockerfile (DEVC-D11): it lists the
+# five most recent astral-sh/python-build-standalone releases in ONE call (the default page size
+# returns HTTP 504), skips drafts, prereleases and any tag that is not exactly eight digits, tries the
+# rest newest tag first, and takes the first whose own SHA256SUMS lists exactly one
+# cpython-X.Y.N+TAG-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz for the pinned X.Y. A new
+# build tag with the same CPython patch counts as a bump, so it rewrites all three ARGs
+# (PYTHON_VERSION, PYTHON_BUILD, PYTHON_SHA256) and its branch is bump/python-<version>-<build>. A
+# move to another minor stays a hand re-pin (tests/smoke.sh hardcodes the major.minor).
+#
 # Every resolver sets CHECKSUM_URL, the URL its checksum was actually read from, next to
 # RELEASE_URL; the bump PR body cites both (#85).
 #
-# Usage: bump-binaries.sh <gh|yq|uv|tofu|tflint|node|npm|betterleaks>
+# Usage: bump-binaries.sh <gh|yq|uv|tofu|tflint|node|npm|betterleaks|python>
 # Env:   REPO (owner/repo), GH_TOKEN (gh, authenticated for push+PR), APP_SLUG,
 #        BOT_USER_ID (the bot's user id, for the commit's noreply email)
 set -euo pipefail
 
-tool="${1:?usage: bump-binaries.sh <gh|yq|uv|tofu|tflint|node|npm|betterleaks>}"
+tool="${1:?usage: bump-binaries.sh <gh|yq|uv|tofu|tflint|node|npm|betterleaks|python>}"
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 repo="${REPO:?REPO must be set, e.g. 603-Identity/devcontainers}"
 
@@ -35,6 +44,8 @@ NEW_VERSION=""
 NEW_CHECKSUM=""
 RELEASE_URL=""
 CHECKSUM_URL=""
+NEW_BUILD=""   # python only: the python-build-standalone release tag
+PIN_BUILD=""   # python only: the Dockerfile's current PYTHON_BUILD
 
 # sha256_line <url> <asset-filename> -> the sha256 field of a "sha256  filename" line.
 # gh, tflint, tofu and uv all publish this exact format (verified against gh, tflint,
@@ -261,6 +272,63 @@ resolve_npm() {
   exit 1
 }
 
+# python-build-standalone (#561). The pin (PYTHON_VERSION, PYTHON_BUILD) is read from the Dockerfile
+# and checked before any network call; every value taken from upstream is checked by shape again
+# before anything is written. Errors name only repo-side values (the pinned minor, a count), never
+# an upstream tag or a SHA256SUMS line, so upstream text cannot reach the Actions log.
+PBS_REPO="astral-sh/python-build-standalone"
+resolve_python() {
+  local df="$root/images/base/Dockerfile" pin_ver minor listing tag url cands sums_url sums matches n
+  pin_ver="$(sed -n 's/^ARG PYTHON_VERSION=//p' "$df")"
+  PIN_BUILD="$(sed -n 's/^ARG PYTHON_BUILD=//p' "$df")"
+  [[ "$pin_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+    || { echo "::error::python: PYTHON_VERSION in $df is missing or not a plain X.Y.Z" >&2; exit 1; }
+  [[ "$PIN_BUILD" =~ ^[0-9]{8}$ ]] \
+    || { echo "::error::python: PYTHON_BUILD in $df is missing or not exactly eight digits" >&2; exit 1; }
+  minor="${pin_ver%.*}"
+
+  listing="$(gh api "repos/$PBS_REPO/releases?per_page=5" \
+    --jq '.[] | select((.draft | not) and (.prerelease | not)) | [.tag_name, .html_url] | @tsv')"
+  # Keep only exactly-eight-digit tags, newest first by tag (the API's order is not relied on).
+  cands=""
+  while IFS=$'\t' read -r tag url; do
+    [[ "$tag" =~ ^[0-9]{8}$ ]] || continue
+    cands+="${tag}"$'\t'"${url}"$'\n'
+  done <<< "$listing"
+  cands="$(printf '%s' "$cands" | sort -r)"
+
+  while IFS=$'\t' read -r tag url; do
+    [ -n "$tag" ] || continue
+    sums_url="https://github.com/$PBS_REPO/releases/download/${tag}/SHA256SUMS"
+    # Read into a variable first and fail on a failed transfer (see sha256_line).
+    sums="$(curl -fsSL "$sums_url")" \
+      || { echo "::error::python: could not read SHA256SUMS of a candidate release for $minor" >&2; exit 1; }
+    # A literal comparison, not a regex: fixed prefix, digits-only patch, fixed suffix. The
+    # values travel through ENVIRON. Prints "<sha256> <X.Y.N>" per matching line.
+    matches="$(PBS_PFX="cpython-${minor}." PBS_SFX="+${tag}-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz" awk '
+      BEGIN { pfx = ENVIRON["PBS_PFX"]; sfx = ENVIRON["PBS_SFX"]; lp = length(pfx); ls = length(sfx) }
+      NF == 2 && length($2) > lp + ls && substr($2, 1, lp) == pfx && substr($2, length($2) - ls + 1) == sfx {
+        patch = substr($2, lp + 1, length($2) - lp - ls)
+        if (patch ~ /^[0-9]+$/) print $1, substr(pfx, 9) patch
+      }' <<< "$sums")"
+    n="$(printf '%s' "$matches" | awk 'END { print NR }')"
+    if [ "$n" -gt 1 ]; then
+      echo "::error::python: SHA256SUMS of a candidate release lists $n assets for $minor, expected one" >&2
+      exit 1
+    fi
+    if [ "$n" -eq 1 ]; then
+      read -r NEW_CHECKSUM NEW_VERSION <<< "$matches"
+      NEW_BUILD="$tag"
+      RELEASE_URL="$url"
+      CHECKSUM_URL="$sums_url"
+      return 0
+    fi
+  done <<< "$cands"
+
+  echo "::error::python: none of the listed releases carries a $minor install_only_stripped linux x86_64 asset" >&2
+  exit 1
+}
+
 case "$tool" in
   gh)     dockerfile_dir=base; ver_arg=GH_VERSION;     sha_arg=GH_SHA256;     resolve_gh ;;
   yq)     dockerfile_dir=base; ver_arg=YQ_VERSION;     sha_arg=YQ_SHA256;     resolve_yq ;;
@@ -270,6 +338,7 @@ case "$tool" in
   node)   dockerfile_dir=node; ver_arg=NODE_VERSION;   sha_arg=NODE_SHA256;   resolve_node ;;
   npm)    dockerfile_dir=node; ver_arg=NPM_VERSION;    sha_arg=NPM_INTEGRITY; resolve_npm ;;
   betterleaks) dockerfile_dir=base; ver_arg=BETTERLEAKS_VERSION; sha_arg=BETTERLEAKS_SHA256; resolve_betterleaks ;;
+  python) dockerfile_dir=base; ver_arg=PYTHON_VERSION; sha_arg=PYTHON_SHA256; build_arg=PYTHON_BUILD; resolve_python ;;
   *) echo "::error::unknown tool '$tool'" >&2; exit 1 ;;
 esac
 
@@ -278,7 +347,7 @@ if [ -z "$NEW_VERSION" ] || [ -z "$NEW_CHECKSUM" ]; then
   exit 1
 fi
 
-# NEW_VERSION and NEW_CHECKSUM are upstream-controlled (a release tag, a checksum
+# NEW_VERSION and NEW_CHECKSUM (and, for python, NEW_BUILD) are upstream-controlled (a release tag, a checksum
 # file's content, or the npm registry's integrity field) and end up in a sed/awk
 # program, a git branch name, a commit message and a PR title/body. Reject anything
 # that isn't the exact shape expected BEFORE any of that -- never a loose sanity check
@@ -303,8 +372,25 @@ dockerfile="$root/images/${dockerfile_dir}/Dockerfile"
 current_version="$(sed -n "s/^ARG ${ver_arg}=//p" "$dockerfile")"
 [ -n "$current_version" ] || { echo "::error::could not read $ver_arg from $dockerfile" >&2; exit 1; }
 
-if [ "$NEW_VERSION" = "$current_version" ]; then
-  echo "$tool: up to date at $current_version"
+# python is pinned by version AND build tag: the label carries both (X.Y.N+TAG) wherever a
+# message, branch, commit or PR title names the move, so a build-only bump never reads as
+# 3.15.2 -> 3.15.2. Every other tool's label is its plain version.
+current_label="$current_version"
+new_label="$NEW_VERSION"
+branch="bump/${tool}-${NEW_VERSION}"
+if [ "$tool" = python ]; then
+  # Defence in depth: the listing filter and the asset match already guarantee these.
+  if ! [[ "$NEW_BUILD" =~ ^[0-9]{8}$ ]] || [ "${NEW_VERSION%.*}" != "${current_version%.*}" ]; then
+    echo "::error::python: resolved build tag or minor fails its shape check: rejecting" >&2
+    exit 1
+  fi
+  current_label="${current_version}+${PIN_BUILD}"
+  new_label="${NEW_VERSION}+${NEW_BUILD}"
+  branch="bump/python-${NEW_VERSION}-${NEW_BUILD}"
+fi
+
+if [ "$new_label" = "$current_label" ]; then
+  echo "$tool: up to date at $current_label"
   exit 0
 fi
 
@@ -313,12 +399,14 @@ fi
 # rather than opening a PR for one -- "latest" moving backwards (a yanked release, a
 # tag deleted and reused) is a signal to fail closed on, not to propose as this
 # week's bump.
-if [[ "$(ver_key "$NEW_VERSION")" < "$(ver_key "$current_version")" ]]; then
-  echo "::error::$tool: resolved $NEW_VERSION is older than the current pin $current_version -- refusing to open a downgrade PR" >&2
+# python also refuses a lower build tag (equal-length digit strings compare as strings, so no
+# leading-zero octal reading).
+if [[ "$(ver_key "$NEW_VERSION")" < "$(ver_key "$current_version")" ]] \
+  || { [ "$tool" = python ] && [[ "$NEW_BUILD" < "$PIN_BUILD" ]]; }; then
+  echo "::error::$tool: resolved $new_label is older than the current pin $current_label -- refusing to open a downgrade PR" >&2
   exit 1
 fi
 
-branch="bump/${tool}-${NEW_VERSION}"
 open_count="$(gh pr list --repo "$repo" --head "$branch" --state open --json number --jq 'length')"
 if [ "$open_count" != "0" ]; then
   echo "$tool: PR already open on $branch, nothing to do"
@@ -356,7 +444,7 @@ git -C "$root" config user.name "${APP_SLUG:?APP_SLUG must be set}[bot]"
 git -C "$root" config user.email "${BOT_USER_ID:?BOT_USER_ID must be set}+${APP_SLUG}[bot]@users.noreply.github.com"
 git -C "$root" switch -c "$branch"
 
-# The two values are validated above, but rewrite without a sed/awk program built
+# The values are validated above, but rewrite without a sed/awk program built
 # from interpolated strings anyway. The value travels through ENVIRON, not -v: awk's
 # -v assignment runs C-style backslash-escape processing on its value (so a
 # validated, backslash-free value could still, through -v, turn a literal `\n` into a
@@ -370,13 +458,19 @@ set_arg() { # set_arg <file> <ARG name> <value>
 }
 set_arg "$dockerfile" "$ver_arg" "$NEW_VERSION"
 set_arg "$dockerfile" "$sha_arg" "$NEW_CHECKSUM"
+[ "$tool" != python ] || set_arg "$dockerfile" "$build_arg" "$NEW_BUILD"
 
 git -C "$root" add "$dockerfile"
-git -C "$root" commit -m "build(images): bump $tool $current_version -> $NEW_VERSION"
+git -C "$root" commit -m "build(images): bump $tool $current_label -> $new_label"
 git -C "$root" push -u origin "$branch"
 
+consumer_note=""
+if [ "$tool" = python ]; then
+  consumer_note="DEVC-D11 cites consumers running actions/setup-python at the image's version, so a patch bump may call for consumer pin PRs (tracked on #556)."
+fi
+
 body="$(cat <<EOF
-Opened by \`bump-binaries.yml\` (#29): $tool $current_version -> $NEW_VERSION.
+Opened by \`bump-binaries.yml\` (#29): $tool $current_label -> $new_label.
 
 The checksum above was taken from that release's own published checksum file (or, for
 npm, the registry's \`integrity\` field) -- never from hashing the download.
@@ -385,13 +479,14 @@ Release notes: $RELEASE_URL
 Checksum source: $CHECKSUM_URL
 
 This still needs a human review before merge: read the release notes above (and the
-diff since $current_version yourself -- this PR links the release, not a compare). For
+diff since $current_label yourself -- this PR links the release, not a compare). For
 Node, also open the matching CI-pin PRs in every consuming repo; for OpenTofu each
 consumer moves its tofu_version in the PR that takes the new image digest. The
 ordinary gates (hadolint, Trivy, the smoke test, the template test, and
 architect-review because \`images/\` is a code_path) run on this PR like any other.
+$consumer_note
 EOF
 )"
 gh pr create --repo "$repo" --head "$branch" --base main \
-  --title "build(images): bump $tool $current_version -> $NEW_VERSION" \
+  --title "build(images): bump $tool $current_label -> $new_label" \
   --body "$body"
