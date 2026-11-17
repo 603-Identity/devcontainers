@@ -1,0 +1,208 @@
+name: Release
+
+# Cuts a `vX.Y` release: the tag and the GitHub Release, in one call, at a commit of `main` that has
+# already passed everything that guards `main` (#486, DEVC-D12).
+#
+# Trust model:
+#   * Who can dispatch: any account with write access. The dispatch alone creates nothing.
+#   * What gates it: the `release` environment (deployments from `main` only, the maintainer as
+#     required reviewer, admin bypass off). Every run waits for that approval, dry runs included.
+#     The reviewer reads `verify`'s step summary first: the plan and the exact notes.
+#   * `verify` (read-only token) refuses a dispatch off the default branch, and a commit whose PR,
+#     required checks or push runs are not all green. `release` repeats the branch assert and every
+#     tag refusal, and fails if its tag differs from `verify`'s.
+#   * The credential: the release App `603id-devcontainers-release`, installed on this repo only,
+#     `contents: write`, minted per run in the step right before it is used. It is the `release-tags`
+#     ruleset's only bypass actor, which is what lets it create a tag at all. Its key is a secret of
+#     the `release` environment.
+#   * `RELEASE_CLIENT_ID` is a repository variable, not an environment variable, because a job-level
+#     `if:` cannot see environment variables.
+#   * The workflow takes no tag name: `bump` picks `minor` or `major`, and the tag is computed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Which part of the version to raise: minor (vX.Y to vX.Y+1) or major (vX.Y to vX+1.0)"
+        type: choice
+        options:
+          - minor
+          - major
+        required: true
+      dry_run:
+        description: "Dry run: compute and show the plan and notes, create nothing"
+        type: boolean
+        default: true
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read # checkout
+      actions: read # main's push runs on the commit
+      checks: read # the required check runs on the producing PR
+      statuses: read # the architect-review commit status
+      pull-requests: read # the PR that produced the commit
+    outputs:
+      tag: ${{ steps.plan.outputs.tag }}
+    steps:
+      - name: Assert the dispatch is on the default branch
+        env:
+          REF: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DEFAULT_BRANCH" ] || [ "$REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
+            echo "::error::A release is dispatched from the default branch only; this run is on $REF."
+            exit 1
+          fi
+
+      - name: Assert the release App is wired up
+        env:
+          RELEASE_CLIENT_ID: ${{ vars.RELEASE_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "$RELEASE_CLIENT_ID" ]; then
+            echo "::error::The repository variable RELEASE_CLIENT_ID is empty: the release App is not wired up, so the release job would be skipped."
+            exit 1
+          fi
+
+      - name: Check out the dispatched commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Read the mode
+        id: mode
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          mode="$(bash .github/scripts/release-plan.sh mode "$DRY_RUN")"
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+
+      - name: Verify the commit passed every gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: bash .github/scripts/release-verify.sh "$SHA"
+
+      - name: Compute the plan
+        id: plan
+        env:
+          BUMP: ${{ inputs.bump }}
+          SHA: ${{ github.sha }}
+          MODE: ${{ steps.mode.outputs.mode }}
+        run: bash .github/scripts/release-plan.sh plan "$BUMP" "$SHA" "$MODE"
+
+      - name: Build the notes
+        env:
+          PREV: ${{ steps.plan.outputs.prev }}
+          TAG: ${{ steps.plan.outputs.tag }}
+          SHA: ${{ github.sha }}
+          NOTES_FILE: ${{ runner.temp }}/release-notes.md
+        run: bash .github/scripts/release-plan.sh notes "$PREV" "$TAG" "$SHA" "$NOTES_FILE"
+
+      - name: Show the plan and the notes to the approver
+        env:
+          PREV: ${{ steps.plan.outputs.prev }}
+          TAG: ${{ steps.plan.outputs.tag }}
+          SHA: ${{ github.sha }}
+          MODE: ${{ steps.mode.outputs.mode }}
+          NOTES_FILE: ${{ runner.temp }}/release-notes.md
+        run: bash .github/scripts/release-plan.sh summary "$PREV" "$TAG" "$SHA" "$MODE" "$NOTES_FILE" >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: release
+    needs: verify
+    if: vars.RELEASE_CLIENT_ID != ''
+    environment: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read # checkout; the tag and the Release use the App token below
+    steps:
+      - name: Assert the dispatch is on the default branch
+        env:
+          REF: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DEFAULT_BRANCH" ] || [ "$REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
+            echo "::error::A release is dispatched from the default branch only; this run is on $REF."
+            exit 1
+          fi
+
+      - name: Check out the dispatched commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Read the mode
+        id: mode
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          mode="$(bash .github/scripts/release-plan.sh mode "$DRY_RUN")"
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+
+      - name: Recompute the plan
+        id: plan
+        env:
+          BUMP: ${{ inputs.bump }}
+          SHA: ${{ github.sha }}
+          MODE: ${{ steps.mode.outputs.mode }}
+        run: bash .github/scripts/release-plan.sh plan "$BUMP" "$SHA" "$MODE"
+
+      - name: Check the tag is the one verify computed
+        env:
+          TAG: ${{ steps.plan.outputs.tag }}
+          VERIFIED_TAG: ${{ needs.verify.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -z "$TAG" ] || [ "$TAG" != "$VERIFIED_TAG" ]; then
+            echo "::error::This job computed '$TAG', but verify computed '$VERIFIED_TAG'. Dispatch again."
+            exit 1
+          fi
+
+      - name: Build the notes
+        env:
+          PREV: ${{ steps.plan.outputs.prev }}
+          TAG: ${{ steps.plan.outputs.tag }}
+          SHA: ${{ github.sha }}
+          NOTES_FILE: ${{ runner.temp }}/release-notes.md
+        run: bash .github/scripts/release-plan.sh notes "$PREV" "$TAG" "$SHA" "$NOTES_FILE"
+
+      # Minted on dry runs too, so a dry run exercises the key. Contents write on this repo, nothing else.
+      - name: Generate a token for the release app
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.RELEASE_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          repositories: devcontainers
+          permission-contents: write
+
+      - name: Create the tag and the Release
+        if: steps.mode.outputs.mode == 'real'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.plan.outputs.tag }}
+          SHA: ${{ github.sha }}
+          NOTES_FILE: ${{ runner.temp }}/release-notes.md
+        run: gh release create "$TAG" --target "$SHA" --title "$TAG" --notes-file "$NOTES_FILE"

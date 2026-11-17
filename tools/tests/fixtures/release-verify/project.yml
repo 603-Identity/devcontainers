@@ -1,0 +1,16 @@
+# The part of .ai/project.yml that release-verify.sh reads.
+rulesets:
+  - name: main-approval
+    source: repo
+    rule_types: [pull_request, deletion, non_fast_forward]
+    required_checks: ["never-read"]
+  - name: main-required-checks
+    source: repo
+    rule_types: [required_status_checks]
+    required_checks:
+      - "hadolint (Dockerfiles)"
+      - "selftest"
+      - "architect-review"
+review:
+  ci_gate:
+    check: architect-review

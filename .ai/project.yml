@@ -94,8 +94,6 @@ gates:
 #
 # build.yml's "Build, test, push and attest" job is deliberately absent: it runs only on
 # push to main, the schedule and manual dispatch, never on a pull request.
-#
-# The tag ruleset `release-tags` is not declared here yet; it gets its own issue.
 rulesets:
   - name: main-approval
     source: repo
@@ -119,6 +117,15 @@ rulesets:
       "Build and smoke-test (no push)": 15368
       "architect-review": 15368
       "selftest": 15368
+  # The tag ruleset (target: tag): it holds the `v*` release tags and the `devc-automerge-*` kill
+  # switch, and carries no required checks. Its only bypass actor is the release App
+  # (`603id-devcontainers-release`, DEVC-D12); `ref_patterns` is what the live ruleset's
+  # `conditions.ref_name.include` reads back today.
+  - name: release-tags
+    source: repo
+    target: tag
+    rule_types: [creation, update, deletion, non_fast_forward]
+    ref_patterns: ["refs/tags/v*", "refs/tags/devc-automerge-*"]
 # The legacy alias, still what most readers use: kept in step with the main-required-checks
 # entry above by hand (the checker does not compare them).
 ruleset:
@@ -181,3 +188,15 @@ identities:
   dev_app: { login: "603id-dev[bot]", id: 340163647, commit_route: api }
   reviewer_app: { login: "603id-review[bot]", id: 340164886 }
   loop_app: null   # orchestration is null: nothing acts as a loop App here.
+
+# ── deployment environments ──────────────────────────────────────────────────
+# The `release` environment is what release.yml's `release` job runs behind, and what the release
+# App's key is a secret of: the one reviewed gate between a dispatch and a tag. The plugin's
+# readback fails when the live reviewers, branch policy, branch names or admin bypass differ.
+environments:
+  - name: release
+    reviewers:
+      - { type: User, id: 281693088 }
+    branch_policy: custom
+    branches: [main]
+    admins_can_bypass: false
