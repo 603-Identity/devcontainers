@@ -1,10 +1,11 @@
 name: Bump pinned binaries
 
 # #29: Dependabot bumps the base image digest, the Actions, and the uv lock, but it
-# cannot bump the ARG-pinned release binaries (gh, yq, uv, tofu, tflint, node, npm, betterleaks) --
+# cannot bump the ARG-pinned release binaries (gh, yq, uv, tofu, tflint, node, npm, betterleaks, python) --
 # until now that was a manual PR every time, including reading the sha256 from
 # upstream by hand. This resolves each tool's newest release (node: the current LTS
-# line; npm: the newest release the current node pin supports), takes the checksum
+# line; npm: the newest release the current node pin supports; python: the newest build of the
+# pinned major.minor, #561), takes the checksum
 # from that release's own published file, and opens one PR per tool that is behind.
 #
 # A PR opened with the job's GITHUB_TOKEN does not trigger the required-check
@@ -44,7 +45,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        tool: [gh, yq, uv, tofu, tflint, node, npm, betterleaks]
+        tool: [gh, yq, uv, tofu, tflint, node, npm, betterleaks, python]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

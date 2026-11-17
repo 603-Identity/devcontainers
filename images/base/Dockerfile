@@ -17,8 +17,8 @@
 # Ubuntu 26.04. The Ubuntu major tracks GitHub's `ubuntu-latest` runner. The Python
 # standard for consuming repos is the pinned interpreter installed below (its version is
 # the PYTHON_VERSION ARG), not Ubuntu's apt Python 3.14, which stays only for apt's own
-# tools and the tools venv. Re-pin the interpreter deliberately, together with
-# tests/smoke.sh's major.minor checks and DEVC-D11.
+# tools and the tools venv. The weekly bump re-pins the interpreter within its minor; a change of
+# minor is a deliberate hand re-pin, together with tests/smoke.sh's major.minor checks and DEVC-D11.
 FROM ubuntu:26.04@sha256:6a06111c3b0a8600feadb270aec771dc239bf407b25625f93f44ab00e11f4d3c
 
 LABEL org.opencontainers.image.source="https://github.com/603-Identity/devcontainers" \
@@ -120,8 +120,8 @@ RUN curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/
 # --- The Python standard for consuming repos: a pinned CPython from astral-sh/python-build-standalone,
 # pinned by version AND sha256 like every binary here. The sha256 is the asset's line in the release's own
 # published SHA256SUMS, not computed from a first download. Ubuntu 26.04 and `ubuntu-latest` stay on
-# 3.14, so this cannot come from apt. Nothing refreshes it: the weekly apt rebuild does not touch it and
-# neither Dependabot nor bump-binaries.sh knows it, so it is re-pinned by hand (DEVC-D11).
+# 3.14, so this cannot come from apt. The weekly apt rebuild does not touch it; bump-binaries.sh re-pins all three ARGs
+# within this major.minor, and a minor change is a hand re-pin (DEVC-D11).
 # The `+` between version and build tag is `%2B` in the URL.
 # `tar --no-same-owner` keeps the files root-owned (as root, tar would keep the archive's uid, which could
 # be 1000, the app user). pip is deleted to keep today's surface (Ubuntu's Python has no pip module);
