@@ -59,7 +59,7 @@ vulnerabilities:
     expired_at: 2026-12-17
   - id: CVE-2026-78661
     paths: ["usr/local/bin/gh", "usr/local/libexec/gh-real"]
-    statement: "HIGH or CRITICAL in golang.org/x/net/html's parser (addText/fosterParent); golang.org/x/net v0.61.0 is in upstream gh 2.104.0; no fixed gh release. The binary has no html.Parse, html.(*parser) or html.fosterParent symbol: it links the tokenizer only (#496)."
+    statement: "HIGH or CRITICAL in golang.org/x/net/html's parser (addText/fosterParent); golang.org/x/net v0.61.0 is in upstream gh 2.104.0; fixed in gh 2.105.0 (x/net v0.62.0), pin bump pending in #602. The binary has no html.Parse, html.(*parser) or html.fosterParent symbol: it links the tokenizer only (#496)."
     expired_at: 2026-12-17
   - id: CVE-2026-78661
     paths: ["usr/local/bin/betterleaks"]
