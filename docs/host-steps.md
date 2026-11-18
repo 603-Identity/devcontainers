@@ -200,11 +200,18 @@ below, such as `{pr}`, are filled in by the host session at run time, never by t
      drive letter, a colon and a forward slash, then slash-separated segments of letters, digits,
      space, `.`, `_` and `-` only, no `.` or `..` segment, ending in `/.docker/cli-plugins`. Stop if
      it does not. `docker-buildx.exe` must be a regular file in it (`test -f` and not `test -L`).
-   - **(e)** Before trusting that folder, require both. First, PowerShell
-     (`powershell.exe -NoProfile -NonInteractive`) runs `Get-AuthenticodeSignature -LiteralPath` on
+   - **(e)** Before trusting that folder, require both. First, PowerShell 7
+     (`"C:/Program Files/PowerShell/7/pwsh.exe" -NoProfile -NonInteractive`, double-quoted because
+     `Program Files` contains a space) runs `Get-AuthenticodeSignature -LiteralPath` on
      that `docker-buildx.exe`, and it must read status `Valid` with a signer subject naming Docker
      Inc; the path reaches PowerShell only through an environment variable that the command reads as
-     `$env:<name>`, never interpolated into the `-Command` text. Second, the reader search of
+     `$env:<name>`, never interpolated into the `-Command` text. The `C:/Program Files/PowerShell/7`
+     folder is admin-owned, as System32 is, and naming the absolute path keeps a `pwsh` planted
+     earlier on `PATH` from being picked up. That `pwsh.exe` must be a regular file and not a link (`test -f` and not `test -L`,
+     as in (c) and (d)); if it is missing or is not, the check cannot be completed and the session
+     stops. `powershell.exe` is not used: started from PowerShell 7, it inherits PowerShell 7's
+     `PSModulePath`, from which it cannot load the `Microsoft.PowerShell.Security` module that
+     provides `Get-AuthenticodeSignature`. Second, the reader search of
      Procedure B Phase 1 step 1, applied to the plugin folder instead of the token directory, must
      find no running container: none with a bind mount whose source (normalised and compared as that
      step says) is the folder, any path inside it, or any ancestor of it in each normalised form
