@@ -35,7 +35,9 @@ EOF
 printf 'git %s\n' "$*" >> "$TR_LOG"
 if [ "$#" -eq 6 ] && [ "$1" = -c ] && [ "$2" = credential.helper= ] && [ "$3" = clone ] \
    && [ "$4" = --quiet ] && [ "$5" = https://github.com/603-Identity/devcontainers ]; then
-  mkdir -p "$6" && cp -R "$TR_FIXTURE/." "$6/"; exit 0
+  dest=$6
+  [ "${TR_CLONE:-}" != misplaced ] || dest=$TR_SCRATCH/misplaced
+  mkdir -p "$dest/.git" && cp -R "$TR_FIXTURE/." "$dest/"; exit 0
 fi
 if [ "$#" -eq 6 ] && [ "$1" = -C ] && [ "$3" = merge-base ] && [ "$4" = --is-ancestor ] && [ "$6" = origin/main ]; then
   rc=${TR_MERGE_RC:-0}
@@ -196,7 +198,7 @@ begin() {
   SCRATCH="$(mktemp -d)"
   export TR_SCRATCH="$SCRATCH" TR_STATE="$SCRATCH/state" TR_LOG="$SCRATCH/calls.log"
   export TR_FIXTURE="$SCRATCH/fixture" TR_TEMPLATE="$TEMPLATE"
-  unset TR_MERGE_RC TR_BUILD_FAIL TR_CLAUDE TR_WRONG_REV TR_SCAN_RC TR_VERSION_RC TR_GREP_RC TR_NONE
+  unset TR_MERGE_RC TR_BUILD_FAIL TR_CLAUDE TR_WRONG_REV TR_SCAN_RC TR_VERSION_RC TR_GREP_RC TR_NONE TR_CLONE
   while read -r v; do unset "$v"; done < <(compgen -v | grep -E '^TR_(BIN|DROP)_' || true)
   mkdir -p "$TR_STATE" "$SCRATCH/tmp" "$SCRATCH/out" "$SCRATCH/cwd"
   : >"$TR_LOG"
@@ -325,6 +327,19 @@ go "$RESULTS" "$COMMIT"
 assert_rc "drift guard: a clone without build-and-test.sh" 4 "$RC"
 assert_eq "drift guard: a clone without it (no docker call)" 0 "$(calls docker)"
 common_checks "drift guard: a clone without build-and-test.sh"; finish
+
+# --- a clone that is not where the script reads it ----------------------------------------------
+
+begin; export TR_CLONE=misplaced; : >"$RESULTS"; go "$RESULTS" "$COMMIT"
+assert_rc "a misplaced clone" 1 "$RC"
+assert_eq "a misplaced clone: one stderr line" 1 "$(stderr_lines)"
+if stderr_has "the clone is not at the expected path"; then pass; else fail "a misplaced clone: the line says where the clone is wrong"; fi
+if stderr_has "drift guard"; then fail "a misplaced clone: the line is not the drift-guard line"; else pass; fi
+if stderr_has "command failed"; then fail "a misplaced clone: die ran, not the ERR trap"; else pass; fi
+assert_eq "a misplaced clone: no merge-base call" 0 "$(grep -c 'merge-base' "$TR_LOG" || true)"
+assert_eq "a misplaced clone: no docker call" 0 "$(calls docker)"
+if [ ! -e "$RESULTS" ]; then pass; else fail "a misplaced clone: the empty results file is removed"; fi
+common_checks "a misplaced clone"; finish
 
 # --- mid-run failures --------------------------------------------------------------------------
 
@@ -478,6 +493,11 @@ for pat in "docker build --no-cache --pull -t devcontainer-base:rescan /./" \
   case $dlog in *"$pat"*) pass ;; *) fail "cygpath run: the docker log has '$pat'" ;; esac
 done
 if grep '^docker cp ' "$TR_LOG" | grep -qv ' /\./'; then fail "cygpath run: a cp target is not converted"; else pass; fi
+glog=$(grep '^git ' "$TR_LOG")
+gstripped=${glog//"/.$SCRATCH"/}
+case $gstripped in *"$SCRATCH"*) fail "cygpath run: a raw scratch path reached git" ;; *) pass ;; esac
+assert_eq "cygpath run: the clone target is the cygpath form" 1 "$(grep -cF "git -c credential.helper= clone --quiet https://github.com/603-Identity/devcontainers /.$SCRATCH/" <<<"$glog" || true)"
+assert_eq "cygpath run: both -C directories are the cygpath form" 2 "$(grep -c "^git -C /\.$SCRATCH/" <<<"$glog" || true)"
 finish
 
 # --- the drift-guard constant -------------------------------------------------------------------
