@@ -2,6 +2,8 @@
 
 **Now:** Milestone 6, Internal hardening, in `implementing`. Step 4 is built and open as PR #389.
 
+**Milestone close:** closed — milestone 5, Trivy renewal 2026-11 (0 open issues, confirmed closed on read-back).
+
 **Just done:**
 - unparked M6 at `961d771`.
 - Milestone 6 step 4 built as #389 (branch `fix/merge-guard-step4`, `5f7507c`; `Closes #170, closes #171, closes #311`).
