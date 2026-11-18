@@ -39,6 +39,14 @@ USER 0
 # Compatibility notes: base64gzip output is equivalent but not byte-identical, and WinRM
 # provisioners are removed; no consuming repo uses either (checked 2026-10-01).
 #
+# 1.13.1 (from 1.13.0, 2026-10-06, #322): the newest release (2026-10-01), a patch bump.
+# Checksum from the release's own tofu_1.13.1_SHA256SUMS. Trivy: the 2026-10-02 re-review
+# (#145) recorded that 1.13.1 carries the same 3 of the 14 HIGH findings as 1.13.0
+# (CVE-2026-56864, CVE-2026-56865, CVE-2026-84445), so the bump cleared no exception; a
+# later scan found a crypto/x509 finding in 1.13.1, which 1.13.2 cleared (#419). Release
+# notes: two bug fixes for ephemeral resources, nothing breaking. This version's checksum
+# file was not signature-checked (the record below covers 1.13.0, 1.13.2 and 1.13.9 only).
+#
 # 1.13.2 (from 1.13.1, 2026-11-02): the newest release (2026-10-21), a patch bump. Trivy:
 # 5 HIGH findings, all allowlisted in .trivyignore.yaml (CVE-2026-56864, CVE-2026-56865,
 # CVE-2026-84445, plus CVE-2026-78669 and CVE-2026-116587, published since 1.13.0).
