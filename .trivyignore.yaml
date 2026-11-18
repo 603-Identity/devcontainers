@@ -14,9 +14,11 @@
 # every entry expires 2026-12-17, renewal is #484). Every one is a Go module CVE compiled
 # into an upstream release binary. Fixing it needs a new upstream build: we cannot rebuild
 # these ourselves without giving up the upstream checksum verification that is the point of
-# pinning them. Pins at the scan: gh 2.104.0, betterleaks 2.0.0-rc.8, tofu 1.13.9,
+# pinning them. Pins at the scan: betterleaks 2.0.0-rc.8, tofu 1.13.9,
 # tflint 0.66.0, yq 4.54.3.
 #   * yq and tflint have no entries: the scan lists no finding for either.
+#   * gh has no entries since it moved to 2.105.0 (#602): the build Trivy gate (HIGH and
+#     CRITICAL, unfixed findings ignored) passes with no gh entry.
 #   * betterleaks carries only CVE-2026-78661 (below).
 #     (rc.3 and later are needed for `stdin --git-diff`, which tools/secret-scan.sh uses,
 #     #449.)
@@ -25,17 +27,13 @@
 #     upstream release exists.
 #   * CVE-2026-78661 (GO-2026-6860, #496): an O(n^2) denial of service in
 #     golang.org/x/net/html's PARSER (addText, fosterParent); its tokenizer is not affected.
-#     Fixed in x/net 0.62.0; the scan shows gh on v0.61.0, betterleaks on v0.60.0 and tofu
+#     Fixed in x/net 0.62.0; the scan shows betterleaks on v0.60.0 and tofu
 #     on v0.57.0.
 #     Reachability, checked against the built images by the symbol names the Go linker
 #     keeps (it drops unused functions; html.NewTokenizer is the control): in
-#     usr/local/bin/gh, usr/local/libexec/gh-real, usr/local/bin/betterleaks and
-#     usr/local/bin/tofu no html.Parse, html.(*parser) or html.fosterParent symbol is present.
-#     gh links the tokenizer only (NewTokenizer present in usr/local/bin/gh and
-#     usr/local/libexec/gh-real); betterleaks and tofu link no x/net/html at all
-#     (NewTokenizer absent).
-#     gh appears twice: usr/local/bin/gh, and usr/local/libexec/gh-real in the dev-App
-#     images, the same file (equal sha256).
+#     usr/local/bin/betterleaks and usr/local/bin/tofu no html.Parse, html.(*parser) or
+#     html.fosterParent symbol is present.
+#     betterleaks and tofu link no x/net/html at all (NewTokenizer absent).
 vulnerabilities:
   - id: CVE-2026-116587
     paths: ["usr/local/bin/tofu"]
@@ -56,10 +54,6 @@ vulnerabilities:
   - id: CVE-2026-84445
     paths: ["usr/local/bin/tofu"]
     statement: "HIGH or CRITICAL in google.golang.org/grpc v1.83.1 compiled into upstream tofu 1.13.9; no fixed upstream release."
-    expired_at: 2026-12-17
-  - id: CVE-2026-78661
-    paths: ["usr/local/bin/gh", "usr/local/libexec/gh-real"]
-    statement: "HIGH or CRITICAL in golang.org/x/net/html's parser (addText/fosterParent); golang.org/x/net v0.61.0 is in upstream gh 2.104.0; fixed in gh 2.105.0 (x/net v0.62.0), pin bump pending in #602. The binary has no html.Parse, html.(*parser) or html.fosterParent symbol: it links the tokenizer only (#496)."
     expired_at: 2026-12-17
   - id: CVE-2026-78661
     paths: ["usr/local/bin/betterleaks"]

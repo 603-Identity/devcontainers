@@ -59,8 +59,8 @@ RUN apt-get update \
 
 # --- gh CLI, from the release tarball rather than the apt repo so the version is
 # pinned and checksum-verified like every other binary here.
-ARG GH_VERSION=2.104.0
-ARG GH_SHA256=98cb101ad87dbbd3f6b2f2bfcbd43197ccd07643140121d8a9cfaa91eadbc24e
+ARG GH_VERSION=2.105.0
+ARG GH_SHA256=79e7ab5db738c48777b696e374f8b428f0647debfb424f44d2f426370407fe2f
 RUN curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" \
         -o /tmp/gh.tar.gz \
     && echo "${GH_SHA256}  /tmp/gh.tar.gz" | sha256sum -c - \
