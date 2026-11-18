@@ -1,26 +1,33 @@
 # Next steps
 
-**Now:** Milestone 5, Trivy renewal 2026-11, `implementing`. The Python 3.15 base image (#556) has merged; its two follow-ups are being specced so they ship in the same release. Milestone 6 is parked.
+**Now:** Milestone 5, Trivy renewal 2026-11, `implementing`. v1.8 is released. What's left on M5: the v1.8 pin bump (#582), the host re-scan script (#569, lane building), then the `.trivyignore.yaml` renewal (#484) before 2026-12-01. Milestone 6 is parked.
 
 **Just done:**
-- #556 (Python standard): filed, specced, built in a lane, merged as PR #557. The base image's default `python3` is a pinned python-build-standalone CPython 3.15.2 (DEVC-D11). The owner's host Trivy run found no component under `/opt/devc/python`, and the docs say so. #556 stays open for the consuming-repo checklist.
-- PR #541 (betterleaks 2.0.0-rc.8) merged ahead of #557, so both go into the next release.
-- Follow-ups from #557's reviews filed on milestone 5: #560 (smoke check that `python3 -m venv` gives a working pip) and #561 (re-pin the interpreter within its minor through `bump-binaries.sh`). Triage issues #558 and #559 closed with pointers.
-- #550 (root `CLAUDE.md`) escalated twice; the second escalation is unanswered on purpose. #551 broadened to correct the stale devcontainer, review-gate and ruleset claims in `README.md` and the threat model first. Both are on milestone 6 and don't block the release.
-- Critic gate: this session wrote no code itself (the #557 lane ran its own critic gate), so none ran here.
+- **#560 and #561** shipped as #563 and #564. **#551** shipped as #568 (`ad1135c`). **#486**, the release workflow, shipped as #579 (`83c4f2c`). It was pushed through an elevated push (Procedure B), and #529 was folded into it.
+- **v1.8 was cut by `release.yml`** at `6f8a973` (#581), as the first dry run and then the real dispatch. The tag was created by `603id-devcontainers-release[bot]`, and the Release is immutable. `gh release verify v1.8` passes.
+- **`docs/host-steps.md` (#566)** is the standard for host steps: Procedure A is a host clone run, Procedure B an elevated push. The owner starts each host session with the start text kept on the host, copied from GitHub.
+- **New issues:**
+  - #569, the host re-scan script, split out of #484.
+  - Follow-ups #570–#578, unmilestoned.
+  - glunk-works/claude-workbench#1608, for the elevated token landing in the container mount.
+- **Critic passes:**
+  - #566: security-critic, 1 pass and 3 re-checks; all findings closed or recorded as known limits. Docs-consistency, 1 pass.
+  - #567: one architect pass, its defects fixed.
+  - #582: handed off without a critic pass. It's a mechanical pin bump, and the render and self-pin checks passed.
 
-**Next:** driver: review the #560 and #561 spec comments once their spec sessions post them, and advise the owner before reacting. Then start a lane for each approved spec (`lane.sh groups 5` first; both edit `docs/threat_model.md`, so expect consecutive lanes). Cut the release once #557, #560 and #561 are on `main` and the post-merge Build images run is green. Then task #484 before the `.trivyignore.yaml` exceptions expire on 2026-12-01. Model: **opus** (architect, as driver).
+**Next:** driver, when the #569 lane stops, bundle its single commit and hand the owner one Procedure B paste-in: the owner's risk-acceptance paragraph, then the start text, then the values block. After #569 merges, draft the answer to #484's escalated comment 6957143785: the renewal runs Procedure A with `tools/host/trivy-rescan.sh`. Model: **opus** (architect, as driver).
 
-**HITL Gate: OPEN** — the owner reacts to each posted spec comment for #560 and #561 after the driver has reviewed it; no task is anchored, so nothing auto-starts.
+**HITL Gate: OPEN** — the owner runs the #569 elevated push (Procedure B) and the wow-review for PR #582 and PR #569, then approves and merges each by hand.
 
-**Open for the owner (non-blocking):**
-- Lanes in the devcontainer can't run the Docker gate entries or the gpg-backed `claude-fetch` gate test. Tell each lane up front to ship anyway and mark those entries pending (#550 will record the rule).
-- #551: react, then run `wowl 603-Identity/devcontainers -Spec 551`. After it merges, re-spec #550 slim (answer or delete escalated comment 6952215523).
-- `.claude/hooks/merge-guard.sh` still names `restrict-updates-to-main`, a ruleset that is not live; this needs an issue of its own.
-- #427: pick early warning, stagger, or both, before its step starts.
-- Milestone 5's description doesn't list #556, #560 or #561 in its build order.
-- Milestone 10 needs owner setup in GitHub settings before it starts. Milestone 3's description is stale.
-- Use the JaredGroves-603 login for this repo. Create issues, comments and PRs with `gh api ... --input -`.
+**Open for the owner:**
+- **#582 (pin v1.8):** run `wow-review` from the `603id-identity` home, then merge by hand. Auto-merge is blocked by `merge-guard.sh` (#578).
+- **The two identity homes:** run `wow-review` and `wow-admin` from `~/.config/603id-identity`. The `glunk-identity` home's reviewer App can't reach 603-Identity (HTTP 422), but the containers mount `glunk-identity`'s tokens directory. After any `--revoke`, check both homes.
+- **`wow-review` and the usage limit:** a run that hits the usage limit posts `no-outbox` (seen twice on #579). Rerun after the reset. It's worth a claude-workbench issue.
+- **Reactions:** approve specs as JaredGroves-603. A Seuss27 reaction doesn't count.
+- **#550 (M6):** answer or delete escalated comment 6952215523, then re-spec it slimmer.
+- **#427:** pick early warning, stagger, or both, before its step starts.
+- **Milestone descriptions:** M5's build order is stale. M3's description is stale. M10 is done apart from its close.
+- **Signed tags:** deferred. The v1.8 release attestation verifies; a `gitsign` issue only if you want it.
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan:
-https://github.com/603-Identity/devcontainers/milestone/5 · parked sprints: `.ai/parked/`
+https://github.com/603-Identity/devcontainers/milestone/5 · host steps: [docs/host-steps.md](../docs/host-steps.md) · parked sprints: `.ai/parked/`
