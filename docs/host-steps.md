@@ -79,10 +79,19 @@ You were started from a new, empty directory; if any CLAUDE.md (in it or a paren
    or `system` entry, nothing from `ProgramData`, no `credential.helper` key and no key beginning `url.`;
    otherwise stop.
 
-   **On a Windows host,** every `gh`, `docker` and `git` command also runs with
-   `MSYS_NO_PATHCONV=1`, and API endpoints are written without a leading slash
+   **On a Windows host** (Git Bash, where `cygpath` is on `PATH`), every `gh`, `docker` and `git`
+   command also runs with `MSYS_NO_PATHCONV=1`, and API endpoints are written without a leading slash
    (`installation/token`, `repos/…`), so Git Bash does not rewrite an endpoint or a
-   `{container}:/tmp/…` argument into a Windows path.
+   `{container}:/tmp/…` argument into a Windows path. That setting also means a POSIX path reaches a
+   native Windows program unchanged, and `jq.exe`, `docker.exe`, `gh.exe` and `git.exe` cannot open
+   it. So every local file path given to a native Windows tool is converted first with
+   `cygpath -m` (for example the file after `jq --rawfile`, the host side of `docker cp`, the
+   bundle in `git fetch {bundle} …`, or a file given to `gh api --input`), and so is every
+   path-valued environment variable such a tool reads (`DOCKER_CONFIG`, `GH_CONFIG_DIR`); a native
+   tool silently ignores a variable in POSIX form. `docker cp` converts the host path only, never
+   the `{container}:/path` side. `MSYS_NO_PATHCONV=1` and the slash-less endpoints still protect
+   endpoints and `{container}:/path` arguments. A path read only by bash or Git Bash's own
+   utilities (`test`, `mv`, `sha256sum`, a shell redirect, `HOST_RESULTS`) needs no conversion.
 4. **Work only in that fresh clone.** Never in a checkout a container mounts: code in the container
    can plant hooks or `.git/config` entries there, and a host process would run them with the host's
    reach (the Docker daemon, every repo's volumes and token directories).
@@ -149,12 +158,83 @@ below, such as `{pr}`, are filled in by the host session at run time, never by t
    "This runs on the host with Docker and takes about {minutes} minutes. Approve?" Wait.
 3. Run it from the clone's root with a clean environment: `GH_TOKEN`, `GITHUB_TOKEN` and
    `GH_ENTERPRISE_TOKEN` unset; `GH_CONFIG_DIR` and `DOCKER_CONFIG` set to new empty temp
-   directories; the git variables of Rule 3; `HOST_RESULTS` set to a file in the temp directory.
-   Run nothing else.
+   directories (on a Windows host, both set in `cygpath -m` form per Rule 3, and see the Windows
+   branch below); the git variables of Rule 3; `HOST_RESULTS` set to a file in the temp directory
+   (bash alone reads and moves it, so it stays in POSIX form). Run nothing else, except on a Windows
+   host the commands of the branch below.
+
+   **Windows-host branch.** Docker Desktop keeps its CLI plugins, buildx included, in the
+   `cli-plugins` folder of the `.docker` folder under `%USERPROFILE%`, so an empty `DOCKER_CONFIG`
+   leaves `docker buildx` an unknown command, and `tools/host/trivy-rescan.sh` needs buildx. The
+   Docker context needs no setting: with the config empty, `docker context show` reads `default`
+   and reaches the same engine. After step 2's approval and before the script, in this order:
+
+   - **(a)** With the owner's normal Docker config still in force, run only `docker version`,
+     `docker ps` and `docker inspect`, never `docker info`, `docker help` or any plugin command:
+     listing plugins (which is how `docker info` fills its plugin list) runs every `docker-*.exe`
+     in the plugin folders, which would run a planted binary before the checks below. Record the
+     engine with `docker version --format '{{.Server.Os}}/{{.Server.Arch}} {{.Server.Version}}'`.
+   - **(b)** Create the empty temp `DOCKER_CONFIG` and `GH_CONFIG_DIR`, and set both to their
+     `cygpath -m` form.
+   - **(c)** Whatever `DOCKER_CONFIG` holds, the Windows Docker CLI always searches two built-in
+     system plugin folders: the `Docker/cli-plugins` subfolder under `%ProgramData%` and the same
+     subfolder under `%ProgramFiles%`. It searches the `%ProgramData%` one first and runs the first
+     match. Before any docker command runs with the empty config, check with bash alone (`test -e`,
+     no docker) whether either folder holds a `docker-buildx.exe`. If neither does, go to (d): with
+     the empty config buildx cannot be found, so `docker buildx version` is not run here. If either
+     does, check every `docker-buildx.exe` found in either folder, not only one: each must be a
+     regular file and not a link (`test -f` and not `test -L`); its folder's path, in `cygpath -m`
+     form, must match (d)'s grammar except that it ends in `/Docker/cli-plugins`; and it and its own
+     folder must pass both of (e)'s checks before `docker buildx version` runs with the empty
+     config. For a system folder, the reader search's ancestors are that folder's own ancestors in
+     each normalised form: the `Docker` folder holding it, the `%ProgramData%` or `%ProgramFiles%`
+     folder, every folder between that and the drive root, the drive root, and `/`, `/run`,
+     `/run/desktop`, `/run/desktop/mnt`, `/run/desktop/mnt/host`, `/mnt`, `/mnt/host` and
+     `/host_mnt`, never the home-folder list (e) gives for the user's plugin folder. Stop if any of
+     these fails or cannot be completed. If they pass and `docker buildx version` succeeds, write no
+     `config.json` and go to (g); if it fails, go to (d). The system folders' other plugins are an
+     accepted residual: no container can reach the folder (the search above), and the script
+     invokes only buildx.
+   - **(d)** Otherwise, build the plugin folder's path without running docker: the `cygpath -m`
+     form of the `.docker/cli-plugins` folder under `$USERPROFILE`. It must match this grammar: a
+     drive letter, a colon and a forward slash, then slash-separated segments of letters, digits,
+     space, `.`, `_` and `-` only, no `.` or `..` segment, ending in `/.docker/cli-plugins`. Stop if
+     it does not. `docker-buildx.exe` must be a regular file in it (`test -f` and not `test -L`).
+   - **(e)** Before trusting that folder, require both. First, PowerShell
+     (`powershell.exe -NoProfile -NonInteractive`) runs `Get-AuthenticodeSignature -LiteralPath` on
+     that `docker-buildx.exe`, and it must read status `Valid` with a signer subject naming Docker
+     Inc; the path reaches PowerShell only through an environment variable that the command reads as
+     `$env:<name>`, never interpolated into the `-Command` text. Second, the reader search of
+     Procedure B Phase 1 step 1, applied to the plugin folder instead of the token directory, must
+     find no running container: none with a bind mount whose source (normalised and compared as that
+     step says) is the folder, any path inside it, or any ancestor of it in each normalised form
+     (the `.docker` folder that holds it, the user's home, every folder between the home and the
+     drive root, the drive root, and `/`, `/run`, `/run/desktop`, `/run/desktop/mnt`,
+     `/run/desktop/mnt/host`, `/mnt`, `/mnt/host` and `/host_mnt`); none `Privileged`, with any
+     `CapAdd` or with `PidMode` `host`; and none mounting `docker.sock` or the `docker_engine` pipe.
+     Stop if either check fails or cannot be completed, reporting the container ids found (Procedure
+     A stops no container itself). The folder's other plugins are trusted on the same two grounds
+     (no container can reach the folder, and it is the owner's normal plugin folder); the script
+     invokes only buildx among them.
+   - **(f)** Write `config.json` in the temp `DOCKER_CONFIG` with
+     `jq -n --arg d "$plugin_dir" '{cliPluginsExtraDirs:[$d]}'` redirected into the file, where
+     `plugin_dir` is the `cygpath -w` (backslash) form of the folder checked in (d) and (e); never
+     build it with `printf` or `echo` (a `printf` route collapsed the backslashes into invalid JSON).
+     Check it with `jq -e --arg d "$plugin_dir" '. == {cliPluginsExtraDirs:[$d]}'` on the file's
+     Windows-form path, and check that `ls -A` of the directory lists only `config.json`. The file
+     holds no other key: no `auths`, `credsStore`, `credHelpers` or `currentContext`, and the
+     directory has no `contexts` folder.
+   - **(g)** Pre-run checks, in the clean environment. Each must pass, or the session stops before
+     the script runs, reports which check failed, and goes to step 6: `docker context show` prints
+     `default`; the `docker version` line from (a) is printed again unchanged; `docker buildx
+     version` succeeds; and no docker command in (c) or (g) printed a config-file warning on stderr.
+
+   Any failure or incomplete check in (c) to (f) also ends the session at step 6.
 4. If it exits non-zero, report the exit status and the last 40 lines of its output, and go to
    step 6.
 5. Check the results file per Rule 6 (under 1 MiB). Copy it to `/tmp/lanes/{task}-host-results.md`
-   in this repo's container (Rule 5; prefer `container` if it qualifies).
+   in this repo's container (Rule 5; prefer `container` if it qualifies); on a Windows host the
+   host side of the `docker cp` is in `cygpath -m` form per Rule 3.
 6. Delete the temp directories. Tell the owner: "Host run done. Results are at
    /tmp/lanes/{task}-host-results.md in container {id}. Tell the driver session." Include the file's
    sha256, or the failure.
@@ -168,8 +248,10 @@ below, such as `{pr}`, are filled in by the host session at run time, never by t
    - a bind mount whose source, after normalising Docker Desktop's forms (`C:\…`,
      `/run/desktop/mnt/host/c/…`, `/host_mnt/c/…`, `/mnt/host/c/…`) to one and comparing
      case-insensitively, is the token directory (`…/tokens/603-Identity/devcontainers`) or any
-     ancestor of it: `tokens/`, the user's home, a drive root, `/`, `/run/desktop`, `/mnt/host` or
-     `/host_mnt`;
+     ancestor of it, in each of those forms: `tokens/`, the user's home, every folder between the
+     home and the drive root, a drive root, `/`, `/run`, `/run/desktop`, `/run/desktop/mnt`,
+     `/run/desktop/mnt/host`, `/mnt`, `/mnt/host` or `/host_mnt` (every one after `/` is a Docker Desktop
+     VM-side folder that normalising cannot map to a drive root);
    - `Privileged`, any `CapAdd`, or `PidMode` `host`;
    - a mount of the Docker socket (`docker.sock`) or the `docker_engine` pipe.
 
@@ -181,9 +263,11 @@ below, such as `{pr}`, are filled in by the host session at run time, never by t
 3. From `container` (it must qualify per Rule 5; `docker cp` works on a stopped container), copy out
    `/tmp/lanes/{task}-push/branch.bundle`, `body.md` and `title.txt` into the host temp directory;
    `{bundle}`, `{body file}` and `{title file}` below always mean these host copies, never the
-   container's files. Check each per Rule 6 and
+   container's files. On a Windows host the host side of each `docker cp` is in `cygpath -m` form
+   per Rule 3. Check each per Rule 6 and
    against its sha256 value, and check the title's grammar. Stop on any mismatch.
-4. In the clone, run `git fetch {bundle} {branch}:{branch}`. Verify, and stop on any mismatch:
+4. In the clone, run `git fetch {bundle} {branch}:{branch}` (on a Windows host, `{bundle}` in
+   `cygpath -m` form per Rule 3). Verify, and stop on any mismatch:
    - the branch tip is `tip`, it has exactly one parent, `parent`, and that parent is an ancestor of
      `origin/main`
    - `git diff --name-only {parent} {tip}` lists exactly `files`
@@ -193,7 +277,11 @@ below, such as `{pr}`, are filled in by the host session at run time, never by t
    `permissions:` change, every `secrets.` reference, every new `uses:`, and every changed script a
    workflow runs. Say: "GitHub runs these workflows as soon as the branch is pushed, before any
    review. Read the diff against the approved spec, then tell me to go on." Wait.
-6. Repeat step 1's search. If any reader is running, stop it again or stop the session. Then say
+6. On a Windows host, run the same `jq -n --rawfile` PR-JSON build Phase 2 uses, with `{title file}`
+   and `{body file}` in `cygpath -m` form per Rule 3 and no token: it must exit 0 and its `title`
+   must equal the title file's first line. Stop otherwise. (The bundle path is already proven by
+   step 4's fetch, and the `docker cp` host paths by step 3.)
+7. Repeat step 1's search. If any reader is running, stop it again or stop the session. Then say
    exactly: "Ready. Mint the admin token now, with `wow-admin 603-Identity/devcontainers --perms
    contents=write,pull_requests=write,workflows=write`, check that it reports no other permission,
    and tell me the token file's path. Do not paste the token into this chat." Wait.
@@ -207,7 +295,8 @@ below, such as `{pr}`, are filled in by the host session at run time, never by t
   anywhere, put it in a command-line argument or a remote URL, or store it in git config.
 - In every command that uses it: the git variables of Rule 3; unset `GIT_TRACE`, `GIT_TRACE_CURL`,
   `GIT_TRACE_REDACT`, `GIT_CURL_VERBOSE`, `GIT_ASKPASS` and `SSH_ASKPASS`; set `GCM_INTERACTIVE=never`
-  and `GH_CONFIG_DIR` to a new empty temp directory, so nothing can fall back to the owner's login.
+  and `GH_CONFIG_DIR` to a new empty temp directory (on a Windows host in `cygpath -m` form, per
+  Rule 3), so nothing can fall back to the owner's login.
 - Confirm reach: `GET installation/repositories` with it must report `total_count` 1 and only
   `603-Identity/devcontainers`. If not, go to Phase 3.
 - Push the reviewed commit, not a name: `GIT_CONFIG_COUNT=2`, `GIT_CONFIG_KEY_0=credential.helper`
@@ -223,6 +312,7 @@ below, such as `{pr}`, are filled in by the host session at run time, never by t
   the push triggered.
 - Open the PR with `GH_TOKEN` set only for that command: build the JSON with
   `jq -n --rawfile title {title file} --rawfile body {body file} --arg head "$BRANCH" '{title: ($title|split("\n")[0]), head: $head, base: "main", body: $body}'`
+  (on a Windows host both files in `cygpath -m` form, per Rule 3)
   and POST it to `repos/603-Identity/devcontainers/pulls` with `gh api --input -`. Require the
   response's `user.login` to be `603id-admin[bot]` and `head.sha` to be `tip`. If not, go to Phase 3
   and tell the owner to close that PR.
