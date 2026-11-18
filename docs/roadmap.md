@@ -38,6 +38,14 @@ secret scan to pipe `git log -p` into `betterleaks stdin --git-diff`, moved the 
 exceptions with 26 rc.6 ones, so it superseded #438. Follow-ups: #479 (a smoke case for the README pre-commit hook) and
 #480 (whether the scan should look inside committed archives).
 
+Release workflow (milestone 10) is done. Its one task, #486, merged as `83c4f2c` (#579): a dispatched, reviewed
+release workflow that tags as the App. v1.8 was the first release it cut.
+
+Trivy renewal 2026-11 (milestone 5) is done. Its last change merged as `18d347e` (#608, for #329, the missing tofu
+1.13.1 history entry). #484 renewed the `.trivyignore.yaml` exceptions to 2026-12-17 (`899e0c1`, #601), and #602 bumped
+gh to 2.105.0 and retired its exception (`cce1ce6`, #606). #427 (staggering the expiries) closed as not planned,
+superseded by #600 on milestone 11, which adds CI evidence for the next renewal.
+
 ## Next action
 
 The next piece of work is set by the open milestone on this repo, since
