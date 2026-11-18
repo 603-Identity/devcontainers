@@ -29,4 +29,35 @@ PUBLISH_NAME="$(yq -r '.jobs.publish.name' "$WF")"
 if grep -qF "PUBLISH_JOB:-$PUBLISH_NAME}" "$ROOT_DIR/.github/scripts/last-publish-sha.sh"; then pass
 else fail "last-publish-sha.sh matches the publish job's name" "publish.name is '$PUBLISH_NAME'"; fi
 
+# the Trivy evidence steps (docs/trivy-renewal.md): four non-fatal steps after Summary, on schedule
+# and dispatch only. publish's permissions and action set are pinned so none of them gains a token.
+PUB='.jobs.publish'
+assert_eq "publish.permissions" '{"contents":"read","packages":"write","id-token":"write","attestations":"write","artifact-metadata":"write","security-events":"write"}' "$(yq -o=json -I=0 "$PUB.permissions" "$WF")"
+assert_eq "publish uses: set (action names; upload-artifact pinned by 40 hex)" \
+  "actions/attest actions/checkout actions/upload-artifact github/codeql-action/upload-sarif" \
+  "$(yq -r "$PUB.steps[].uses | select(. != null)" "$WF" | sed 's/@.*//' | sort -u | tr '\n' ' ' | sed 's/ $//')"
+if grep -qE '^ +uses: actions/upload-artifact@[0-9a-f]{40} # v[0-9]' "$WF"; then pass
+else fail "actions/upload-artifact is pinned by a 40-hex SHA with a version comment"; fi
+assert_eq "Summary, then exactly the four evidence steps, are the last five steps" "Summary logout evidence upload evidence-summary" \
+  "$(yq -r "[$PUB.steps[-5:][] | (.id // .name)] | join(\" \")" "$WF")"
+for id in logout evidence upload evidence-summary; do
+  assert_eq "step $id: continue-on-error" "true" "$(yq -r "$PUB.steps[] | select(.id == \"$id\") | .\"continue-on-error\"" "$WF")"
+done
+# shellcheck disable=SC2016 # the expected values are literal GitHub expressions
+{
+  assert_eq "logout.if" "\${{ !cancelled() && steps.push.outcome == 'success' && contains(fromJSON('[\"schedule\",\"workflow_dispatch\"]'), github.event_name) }}" "$(yq -r "$PUB.steps[] | select(.id == \"logout\") | .if" "$WF")"
+  assert_eq "logout.run" "docker logout ghcr.io" "$(yq -r "$PUB.steps[] | select(.id == \"logout\") | .run" "$WF")"
+  assert_eq "logout.name" "Log out of GHCR before the evidence pass" "$(yq -r "$PUB.steps[] | select(.id == \"logout\") | .name" "$WF")"
+  assert_eq "evidence.if" "\${{ !cancelled() && steps.logout.outcome == 'success' }}" "$(yq -r "$PUB.steps[] | select(.id == \"evidence\") | .if" "$WF")"
+  assert_eq "evidence.timeout-minutes" "45" "$(yq -r "$PUB.steps[] | select(.id == \"evidence\") | .\"timeout-minutes\"" "$WF")"
+  assert_eq "evidence.env" '{"TAG":"${{ env.MAJOR }}.${{ github.run_number }}"}' "$(yq -o=json -I=0 "$PUB.steps[] | select(.id == \"evidence\") | .env" "$WF")"
+  assert_eq "evidence.run" 'bash .github/scripts/trivy-evidence.sh "$TAG" out/trivy-evidence.md' "$(yq -r "$PUB.steps[] | select(.id == \"evidence\") | .run" "$WF")"
+  assert_eq "upload.if" "\${{ !cancelled() && steps.evidence.outcome == 'success' }}" "$(yq -r "$PUB.steps[] | select(.id == \"upload\") | .if" "$WF")"
+  assert_eq "upload.with" '{"name":"trivy-evidence","path":"out/trivy-evidence.md","if-no-files-found":"error"}' "$(yq -o=json -I=0 "$PUB.steps[] | select(.id == \"upload\") | .with" "$WF")"
+  assert_eq "upload has no github-token input" "null" "$(yq -r "$PUB.steps[] | select(.id == \"upload\") | .with.\"github-token\"" "$WF")"
+  assert_eq "evidence-summary.if (the Summary step above has none)" "\${{ !cancelled() && steps.upload.outcome == 'success' }}" "$(yq -r "$PUB.steps[] | select(.id == \"evidence-summary\") | .if" "$WF")"
+}
+# shellcheck disable=SC2016 # the pattern is a literal GitHub expression opener
+if yq -r "$PUB.steps[] | select(.id == \"evidence-summary\") | .run" "$WF" | grep -qF '${{'; then fail "evidence-summary.run holds no \${{ }}"; else pass; fi
+
 summary

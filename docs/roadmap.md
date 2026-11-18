@@ -54,7 +54,7 @@ The next piece of work is set by the open milestone on this repo, since
 
 Two dates are fixed:
 - The `.trivyignore.yaml` exceptions (betterleaks, tofu) expire on 2026-12-17.
-  Renew or retire them before then; each renewal extends at most 30 days.
+  Renew or retire them before then; each renewal extends at most 30 days. How: `docs/trivy-renewal.md`.
 - GitHub's `ubuntu-latest` moves to 26.04 between 2026-10-19 and 2026-11-19. Until then CI
   runners (24.04) and the images (26.04) differ.
 
