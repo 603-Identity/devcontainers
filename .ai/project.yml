@@ -156,8 +156,11 @@ review:
 # ── agents ───────────────────────────────────────────────────────────────────
 agents:
   enabled: [architect, coder, security-critic, docs-consistency]
-  diff_rule: null   # critic-gate's diff mode proposes and the human picks (way-of-working
-                    # v0.26.0 migration; the maintainer's answer, 2026-11-15).
+  diff_rule: [.betterleaksignore, rulesets/]   # rule-based critic selection is on: the maintainer decided it on
+                                               # 2026-11-18, superseding the 2026-11-15 answer (the pick-list).
+                                               # code_paths covers the code paths; this list adds only the two
+                                               # security paths outside it, the secret-scan allowlist and the
+                                               # rulesets directory. Set to null to restore the pick-list.
 models:
   architect: opus
   coder: sonnet
