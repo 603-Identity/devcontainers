@@ -7,7 +7,8 @@ cannot run there, and this file is the standard way to run both:
   gpg, by design. Docker in the container would breach boundary 4 or 5 (`docs/threat_model.md`), and
   the dev-App flavour removes gpg on purpose. CI's required checks stay the run of record for these
   steps. A task that needs their *output* (a re-scan, a symbol listing) gets it from a **host clone
-  run** (Procedure A).
+  run** (Procedure A). A Trivy exception renewal takes the re-scan and the symbol listing from the
+  CI artifact instead (`docs/trivy-renewal.md`), with Procedure A as the fallback.
 - **A push the dev token cannot make.** The dev App lacks the Workflows permission, so a change
   under `.github/workflows/` is pushed by an **elevated push** (Procedure B), as `603id-admin[bot]`
   with a token minted by `wow-admin`. The owner then approves and merges. `main-approval` requires
@@ -152,6 +153,9 @@ below, such as `{pr}`, are filled in by the host session at run time, never by t
   ```
 
 ## Procedure A: host clone run
+
+A Trivy exception renewal normally takes its re-scan and symbol listing from the `trivy-evidence`
+CI artifact (`docs/trivy-renewal.md`); this procedure is its fallback when no qualifying run exists.
 
 1. Check out the tip of `origin/main` detached, and confirm `script` is a tracked file there.
 2. Show the owner the script's full text and the exact command, `bash {script} {args}`, and ask:

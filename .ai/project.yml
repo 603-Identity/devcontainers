@@ -53,6 +53,7 @@ code_paths:
   - tools/               # devc-verify and the gate scripts: they decide what a consumer PR may
                          # merge, and the rendered gate template is checked against them.
   - .github/             # workflows, the build script, and dependabot.yml
+  - docs/trivy-renewal.md   # the renewal rules for .trivyignore.yaml: an edit to them is as security-relevant as an edit to the file
   - .trivyignore.yaml    # an ALLOWLIST past the vulnerability gate: the one file where a real
                          # finding can be parked and the build stays green by design.
   - .gitattributes       # forces LF; a CRLF script or lock file breaks inside the image.

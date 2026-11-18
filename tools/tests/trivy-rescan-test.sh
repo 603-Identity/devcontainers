@@ -422,7 +422,6 @@ finish
 section_order() { # prints the level-2 headings of the results file, one line
   grep '^## ' "$1" | tr '\n' '|'
 }
-EXPECTED_SECTIONS='## Base commit|## Pins|## Images|## Trivy|## Findings: base|## Findings: tofu|## Findings: node|## Findings: devapp|## Findings: devapp-tofu|## Binaries|'
 
 clean_checks() { # clean_checks <description> <results file>
   local d=$1 f=$2 log
