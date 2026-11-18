@@ -1,33 +1,33 @@
 # Next steps
 
-**Now:** Milestone 5, Trivy renewal 2026-11, `implementing`. v1.8 is released. What's left on M5: the v1.8 pin bump (#582), the host re-scan script (#569, lane building), then the `.trivyignore.yaml` renewal (#484) before 2026-12-01. Milestone 6 is parked.
+**Now:** Milestone 5, Trivy renewal 2026-11, `implementing`. The renewal (#484) merged as #601 (`899e0c1`), so the exceptions now expire 2026-12-17. Next on M5 is #602, then #427, #329, and #477 with #459, per the milestone's build order. Milestone 6 is parked.
 
 **Just done:**
-- **#560 and #561** shipped as #563 and #564. **#551** shipped as #568 (`ad1135c`). **#486**, the release workflow, shipped as #579 (`83c4f2c`). It was pushed through an elevated push (Procedure B), and #529 was folded into it.
-- **v1.8 was cut by `release.yml`** at `6f8a973` (#581), as the first dry run and then the real dispatch. The tag was created by `603id-devcontainers-release[bot]`, and the Release is immutable. `gh release verify v1.8` passes.
-- **`docs/host-steps.md` (#566)** is the standard for host steps: Procedure A is a host clone run, Procedure B an elevated push. The owner starts each host session with the start text kept on the host, copied from GitHub.
-- **New issues:**
-  - #569, the host re-scan script, split out of #484.
-  - Follow-ups #570–#578, unmilestoned.
-  - glunk-works/claude-workbench#1608, for the elevated token landing in the container mount.
+- **#569** (host re-scan script) shipped as #590 (`9cc7bd9`), with a fix in #596. **#582** (pin v1.8) merged.
+- **#484** ran Procedure A with `tools/host/trivy-rescan.sh` at `fa72985`: exit 0, results sha256 `53de901b…`. The lane opened PR #601. The first review asked for changes because the gh entry's statement said "no fixed gh release", but gh v2.105.0 ships x/net 0.62.0. At the maintainer's direction the driver changed that one line (`86295e0`) and explained it in a PR comment. The second review passed, and #601 merged.
+- **Filed:**
+  - #602 (M5, item 5): bump gh to 2.105.0 and drop its CVE-2026-78661 exception.
+  - #600 on new milestone M11, "Trivy renewal from CI evidence": move the no-ignore re-scan into CI and add the expiry warning, so renewals stop needing a host session.
+- **M5's description:** #602 added as item 5; #427 cut down to its stagger option (its early warning moved to #600); the Plan and Critic gate lines updated to match.
 - **Critic passes:**
-  - #566: security-critic, 1 pass and 3 re-checks; all findings closed or recorded as known limits. Docs-consistency, 1 pass.
-  - #567: one architect pass, its defects fixed.
-  - #582: handed off without a critic pass. It's a mechanical pin bump, and the render and self-pin checks passed.
+  - #484: the lane's critic-gate outcome is recorded in its own session, not here.
+  - The driver's one-line statement edit (`86295e0`) was handed off without a critic pass. The fresh-session review on #601 covered it.
 
-**Next:** driver, when the #569 lane stops, bundle its single commit and hand the owner one Procedure B paste-in: the owner's risk-acceptance paragraph, then the start text, then the values block. After #569 merges, draft the answer to #484's escalated comment 6957143785: the renewal runs Procedure A with `tools/host/trivy-rescan.sh`. Model: **opus** (architect, as driver).
+**Next:** task #602 — driver: once the maintainer has reacted to #602, hand over `wowl 603-Identity/devcontainers -Spec 602`. After the spec is approved, start its lane with `/way-of-working:lanes start 602`. First, clean up the merged #484 lane. Model: **opus** (architect, as driver).
 
-**HITL Gate: OPEN** — the owner runs the #569 elevated push (Procedure B) and the wow-review for PR #582 and PR #569, then approves and merges each by hand.
+**HITL Gate: OPEN** — the maintainer reacts to #602 so spec-task can read it, then approves its spec comment; later approves and merges the #602 PR by hand.
 
 **Open for the owner:**
-- **#582 (pin v1.8):** run `wow-review` from the `603id-identity` home, then merge by hand. Auto-merge is blocked by `merge-guard.sh` (#578).
-- **The two identity homes:** run `wow-review` and `wow-admin` from `~/.config/603id-identity`. The `glunk-identity` home's reviewer App can't reach 603-Identity (HTTP 422), but the containers mount `glunk-identity`'s tokens directory. After any `--revoke`, check both homes.
-- **`wow-review` and the usage limit:** a run that hits the usage limit posts `no-outbox` (seen twice on #579). Rerun after the reset. It's worth a claude-workbench issue.
-- **Reactions:** approve specs as JaredGroves-603. A Seuss27 reaction doesn't count.
-- **#550 (M6):** answer or delete escalated comment 6952215523, then re-spec it slimmer.
-- **#427:** pick early warning, stagger, or both, before its step starts.
-- **Milestone descriptions:** M5's build order is stale. M3's description is stale. M10 is done apart from its close.
-- **Signed tags:** deferred. The v1.8 release attestation verifies; a `gitsign` issue only if you want it.
+- **#602:** react to the issue as JaredGroves-603, since the dev App filed it.
+- **#600 (M11):** react before it is specced, and pick the early-warning form (a tracking issue or a red non-required check).
+- **#427:** go or no-go on staggering expiry dates before its step starts.
+- **The #484 lane session** may still be open, and its worktree is one commit behind the merged branch. Close it.
+- **Leftover lane files:** `/tmp/lanes/569-push`, `/tmp/lanes/486-push` and `/tmp/lanes/486-critic` are no longer needed.
+- **Carried over:**
+  - #550 (M6): answer or delete escalated comment 6952215523.
+  - M3's description is stale; M10 needs only its close.
+  - `wow-review` posts `no-outbox` at the usage limit.
+  - Signed tags are deferred.
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan:
 https://github.com/603-Identity/devcontainers/milestone/5 · host steps: [docs/host-steps.md](../docs/host-steps.md) · parked sprints: `.ai/parked/`
