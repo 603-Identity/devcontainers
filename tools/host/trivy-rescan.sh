@@ -95,18 +95,19 @@ armed=1
 
 # --- Step 1: clone -----------------------------------------------------------------------------
 tmp=$(mktemp -d)
-# Git Bash on a Windows host: docker.exe needs C:/... paths. $d is what docker is handed; $tmp
-# is the script's own view of the same directory.
+# Git Bash on a Windows host: docker.exe and git.exe are native tools and need C:/... paths. $d is
+# what docker and git are handed; $tmp is the script's own view of the same directory.
 d=$tmp
 if command -v cygpath >/dev/null 2>&1; then d=$(cygpath -m "$tmp"); export MSYS_NO_PATHCONV=1; fi
 export GIT_TERMINAL_PROMPT=0
 
-git -c credential.helper= clone --quiet https://github.com/603-Identity/devcontainers "$tmp/repo"
-if ! git -C "$tmp/repo" merge-base --is-ancestor "$commit" origin/main 2>/dev/null; then
+git -c credential.helper= clone --quiet https://github.com/603-Identity/devcontainers "$d/repo"
+[ -d "$tmp/repo/.git" ] || die "the clone is not at the expected path, so the script cannot read it"
+if ! git -C "$d/repo" merge-base --is-ancestor "$commit" origin/main 2>/dev/null; then
   echo "trivy-rescan: the base commit is not reachable from origin/main" >&2
   exit 3
 fi
-git -C "$tmp/repo" -c advice.detachedHead=false checkout --quiet --detach "$commit"
+git -C "$d/repo" -c advice.detachedHead=false checkout --quiet --detach "$commit"
 
 # --- Step 2: drift guard -----------------------------------------------------------------------
 drift() {
