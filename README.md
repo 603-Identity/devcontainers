@@ -502,6 +502,16 @@ digest, so the two never differ for long. **For Node, bump the image and every r
 workflow pin together**, never one without the other. The one known exception is npm: the
 image ships npm 12 ahead of CI's bundled npm 11 until each repo takes it (#27).
 
+This concerns this repo's own pins and asks nothing of a consuming repo. The zizmor container
+this repo pins, in CI's `lint.yml` job and in the local green gate entry of `.ai/project.yml`,
+runs the version `images/base/tools/uv.lock` gives the image, by digest, and
+`tools/check-zizmor-pin.sh`, run by the gate suites, fails when either pin's tag differs from
+that version or the two pins differ. The check cannot see a tag edited without its digest, so
+whenever the pin moves, the new digest is read from the registry for the new tag as the
+multi-platform index (not one platform's manifest), the PR body records that read and the digest
+it returned, and the owner confirms it with their own registry read before merging. That the tag
+names the pinned digest rests on those reads, not on the check.
+
 ### Consuming from another org
 
 1. Every org pulls `ghcr.io/603-identity/devcontainer-*` and verifies it against this
@@ -871,7 +881,10 @@ its own `cosign_checksums.txt` when you move it. `tests/smoke.sh` reads the expe
 version from the same `ARG` lines the workflow rewrites, so there is nothing else to
 edit there. (The Python tools are not `ARG`s: they live in
 `images/base/tools/pyproject.toml` and `uv.lock`, and Dependabot bumps those on its own
-schedule.)
+schedule. A Dependabot `uv` PR that moves zizmor fails `tools/check-zizmor-pin.sh`: the move
+must land together with both container pins (the `lint.yml` step and the green gate entry)
+moved to the new version by digest. How such a move lands through the elevated push is a
+separate task.)
 
 A human still has to:
 
