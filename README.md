@@ -296,9 +296,7 @@ settings the adoption PR records, and review.
   `features`, `dockerComposeFile`, `dockerfile` or `context` key (any letter case), a `build` holding only
   `dockerfile: "Dockerfile"` and, optionally, `context: "."`, and no second `devcontainer.json` anywhere in the
   repo (a symlink or a case-variant path also fails), and no `LABEL devcontainer.metadata` in the
-  Dockerfile. A Dockerfile still on the previous `# syntax=` (dockerfile 1.27) may not contain
-  `<<` (a heredoc), in a line or split across a line continuation: move it to the current line
-  first. A
+  Dockerfile, and no `--unset` or `--reset` flag on any instruction. A
   repo that needs Dev Container Features, or keeps a fixture `devcontainer.json`, cannot adopt the
   template as it stands. An image built by a re-run of `build.yml` (attempt 2) fails too: use a digest from
   a first-attempt run. From v1.6 (#418) it also reads the repo's **mode**: dev-App when the PR

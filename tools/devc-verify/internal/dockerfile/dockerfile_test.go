@@ -59,7 +59,7 @@ func TestTemplateSyntaxIsAllowed(t *testing.T) {
 
 // The images build with this repo's own frontend pin, so they must carry CurrentSyntax.
 func TestImagesCarryCurrentSyntax(t *testing.T) {
-	for _, g := range []string{"base", "tofu", "node"} {
+	for _, g := range []string{"base", "tofu", "node", "devapp"} {
 		b, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "images", g, "Dockerfile"))
 		if err != nil {
 			t.Fatal(err)
@@ -74,17 +74,16 @@ func TestImagesCarryCurrentSyntax(t *testing.T) {
 // `# syntax=` pins (security L2). frontendToBuildkit maps a frontend minor series to the
 // release whose frontend/dockerfile/{parser,instructions} code it was cut from.
 //
-// dockerfile/1.28.0 (the pinned digest sha256:bb22...) and v0.34.0 and v0.34.1 are the same
-// commit (f5b59a1f): v0.34.1 re-tags it, rebuilt with Go 1.26.10 for CVE-2026-111943, with no
-// functional change, so v0.34.1 is the release the frontend was cut from. (The previous pin,
-// dockerfile/1.27.1, is v0.33.1 plus a version-string commit.)
-// v0.34.1 needs go 1.26.8; go.mod and every setup-go go-version must agree (verify-selftest.yml checks this).
+// dockerfile/1.29.0 (the pinned digest sha256:572c...) and v0.35.0 are the same commit,
+// f55949de (f55949dea4f03bb9d85b73e9afc9a609291289db). v0.35.0's go.mod needs go 1.26.8, which is
+// unchanged; go.mod and every setup-go go-version must agree (verify-selftest.yml checks this).
 //
-// Only CurrentSyntax's series is checked here. PreviousSyntax (1.27, cut from v0.33.1) is parsed
+// Only CurrentSyntax's series is checked here. PreviousSyntax (1.28, cut from v0.34.1) is parsed
 // by this vendored release too, which is safe only while the delta between the two releases
-// leaves the parser, instructions, shell, command and linter packages unchanged: see
-// PreviousSyntax's comment (#429), and the bump checklist in README.md.
-var frontendToBuildkit = map[string]string{"1.28": "v0.34.1"}
+// leaves the code Check runs, in the parser, instructions, shell, command, linter, util/stack and
+// util/suggest packages, unchanged or fenced off: see PreviousSyntax's comment (#429), and the
+// bump checklist in README.md.
+var frontendToBuildkit = map[string]string{"1.29": "v0.35.0"}
 
 func TestBuildkitMatchesFrontend(t *testing.T) {
 	m := regexp.MustCompile(`^docker/dockerfile:([0-9]+\.[0-9]+)@sha256:[0-9a-f]{64}$`).FindStringSubmatch(CurrentSyntax)
@@ -117,32 +116,55 @@ func check1(t *testing.T, src string) error {
 	return err
 }
 
-// Under PreviousSyntax a heredoc would be lexed by the build's older shell lexer, which differs
-// from the vendored one (#429), so "<<" is refused there and allowed under CurrentSyntax.
-func TestHeredocOnlyOnCurrentSyntax(t *testing.T) {
-	body := "\nFROM " + base + "\nRUN <<\"E\\OF\"\necho hi\nE\\OF\nUSER 1000:1000\n"
-	if err := check1(t, "# syntax="+CurrentSyntax+body); err != nil {
-		t.Fatalf("a heredoc on the current syntax: %v", err)
-	}
-	if PreviousSyntax == CurrentSyntax {
-		t.Skip("PreviousSyntax equals CurrentSyntax: nothing is fenced off")
-	}
-	for name, src := range map[string]string{
-		"a heredoc":           "# syntax=" + PreviousSyntax + body,
-		"<< in a comment":     "# syntax=" + PreviousSyntax + "\nFROM " + base + "\n# a << b\nUSER 1000:1000\n",
-		"<< in a RUN command": "# syntax=" + PreviousSyntax + "\nFROM " + base + "\nRUN echo a << b\nUSER 1000:1000\n",
-		// Every spelling of the directive BuildKit accepts: the fence keys on its value.
-		"no space":        "#syntax=" + PreviousSyntax + body,
-		"spaces around =": "# syntax = " + PreviousSyntax + body,
-		"upper case":      "# SYNTAX=" + PreviousSyntax + body,
-		"two spaces":      "#  syntax=" + PreviousSyntax + body,
-		"trailing space":  "# syntax=" + PreviousSyntax + " " + body,
-		// A "<<" split across a line continuation: no "<<" in the bytes, one on the joined line.
-		"split across a continuation": "# syntax=" + PreviousSyntax + "\nFROM " + base + "\nRUN cat <\\\n<EOF\nCOPY --from=evil / /\nEOF\nUSER 1000:1000\n",
-		"split around a comment":      "# syntax=" + PreviousSyntax + "\nFROM " + base + "\nRUN cat <\\\n# note\n<EOF\nCOPY --from=evil / /\nEOF\nUSER 1000:1000\n",
+// The 1.27 heredoc fence is gone (#429): shell is unchanged from v0.34.1 to v0.35.0 and no hunk
+// touches heredoc parsing, so a heredoc is accepted under both syntaxes.
+func TestHeredocAcceptedOnBothSyntaxes(t *testing.T) {
+	for name, body := range map[string]string{
+		"a quoted heredoc": "\nFROM " + base + "\nRUN <<\"E\\OF\"\necho hi\nE\\OF\nUSER 1000:1000\n",
+		// A "<<" split across a line continuation that still parses as a single-stage file.
+		"split across a continuation": "\nFROM " + base + "\nRUN cat <\\\n<EOF\necho hi\nEOF\nUSER 1000:1000\n",
 	} {
-		if err := check1(t, src); !check.IsFailure(err) || !strings.Contains(err.Error(), "may not contain") {
-			t.Errorf("%s on the previous syntax: want the heredoc failure, got %v", name, err)
+		for _, h := range []string{CurrentSyntax, PreviousSyntax} {
+			if err := check1(t, "# syntax="+h+body); err != nil {
+				t.Errorf("%s under %q: %v", name, h, err)
+			}
+		}
+	}
+}
+
+// --unset and --reset are refused on any instruction under both syntaxes, whatever the value.
+// Every case is one parser.Parse reads without error, so the failure is this rule's.
+func TestRejectsUnsetAndReset(t *testing.T) {
+	cases := map[string]string{
+		"ENV --unset":                  "ENV --unset FOO\n",
+		"ENV --unset=true":             "ENV --unset=true FOO\n",
+		"ENV --unset=false":            "ENV --unset=false FOO=bar\n",
+		"ENV --UNSET":                  "ENV --UNSET FOO=bar\n",
+		"LABEL --unset":                "LABEL --unset devcontainer.metadata\n",
+		"LABEL --unset=TRUE":           "LABEL --unset=TRUE other\n",
+		"VOLUME --unset":               "VOLUME --unset /data\n",
+		"RUN --unset":                  "RUN --unset true\n",
+		"RUN --reset":                  "RUN --reset true\n",
+		"flag split by a continuation": "ENV --un\\\nset FOO\n",
+	}
+	froms := map[string]string{
+		"FROM --reset=all":        "FROM --reset=all " + base + "\n",
+		"FROM --reset=label,user": "FROM --reset=label,user " + base + "\n",
+		"FROM --RESET=all":        "FROM --RESET=all " + base + "\n",
+	}
+	const want = "is not allowed on any instruction"
+	for _, h := range []string{CurrentSyntax, PreviousSyntax} {
+		for name, line := range cases {
+			err := check1(t, "# syntax="+h+"\nFROM "+base+"\n"+line)
+			if !check.IsFailure(err) || !strings.Contains(err.Error(), want) {
+				t.Errorf("%s under %q: want the unset/reset failure, got %v", name, h, err)
+			}
+		}
+		for name, from := range froms {
+			err := check1(t, "# syntax="+h+"\n"+from)
+			if !check.IsFailure(err) || !strings.Contains(err.Error(), want) {
+				t.Errorf("%s under %q: want the unset/reset failure, got %v", name, h, err)
+			}
 		}
 	}
 }
@@ -191,6 +213,8 @@ func TestRejects(t *testing.T) {
 		"nothing but a comment": hdr,
 		"empty":                 "",
 		"unknown instruction":   hdr + from + "BOGUS x\n",
+		"STOPSIGNAL flag":       hdr + from + "STOPSIGNAL --foo SIGTERM\n",
+		"stage ARG flag":        hdr + from + "ARG --foo V=1\n",
 
 		// The devcontainer CLI merges this label into the container's configuration (#418).
 		"metadata label":             hdr + from + "LABEL devcontainer.metadata='[{\"mounts\":[]}]'\n",
@@ -200,7 +224,8 @@ func TestRejects(t *testing.T) {
 		"metadata label, second key": hdr + from + "LABEL a=b devcontainer.metadata=x\n",
 		"label key from an ARG":      hdr + from + "ARG K=devcontainer.metadata\nLABEL $K=x\n",
 
-		"syntax unknown":        "# syntax=docker/dockerfile:1.28\n" + from,
+		"syntax unknown":        "# syntax=docker/dockerfile:1.29\n" + from,
+		"syntax retired 1.27":   "# syntax=docker/dockerfile:1.27@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e\n" + from,
 		"syntax other digest":   "# syntax=docker/dockerfile:1.27@sha256:" + strings.Repeat("0", 64) + "\n" + from,
 		"syntax foreign":        "# syntax=evil/frontend:1\n" + from,
 		"syntax trailing words": "# syntax=" + CurrentSyntax + " extra\n" + from,

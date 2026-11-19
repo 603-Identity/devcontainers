@@ -41,9 +41,9 @@ is a `3`. The same holds for the approval rule's read: a rule that cannot be rea
 Both modes:
 
 - Dockerfile: ASCII only (no BOM, CR or NUL); exactly one parser directive, `# syntax=`, whose
-  value is in `AllowedSyntax` (`internal/dockerfile`), and on `PreviousSyntax` (in any spelling of
-  the directive) no `<<` in the file or on any instruction's joined line (a heredoc; see
-  "Releasing and maintenance"); BuildKit's parser sees one stage, no meta
+  value is in `AllowedSyntax` (`internal/dockerfile`), and no `--unset` or `--reset` flag on any
+  instruction, in any letter case and with any value (they could strip what the base image sets;
+  see "Releasing and maintenance"); BuildKit's parser sees one stage, no meta
   `ARG`, no `$` in the base, no `COPY --from`, `RUN --mount from=` or `ONBUILD`, no stage name,
   no `--platform`, and no `LABEL devcontainer.metadata` (the devcontainer CLI merges that label
   into the container's configuration; quotes, escapes and letter case do not hide it, and a
@@ -134,23 +134,29 @@ code-owner review requires nothing), and whether stale approvals are dismissed o
   pins; `TestBuildkitMatchesFrontend` asserts the mapping (see the comment there).
   `PreviousSyntax` comes from the release before, and the vendored parser reads it too. That is
   safe only while the delta between the two releases leaves alone the code `Check` runs (#429):
-  the parser and instructions packages and the three frontend packages they import, shell,
-  command and linter. So at each bump, for the retiring and the new release, run (a blobless
+  the parser and instructions packages and the packages they import, shell, command, linter,
+  `util/stack` and `util/suggest`. So at each bump, for the retiring and the new release, run (a blobless
   clone: the compare API lists at most 300 files, and a release delta is larger):
 
   ```sh
   git clone -q --bare --filter=blob:none https://github.com/moby/buildkit.git bk.git
   git -C bk.git diff --name-only <old> <new> -- frontend/dockerfile/parser \
     frontend/dockerfile/instructions frontend/dockerfile/shell \
-    frontend/dockerfile/command frontend/dockerfile/linter | grep -v _test.go
+    frontend/dockerfile/command frontend/dockerfile/linter util/stack util/suggest | grep -v _test.go
   ```
 
   Record the output in the bump PR. Empty means the previous pin may stay. A listed file means
-  `PreviousSyntax = CurrentSyntax` (fail closed), unless the PR fences the change off with a
-  rule under which a file that passes never reaches the changed code in either release. The 1.27 to 1.28 case is the
-  example: the one file listed was `shell/lex.go`, which the parser reaches only to lex heredoc
-  words on an instruction whose joined line holds `<<`, so a Dockerfile on `PreviousSyntax` may
-  not contain `<<`, in its bytes or on any joined line (`PreviousSyntax`'s comment says why). The rule goes when `PreviousSyntax` moves on.
+  `PreviousSyntax = CurrentSyntax` (fail closed), unless the PR shows, hunk by hunk, that both
+  releases read every file that passes `Check` the same: each changed hunk is fenced off by a
+  rule, is unreachable, or only makes the vendored release refuse files the older frontend
+  accepted, and each fence and each refusal is pinned by a test. Two examples. The 1.27 to 1.28
+  case: the one file listed was `shell/lex.go`, which the parser reaches only to lex heredoc
+  words on an instruction whose joined line holds `<<`, so a Dockerfile on `PreviousSyntax` was
+  not allowed to contain `<<`; that fence went when 1.27 retired. The 1.28 to 1.29 case (v0.34.1
+  to v0.35.0) lists five files: the `--unset` and `--reset` forms exist only behind build tags
+  and `Parse` refuses the flags on every instruction under both syntaxes (fenced off and
+  unreachable), the new fields change no method, and `STOPSIGNAL` and `ARG` now refuse flags the
+  1.28 frontend ignored (refusal only); `PreviousSyntax`'s comment maps each hunk.
 - `templates/previous.devcontainer.json` is rotated per README.md "Cutting a release", and
   `tools/check-self-pins.sh` checks it against the pinned release.
 - `testdata/` fixtures are hand-built, not recorded (see `testdata/README.md`), except
