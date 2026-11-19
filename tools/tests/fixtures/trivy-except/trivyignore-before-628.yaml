@@ -1,0 +1,67 @@
+# Trivy exceptions: findings the build gate (.github/scripts/build-and-test.sh) lets
+# through. This file is an ALLOWLIST OF THINGS NOT TO ALERT ON, the same shape and the
+# same risk as a .secrets.baseline, so every change to it is a reviewed diff.
+#
+# Rules for an entry:
+#   * scope it by `paths` to the one binary it covers, never image-wide;
+#   * give a `statement` saying WHY it cannot be fixed here today;
+#   * set `expired_at` at most 30 days out. After that date Trivy ignores the entry,
+#     and the weekly rebuild goes red until someone re-reviews it: extends it with a
+#     fresh reason, or removes it because the fix has shipped.
+#
+# How entries are renewed: docs/trivy-renewal.md.
+#
+# Current entries (scanned from base commit fa72985ce85b against images built from it, no
+# ignore file; Trivy 0.74.0, vulnerability DB schema version 2, DB UpdatedAt 2026-11-18;
+# every entry expires 2026-12-17, renewal is #484). Every one is a Go module CVE compiled
+# into an upstream release binary. Fixing it needs a new upstream build: we cannot rebuild
+# these ourselves without giving up the upstream checksum verification that is the point of
+# pinning them. Pins at the scan: betterleaks 2.0.0-rc.8, tofu 1.13.9,
+# tflint 0.66.0, yq 4.54.3.
+#   * yq and tflint have no entries: the scan lists no finding for either.
+#   * gh has no entries since it moved to 2.105.0 (#602): the build Trivy gate (HIGH and
+#     CRITICAL, unfixed findings ignored) passes with no gh entry.
+#   * betterleaks carries only CVE-2026-78661 (below).
+#     (rc.3 and later are needed for `stdin --git-diff`, which tools/secret-scan.sh uses,
+#     #449.)
+#   * tofu 1.13.9 carries 5 besides CVE-2026-78661. tofu does make network calls
+#     (registries, module sources, backends); the stated reason for the 5 is that no fixed
+#     upstream release exists.
+#   * CVE-2026-78661 (GO-2026-6860, #496): an O(n^2) denial of service in
+#     golang.org/x/net/html's PARSER (addText, fosterParent); its tokenizer is not affected.
+#     Fixed in x/net 0.62.0; the scan shows betterleaks on v0.60.0 and tofu
+#     on v0.57.0.
+#     Reachability, checked against the built images by the symbol names the Go linker
+#     keeps (it drops unused functions; html.NewTokenizer is the control): in
+#     usr/local/bin/betterleaks and usr/local/bin/tofu no html.Parse, html.(*parser) or
+#     html.fosterParent symbol is present.
+#     betterleaks and tofu link no x/net/html at all (NewTokenizer absent).
+vulnerabilities:
+  - id: CVE-2026-116587
+    paths: ["usr/local/bin/tofu"]
+    statement: "HIGH or CRITICAL in github.com/go-jose/go-jose/v4 v4.1.4 compiled into upstream tofu 1.13.9; no fixed upstream release."
+    expired_at: 2026-12-17
+  - id: CVE-2026-56864
+    paths: ["usr/local/bin/tofu"]
+    statement: "HIGH or CRITICAL in golang.org/x/mod v0.39.0 compiled into upstream tofu 1.13.9; no fixed upstream release."
+    expired_at: 2026-12-17
+  - id: CVE-2026-56865
+    paths: ["usr/local/bin/tofu"]
+    statement: "HIGH or CRITICAL in golang.org/x/mod v0.39.0 compiled into upstream tofu 1.13.9; no fixed upstream release."
+    expired_at: 2026-12-17
+  - id: CVE-2026-78669
+    paths: ["usr/local/bin/tofu"]
+    statement: "HIGH or CRITICAL in golang.org/x/net v0.57.0 compiled into upstream tofu 1.13.9; no fixed upstream release."
+    expired_at: 2026-12-17
+  - id: CVE-2026-84445
+    paths: ["usr/local/bin/tofu"]
+    statement: "HIGH or CRITICAL in google.golang.org/grpc v1.83.1 compiled into upstream tofu 1.13.9; no fixed upstream release."
+    expired_at: 2026-12-17
+  - id: CVE-2026-78661
+    paths: ["usr/local/bin/betterleaks"]
+    statement: "HIGH or CRITICAL in golang.org/x/net/html's parser (addText/fosterParent); golang.org/x/net v0.60.0 is in upstream betterleaks 2.0.0-rc.8; no fixed release. The binary has no html.Parse, html.(*parser) or html.fosterParent symbol: no x/net/html package is linked at all (#496)."
+    expired_at: 2026-12-17
+  - id: CVE-2026-78661
+    paths: ["usr/local/bin/tofu"]
+    statement: "HIGH or CRITICAL in golang.org/x/net/html's parser (addText/fosterParent); golang.org/x/net v0.57.0 is in upstream tofu 1.13.9; no fixed release. The binary has no html.Parse, html.(*parser) or html.fosterParent symbol: no x/net/html package is linked at all (#496)."
+    expired_at: 2026-12-17
