@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.28@sha256:bb22d9815c728170f72750f4e5b0d672e06176142e1d602c7e66c050100b7e5b
+# syntax=docker/dockerfile:1.29@sha256:572cebbc2b15e6f84c077742952674889cb63cd5e9b80abdffcbe587b6f19183
 #
 # This repo's dev-App devcontainer (DEVC-D9): one published shared image, pinned by tag AND
 # digest, plus this repo's own extras (if any) between the FROM and the final USER line.
@@ -17,6 +17,7 @@
 #   - one stage only: no second FROM, no ARG before FROM, no `$` in the image reference;
 #   - a plain FROM: no `AS <name>` and no `--platform`;
 #   - no `COPY --from`, `RUN --mount from=` or ONBUILD, and no `LABEL devcontainer.metadata`;
+#   - no `--unset` or `--reset` flag on any instruction, and no flag on `ARG` or `STOPSIGNAL`;
 #   - the file ends with `USER 1000:1000`; everything between the FROM and it is this repo's
 #     extras. The extras may COPY files from this directory (regular files only, at most 64 of
 #     at most 1 MiB each) and may not ADD a local file;

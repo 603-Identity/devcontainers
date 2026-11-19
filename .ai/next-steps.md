@@ -1,59 +1,45 @@
 # Next steps
 
-**Now:** Milestone 6, Internal hardening, in `implementing`. Step 4 is built and open as PR #389.
-
-**Milestone close:** closed — milestone 5, Trivy renewal 2026-11 (0 open issues, confirmed closed on read-back).
+**Now:** Milestone 6, Internal hardening, in `implementing`. The driver is running lanes while the owner re-plans
+M6. Image builds are blocked on CVE-2026-97054 until PR #628 (#625) merges.
 
 **Just done:**
-- unparked M6 at `961d771`.
-- Milestone 6 step 4 built as #389 (branch `fix/merge-guard-step4`, `5f7507c`; `Closes #170, closes #171, closes #311`).
-  The first build followed the issues and fixed the hook's bash-lexer emulation shape by shape. Four critic
-  rounds did not converge: each fix opened a new parser gap, and some shapes the committed hook blocked came
-  through. An Opus design review concluded the hook can only be a seatbelt against mistakes, because the agent's
-  shell holds the owner's admin login. The owner chose the fail-closed tripwire: the hook now refuses any command
-  that holds `merge` as a word, unless it is the one admitted `/resume` cursor-sync shape. Mentions in commit
-  messages and PR bodies are blocked on purpose, so such text goes in a file (`git commit -F`,
-  `--body-file`, `gh api --input`). #311's status check and its fixtures are kept. Tests run in WSL.
-- The owner asked whether anything besides the cursor-sync merge needs the hook. A read of the workbench plans
-  found nothing else; the question is filed as claude-workbench#368 for a keep, drop or redesign decision.
-- Critic pass on #389 (this session):
-    Parser version: 4 rounds (architect, security-critic, docs-consistency), not converged, abandoned on the
-    owner's decision; its security-critic round 4 was stopped by a safety classifier twice and never ran.
-    Tripwire version: 2 rounds on the three critics; the last security-critic round found no reachable bypass
-    beyond the documented residuals. The final small fixes (brace and escape refusals, empty `$()`) were tested
-    but not re-read by a critic. All critics ran on their frontmatter defaults; no second-opinion round.
+- #550 merged as #623 (`167f3e5`): a root `CLAUDE.md`, gated through `code_paths`.
+- CVE-2026-97054 (Go `net/http`) turned every image build red. Filed #625. Its first two spec drafts escalated,
+  so the owner posted a short spec of their own. The #625 lane opened PR #628, which adds a yq exception and
+  deletes rockcraft's `/usr/bin/pebble`. The base image now passes. The tofu image fails on the same CVE in
+  `tofu` and `tflint`, both already at their latest upstream release (build report on #628, comment
+  7014442873).
+- Filed #626 (a procedure and script for adding an exception) and #627 (a daily scan of the published
+  images), after #625's critic loops. #626's spec escalated. #627's spec was approved and its lane prepped.
+- #423 re-specced under the owner's amend answer. The spec was approved and its lane prepped. It ends in a
+  Procedure B hand-off. The 1.32.0 index digest the driver read is
+  `sha256:3014cc8f68f663935f69b3c3e0e41f5ce102b268d97db13db0f62208747f860d`.
+- #377's PR #622: the diff matches the spec. Its build is red only on the CVE.
+- Critic passes: the driver session wrote no code, so it ran no critic gate. The lanes and spec sessions
+  record their own.
 
-**Next:** on **opus** (architect), in a new window: `/way-of-working:architect-review 389`. `.claude/` is in
-`code_paths`, so #389 needs that fresh-session review before the owner's merge. Read the hook header's
-residuals first: it is a seatbelt, not a lock.
+**Next:** Driver, on **opus** (architect):
+- Act on the owner's #628 tofu/tflint choice: relay the fix round to the #625 lane, then read the new build
+  across all five images.
+- Restart `lane.sh wait` for 625, 423 and 627.
+- Check the Procedure B bundles for #423 and #627 when they land.
+- After #628 merges, rerun #622's build.
+- Review #626's respec when it posts.
+- Clean up the #550, #553 and #607 lanes once their sessions exit.
 
-**HITL Gate: OPEN** — parked 2026-11-02 at 20c382fa0bdb017c663d9414271def4108012ede; re-verify next_action against what merged since: git log 20c382fa0bdb017c663d9414271def4108012ede..HEAD --oneline; parked with gate open: NONE OPEN — next gate: the fresh-session architect review of PR #389, then the owner's merge. Open owner decisions, not blocking: claude-workbench#368 (keep or drop the cursor-sync --admin merge) and the proposed #170/#171 issue edits.
+**HITL Gate: OPEN** — the owner decides PR #628's tofu/tflint finding (CVE-2026-97054 in
+`usr/local/bin/tofu` and `usr/local/bin/tflint`, both at their latest upstream release: two more path-scoped
+entries in the same fix round, or a separate issue); answers #626's escalation 7012712712 (driver recommends
+choice=apply) and re-specs it; re-plans M6 (build order, #397, the merge-guard cluster #394 versus #170,
+#171, #311, #172 and #272, and placement of #626 and #627, which the driver put on M6 to prep its lane).
+Owner decisions carried, not blocking: claude-workbench#368 and the proposed #170/#171 issue edits.
 
 **Open for the owner (non-blocking):**
-- claude-workbench#368: should `/resume`'s cursor-sync `--admin` merge exist? If it is dropped, a later PR deletes
-  the hook for plain deny rules. No hook work until that is decided.
-- #170 and #171 were written for the parser approach; #389 meets their rows by a different mechanism and says
-  `Closes` on both. Rewrite #170 and close #171 as superseded first if preferred. The issue text and a new issue
-  for the agent-credential decision (the agent's shell should not hold a bypass login; may supersede #262's
-  `--admin` path; #172 tracks the threat-model half) have not been drafted or filed.
-- After #389: milestone 6 goes on with its written build order. #356 fits with step 9's test-only fixes;
-  #377-#379, #383, #386 and #387 are unmilestoned.
-- Milestone 5 (Trivy renewal 2026-11) is due 2026-10-29. The #148 exceptions still expire 2026-11-01: if the
-  tofu and tflint vendors have not shipped fixes by late October, re-scan and renew the rest at most 30 days out.
-  #329 rides along.
-- Any other repo that bumps way-of-working to `v0.17.0` reads `incomplete` until it answers `orchestration`,
-  and needs the drive-letter mirror after `plugin update` (claude-workbench#347).
-- The pilots re-copy the gate and re-pin to `9153da1b6eb4ff2d845cb41efaabab3882529130 # v1.4`; tracked there.
-- The `bump-binaries` Environment still lets admins bypass its protection rules; turning that off is optional.
-- terraform-cloudflare-dns: its gate lists `.terraform.lock.hcl` and `.devcontainer/*` that its `code_paths`
-  do not; confirm during the #212 pilot follow-ups, along with whether it should cover `.claude/` (from #214).
-- -dns#57, -dns#59 and -dns#65 are open. Other detect-secrets repos have migration issues:
-  checkov-ledger-action#16, infrastructure-core#560, tenant-posture-assessment#31, trust-anchors#73.
-- Use `GH_TOKEN="$(gh auth token --user JaredGroves-603)"` for `gh` calls on this repo, and run commits,
-  pushes and PRs from the Windows host. Run tests in WSL, not Git Bash. `gh issue create` and `gh pr create`
-  hang under Git Bash; `gh api ... --input -` with a timeout works. Write `Closes #A, closes #B`.
-- Once #389 is checked out, its hook refuses any command with the word `merge` in it: write commit messages
-  and PR bodies to a file with the Write tool and pass them by name.
+- The Trivy exceptions expire 2026-12-17. Renew them per `docs/trivy-renewal.md`. #612's note on token reach
+  still applies.
+- way-of-working v0.38.0 is out (the pin is v0.37.0). Its migration is the admin-token move (#1608).
+- Leftover spec worktrees under `/tmp/lanes`: clear them with `wowl 603-Identity/devcontainers -SpecSweep`.
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan:
-https://github.com/603-Identity/devcontainers/milestone/6
+https://github.com/603-Identity/devcontainers/milestone/6 · host steps: [docs/host-steps.md](../docs/host-steps.md)

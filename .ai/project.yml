@@ -62,6 +62,7 @@ code_paths:
   - .claude/             # the plugin pin, the merge-guard hook, and the force-push and --no-verify deny rules.
   - .devcontainer/       # this repo's own dev-App container: FROM pin, extras, token mount.
   - .mcp.json            # a root MCP config loads into every session started in a checkout.
+  - CLAUDE.md            # loaded as instructions by every Claude session here; carries the lane-proceeds rule.
 
 # ── the local green gate ─────────────────────────────────────────────────────
 # A local pre-check, not the gate of record; CI on the PR is. Mirrors lint.yml's four jobs, verify-selftest.yml
