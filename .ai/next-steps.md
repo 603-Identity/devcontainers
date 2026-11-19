@@ -1,43 +1,38 @@
 # Next steps
 
-**Now:** Milestone 6, Internal hardening, in `implementing`. The driver is running lanes while the owner re-plans
-M6. Image builds are blocked on CVE-2026-97054 until PR #628 (#625) merges.
+**Now:** Milestone 6, Internal hardening, in `implementing`. CVE-2026-97054 is excepted, image builds
+are green again, and elevated pushes now go through the admin-App publish (Procedure B).
 
 **Just done:**
-- #550 merged as #623 (`167f3e5`): a root `CLAUDE.md`, gated through `code_paths`.
-- CVE-2026-97054 (Go `net/http`) turned every image build red. Filed #625. Its first two spec drafts escalated,
-  so the owner posted a short spec of their own. The #625 lane opened PR #628, which adds a yq exception and
-  deletes rockcraft's `/usr/bin/pebble`. The base image now passes. The tofu image fails on the same CVE in
-  `tofu` and `tflint`, both already at their latest upstream release (build report on #628, comment
-  7014442873).
-- Filed #626 (a procedure and script for adding an exception) and #627 (a daily scan of the published
-  images), after #625's critic loops. #626's spec escalated. #627's spec was approved and its lane prepped.
-- #423 re-specced under the owner's amend answer. The spec was approved and its lane prepped. It ends in a
-  Procedure B hand-off. The 1.32.0 index digest the driver read is
-  `sha256:3014cc8f68f663935f69b3c3e0e41f5ce102b268d97db13db0f62208747f860d`.
-- #377's PR #622: the diff matches the spec. Its build is red only on the CVE.
-- Critic passes: the driver session wrote no code, so it ran no critic gate. The lanes and spec sessions
-  record their own.
+- #625 merged as #628 (`f44f196`): CVE-2026-97054 exceptions for yq, tofu and tflint; rockcraft's
+  pebble removed. All five images pass the Trivy gate. #377 merged as #622 (`d399698`) after a
+  branch update brought #628 in.
+- #627 merged as #632 (`c56b7e3`): the daily Trivy scan of the published images. Its first dispatch
+  run on main was clean.
+- #423 merged as #635 (`4514575`): zizmor 1.32.0 pinned, with a pin check; the template gate's
+  `issue_comment` finding is ignored by a line-keyed `.github/zizmor.yml` entry (the inline ignore
+  also hid `pull_request_target`).
+- Procedure B in `docs/host-steps.md` replaced by the interim admin-App publish (#637, `5a76663`),
+  after its first two live runs (#632, #635). `docs/host-steps.md` is now in `code_paths`.
+- #626's spec (comment 7018080079) approved after three escalations, scoped to `main` runs only.
+  Filed #634 (scan every flavour before failing the pull-request build).
+- Critic pass on #637 (architect, docs-consistency): 4 rounds, converged. The lanes record their
+  own.
 
 **Next:** Driver, on **opus** (architect):
-- Act on the owner's #628 tofu/tflint choice: relay the fix round to the #625 lane, then read the new build
-  across all five images.
-- Restart `lane.sh wait` for 625, 423 and 627.
-- Check the Procedure B bundles for #423 and #627 when they land.
-- After #628 merges, rerun #622's build.
-- Review #626's respec when it posts.
-- Clean up the #550, #553 and #607 lanes once their sessions exit.
+- Once #626 is on M6, prep its lane and hand over the lane command; start `lane.sh wait 626`.
+- Clean up lane 423 (its worktree holds the draft #635 merged) and confirm lane 627 is gone.
+- File the follow-ups: #635's `.ai/project.yml` "two callers" comment, the
+  `check-consumer-workflows-test.sh` one-time flake, #632's lost upstream-release cache, and
+  #637's unapplied tightenings (listed in its PR body).
 
-**HITL Gate: OPEN** — the owner decides PR #628's tofu/tflint finding (CVE-2026-97054 in
-`usr/local/bin/tofu` and `usr/local/bin/tflint`, both at their latest upstream release: two more path-scoped
-entries in the same fix round, or a separate issue); answers #626's escalation 7012712712 (driver recommends
-choice=apply) and re-specs it; re-plans M6 (build order, #397, the merge-guard cluster #394 versus #170,
-#171, #311, #172 and #272, and placement of #626 and #627, which the driver put on M6 to prep its lane).
-Owner decisions carried, not blocking: claude-workbench#368 and the proposed #170/#171 issue edits.
+**HITL Gate: OPEN** — the owner places #626 on a milestone (its spec 7018080079 is approved;
+`lane.sh prep` refuses `bad-issue` until it has one) and re-plans M6 (build order, #397, the
+merge-guard cluster, #634 and the #626/#627 placement); re-copies the host-steps start text from
+main, which now names only procedure A.
 
 **Open for the owner (non-blocking):**
-- The Trivy exceptions expire 2026-12-17. Renew them per `docs/trivy-renewal.md`. #612's note on token reach
-  still applies.
+- The Trivy exceptions expire 2026-12-17. Renew them per `docs/trivy-renewal.md`.
 - way-of-working v0.38.0 is out (the pin is v0.37.0). Its migration is the admin-token move (#1608).
 - Leftover spec worktrees under `/tmp/lanes`: clear them with `wowl 603-Identity/devcontainers -SpecSweep`.
 
