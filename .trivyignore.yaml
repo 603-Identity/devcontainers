@@ -14,14 +14,15 @@
 # Current entries (scanned from base commit fa72985ce85b against images built from it, no
 # ignore file; Trivy 0.74.0, vulnerability DB schema version 2, DB UpdatedAt 2026-11-18;
 # every entry expires 2026-12-17, renewal is #484). Every one is a Go module CVE, or the
-# one Go standard library CVE (CVE-2026-97054, yq), compiled into an upstream release binary. Fixing it needs a new upstream build: we cannot rebuild
+# one Go standard library CVE (CVE-2026-97054, in yq, tofu and tflint), compiled into an
+# upstream release binary. Fixing it needs a new upstream build: we cannot rebuild
 # these ourselves without giving up the upstream checksum verification that is the point of
 # pinning them. Pins at the scan: betterleaks 2.0.0-rc.8, tofu 1.13.9,
 # tflint 0.66.0, yq 4.54.3.
-#   * tflint has no entries: the scan lists no finding for it.
-#   * yq carries only CVE-2026-97054 (below), added from PR #622's build run 44532588047
-#     rather than from the no-ignore scan this paragraph describes, for the reason in its
-#     statement.
+#   * yq and tflint carry only CVE-2026-97054 (below), and tofu carries it besides its
+#     other entries. The three CVE-2026-97054 entries were added from PRs #622 and #628: yq from #622's build run
+#     44532588047, tofu and tflint from #628's build run 44559619691, rather than from the
+#     no-ignore scan this paragraph describes, for the reason in each statement.
 #   * usr/bin/pebble (the pebble service manager in the ubuntu:26.04 image, a rockcraft build,
 #     not an apt package) carried the same CVE; the base Dockerfile removes the binary
 #     instead of excepting it.
@@ -30,7 +31,7 @@
 #   * betterleaks carries only CVE-2026-78661 (below).
 #     (rc.3 and later are needed for `stdin --git-diff`, which tools/secret-scan.sh uses,
 #     #449.)
-#   * tofu 1.13.9 carries 5 besides CVE-2026-78661. tofu does make network calls
+#   * tofu 1.13.9 carries 5 besides CVE-2026-78661 and CVE-2026-97054. tofu does make network calls
 #     (registries, module sources, backends); the stated reason for the 5 is that no fixed
 #     upstream release exists.
 #   * CVE-2026-78661 (GO-2026-6860, #496): an O(n^2) denial of service in
@@ -74,4 +75,12 @@ vulnerabilities:
   - id: CVE-2026-97054
     paths: ["usr/local/bin/yq"]
     statement: "HIGH in the Go standard library net/http (MaxBytesReader handling), go1.27.3, in upstream yq 4.54.3; no yq release is built with Go 1.27.4 or later, and rebuilding it would give up the checksum pin. The pinned binary has none of the symbols net/http.MaxBytesReader, net/http.(*maxBytesReader).Read, net/http.(*conn).serve or net/http.(*Server).Serve, while the controls runtime.main and main.main are present; yq runs no HTTP server (#625)."
+    expired_at: 2026-12-17
+  - id: CVE-2026-97054
+    paths: ["usr/local/bin/tofu"]
+    statement: "HIGH in the Go standard library net/http (MaxBytesReader handling), go1.27.3, compiled into upstream tofu 1.13.9, the latest release; no fixed upstream release (fixed in Go 1.26.11 and 1.27.4). tofu does make network calls and its binary carries the net/http server symbols, so no reachability claim is made (#625)."
+    expired_at: 2026-12-17
+  - id: CVE-2026-97054
+    paths: ["usr/local/bin/tflint"]
+    statement: "HIGH in the Go standard library net/http (MaxBytesReader handling), go1.26.10, in upstream tflint 0.66.0, the latest release; no fixed upstream release (fixed in Go 1.26.11 and 1.27.4). The pinned binary has none of the symbols net/http.MaxBytesReader, net/http.(*maxBytesReader).Read, net/http.(*conn).serve or net/http.(*Server).Serve, while the controls runtime.main and main.main are present; tflint runs no HTTP server (#625)."
     expired_at: 2026-12-17
