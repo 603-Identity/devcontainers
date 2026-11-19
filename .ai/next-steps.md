@@ -1,59 +1,37 @@
 # Next steps
 
-**Now:** Milestone 6, Internal hardening, in `implementing`. Step 4 is built and open as PR #389.
-
-**Milestone close:** closed — milestone 5, Trivy renewal 2026-11 (0 open issues, confirmed closed on read-back).
+**Now:** Milestone 6, Internal hardening, in `implementing`, unparked after M5 was archived. The restored
+step (PR #389) is gone: #389 closed unmerged, so M6 needs re-planning.
 
 **Just done:**
-- unparked M6 at `961d771`.
-- Milestone 6 step 4 built as #389 (branch `fix/merge-guard-step4`, `5f7507c`; `Closes #170, closes #171, closes #311`).
-  The first build followed the issues and fixed the hook's bash-lexer emulation shape by shape. Four critic
-  rounds did not converge: each fix opened a new parser gap, and some shapes the committed hook blocked came
-  through. An Opus design review concluded the hook can only be a seatbelt against mistakes, because the agent's
-  shell holds the owner's admin login. The owner chose the fail-closed tripwire: the hook now refuses any command
-  that holds `merge` as a word, unless it is the one admitted `/resume` cursor-sync shape. Mentions in commit
-  messages and PR bodies are blocked on purpose, so such text goes in a file (`git commit -F`,
-  `--body-file`, `gh api --input`). #311's status check and its fixtures are kept. Tests run in WSL.
-- The owner asked whether anything besides the cursor-sync merge needs the hook. A read of the workbench plans
-  found nothing else; the question is filed as claude-workbench#368 for a keep, drop or redesign decision.
-- Critic pass on #389 (this session):
-    Parser version: 4 rounds (architect, security-critic, docs-consistency), not converged, abandoned on the
-    owner's decision; its security-critic round 4 was stopped by a safety classifier twice and never ran.
-    Tripwire version: 2 rounds on the three critics; the last security-critic round found no reachable bypass
-    beyond the documented residuals. The final small fixes (brace and escape refusals, empty `$()`) were tested
-    but not re-read by a critic. All critics ran on their frontmatter defaults; no second-opinion round.
+- M5 archived and its milestone closed (#613, `a4f433c`). #600's CI Trivy evidence merged (#611, `961d771`).
+- #607 merged as #616 (`83c2192`): the host start text and Rule 1 agree on `CLAUDE.md`. Re-copy the start text.
+- #553 done in three PRs: the 1.29 frontend and BuildKit v0.35.0 bump (#614, `40dea5c`), the v1.9 notes (#619),
+  v1.9 cut by `release.yml` at `4a01a31`, and the self-pins moved to it (#620, `5ec9ba1`). #452 closed as
+  superseded by #614.
+- #378 and #379 folded into #377. Its spec is approved and its lane is prepped. #423's spec escalated (see Gate).
+- Critic passes, this driver session: #619 had one docs-consistency round, which found no defects; its five
+  tightenings were applied. #620 (the v1.9 pins) shipped without a critic-gate pass; its fresh-session review ran.
+  The lanes record their own. All critics ran on their frontmatter defaults; no second-opinion round.
 
-**Next:** on **opus** (architect), in a new window: `/way-of-working:architect-review 389`. `.claude/` is in
-`code_paths`, so #389 needs that fresh-session review before the owner's merge. Read the hook header's
-residuals first: it is a seatbelt, not a lock.
+**Next:** Driver, on **opus** (architect): drive the #377 lane (it closes #378 and #379). When its PR is up, run
+`/way-of-working:pr-checks` and review the diff against the spec. Prep #550's lane once its spec is refreshed
+and reacted to. Review #423's respec when it posts. Clean up the #553 and #607 lanes once their sessions exit.
 
-**HITL Gate: OPEN** — parked 2026-11-02 at 20c382fa0bdb017c663d9414271def4108012ede; re-verify next_action against what merged since: git log 20c382fa0bdb017c663d9414271def4108012ede..HEAD --oneline; parked with gate open: NONE OPEN — next gate: the fresh-session architect review of PR #389, then the owner's merge. Open owner decisions, not blocking: claude-workbench#368 (keep or drop the cursor-sync --admin merge) and the proposed #170/#171 issue edits.
+**HITL Gate: OPEN** — M6 was unparked over a stale cursor: its restored next action named PR #389, which closed
+unmerged, so the owner re-plans M6 (its build order, #397, and the merge-guard cluster: #394 versus #170, #171,
+#311, #172 and #272); the owner answers #423's escalation (amend, splitting off the Dependabot-carry procedure)
+and refreshes then reacts to #550's spec. Owner decisions carried from the park, not blocking:
+claude-workbench#368 and the proposed #170/#171 issue edits.
 
 **Open for the owner (non-blocking):**
-- claude-workbench#368: should `/resume`'s cursor-sync `--admin` merge exist? If it is dropped, a later PR deletes
-  the hook for plain deny rules. No hook work until that is decided.
-- #170 and #171 were written for the parser approach; #389 meets their rows by a different mechanism and says
-  `Closes` on both. Rewrite #170 and close #171 as superseded first if preferred. The issue text and a new issue
-  for the agent-credential decision (the agent's shell should not hold a bypass login; may supersede #262's
-  `--admin` path; #172 tracks the threat-model half) have not been drafted or filed.
-- After #389: milestone 6 goes on with its written build order. #356 fits with step 9's test-only fixes;
-  #377-#379, #383, #386 and #387 are unmilestoned.
-- Milestone 5 (Trivy renewal 2026-11) is due 2026-10-29. The #148 exceptions still expire 2026-11-01: if the
-  tofu and tflint vendors have not shipped fixes by late October, re-scan and renew the rest at most 30 days out.
-  #329 rides along.
-- Any other repo that bumps way-of-working to `v0.17.0` reads `incomplete` until it answers `orchestration`,
-  and needs the drive-letter mirror after `plugin update` (claude-workbench#347).
-- The pilots re-copy the gate and re-pin to `9153da1b6eb4ff2d845cb41efaabab3882529130 # v1.4`; tracked there.
-- The `bump-binaries` Environment still lets admins bypass its protection rules; turning that off is optional.
-- terraform-cloudflare-dns: its gate lists `.terraform.lock.hcl` and `.devcontainer/*` that its `code_paths`
-  do not; confirm during the #212 pilot follow-ups, along with whether it should cover `.claude/` (from #214).
-- -dns#57, -dns#59 and -dns#65 are open. Other detect-secrets repos have migration issues:
-  checkov-ledger-action#16, infrastructure-core#560, tenant-posture-assessment#31, trust-anchors#73.
-- Use `GH_TOKEN="$(gh auth token --user JaredGroves-603)"` for `gh` calls on this repo, and run commits,
-  pushes and PRs from the Windows host. Run tests in WSL, not Git Bash. `gh issue create` and `gh pr create`
-  hang under Git Bash; `gh api ... --input -` with a timeout works. Write `Closes #A, closes #B`.
-- Once #389 is checked out, its hook refuses any command with the word `merge` in it: write commit messages
-  and PR bodies to a file with the Write tool and pass them by name.
+- Trivy exceptions expire 2026-12-17. Check the manual `build.yml` run's `trivy-evidence` artifact, then start
+  the renewal lane per `docs/trivy-renewal.md`. #612's token-reach note says the lane may need Actions read.
+- Follow-ups filed by the reviews: #612 (#611's findings), the #616 and #614 review findings, including where the
+  host clone sits relative to the launch folder.
+- way-of-working v0.38.0 is out (pin is v0.37.0); its migration is the admin-token move (#1608).
+- Leftover files under `/tmp/lanes` (`*-push`, `486-critic`, `484-host-results.md`) and old spec worktrees:
+  clear them with `wowl 603-Identity/devcontainers -SpecSweep`.
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan:
-https://github.com/603-Identity/devcontainers/milestone/6
+https://github.com/603-Identity/devcontainers/milestone/6 · host steps: [docs/host-steps.md](../docs/host-steps.md)
