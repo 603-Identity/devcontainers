@@ -18,6 +18,14 @@ fails when there are any. It runs on pull requests and on scheduled and dispatch
 It is **not** a required check and must not be added to the `main-required-checks` ruleset. It is a
 separate workflow so that its red run never changes a `build.yml` run's conclusion.
 
+`trivy-daily.yml` is the earlier warning for a new finding. Every day it scans the newest published
+image of each flavor (library packages only, with `.trivyignore.yaml` and the build gate's severity
+settings) and opens one issue per vulnerability id, titled `Trivy daily scan: <id> in the published
+images`, or comments on the open one when its findings change. The issue carries what an exception
+needs: image, path, package, installed and fixed versions, the pinned version and whether upstream
+has a newer release. It is **not** a required check and must not be added to the
+`main-required-checks` ruleset.
+
 ## Which run qualifies
 
 The evidence is the `trivy-evidence` artifact of a `build.yml` run that meets all of these:
