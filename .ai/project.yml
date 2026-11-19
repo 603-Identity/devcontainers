@@ -61,6 +61,7 @@ code_paths:
                          # review gate. An edit weakening any of them must route to review.
   - .claude/             # the plugin pin, the merge-guard hook, and the force-push and --no-verify deny rules.
   - .devcontainer/       # this repo's own dev-App container: FROM pin, extras, token mount.
+  - .mcp.json            # a root MCP config loads into every session started in a checkout.
 
 # ── the local green gate ─────────────────────────────────────────────────────
 # A local pre-check, not the gate of record; CI on the PR is. Mirrors lint.yml's four jobs, verify-selftest.yml
