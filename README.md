@@ -653,10 +653,11 @@ per-repository dev App installation token, which the host broker writes to
 `expires_at` on line 2) and the template mounts read-only at `/run/wow`. `gh` and git read only
 that file, and refuse when it is absent or stale, so there is nothing to log in with and nothing
 to leave in the home volume (`devapp-check.sh` deletes a leftover `hosts.yml` and
-`.git-credentials` at every start). Reviewer tokens never enter a dev container. The token
-directory holds other files (an elevated token that `wow-admin` writes, say): the image's tools read
-none of them, but the directory is mounted whole, so any process in a running container of that repo can open
-them for as long as they exist (threat model, Credential holders). The
+`.git-credentials` at every start). Reviewer tokens never enter a dev container. Any other
+file in the token directory is read by none of the image's tools, but the directory is mounted
+whole, so any process in a running container of that repo can open it for as long as it exists
+(threat model, Credential holders). `wow-admin` no longer writes the elevated token there: it sits
+under its identity home's `admin/` folder, which no container mounts. The
 host broker, `wow-admin`'s elevated-token window and the launcher are not in this repo; the threat model
 lists what they must hold.
 
@@ -985,8 +986,7 @@ reusable workflows, the gate template, or the org secret-scan rules and scanner 
    deletion rule to delete one), do it, publish the Release if the tag is a version, restore the
    rule, and record the edit. While a rule is disabled every writer can perform that operation on
    both `v*` and `devc-automerge-*`: any account with write access, the bump-binaries App token,
-   the dev App, `603id-admin[bot]` while an elevated window is open (and so any container process
-   that reads its token: the threat model's "The elevated token shares the mount"), and any
+   the dev App, `603id-admin[bot]` while an elevated window is open, and any
    workflow's `GITHUB_TOKEN` with `contents: write`. Keep the window as short as the operation.
    It is never a standing bypass.
 2. **Bump this repo's own pins to it, in one PR.** Dependabot never bumps these, because they
