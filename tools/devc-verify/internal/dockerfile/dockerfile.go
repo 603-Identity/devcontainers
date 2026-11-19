@@ -14,32 +14,43 @@ import (
 	"github.com/603-identity/devcontainers/tools/devc-verify/internal/image"
 )
 
-// CurrentSyntax is the newest allowed `# syntax=` value. A test asserts it equals the first
-// line of images/*/Dockerfile, and that template/.devcontainer/Dockerfile's first line is one of
+// CurrentSyntax is the newest allowed `# syntax=` value (dockerfile 1.29.0, cut from BuildKit
+// v0.35.0). A test asserts it equals the first line of images/*/Dockerfile, and that template/.devcontainer/Dockerfile's first line is one of
 // AllowedSyntax. tools/check-self-pins.sh then asserts the template's line is allowed by the
 // verifier at the release the template pins, so a template bump without a tool release fails
 // CI (#125). That script reads both constants with sed: keep each one a single
 // `const X = "..."` line (PreviousSyntax may also be `= CurrentSyntax`).
-const CurrentSyntax = "docker/dockerfile:1.28@sha256:bb22d9815c728170f72750f4e5b0d672e06176142e1d602c7e66c050100b7e5b"
+const CurrentSyntax = "docker/dockerfile:1.29@sha256:572cebbc2b15e6f84c077742952674889cb63cd5e9b80abdffcbe587b6f19183"
 
-// PreviousSyntax is the value the template carried before CurrentSyntax (dockerfile 1.27.1, the
-// release cut from BuildKit v0.33.1), kept so a consumer one bump behind still verifies.
+// PreviousSyntax is the value the template carried before CurrentSyntax (dockerfile 1.28.0, the
+// release cut from BuildKit v0.34.1), kept so a consumer one bump behind still verifies.
 // At the next template bump, set it to the value being retired.
 //
 // A consumer on PreviousSyntax is parsed by the vendored (newer) BuildKit but built by the
 // older frontend, so the two must agree on what Check reads (#429). That holds only while the
-// vendored delta between the two releases leaves the code Check runs unchanged:
+// vendored delta between the two releases leaves the code Check runs unchanged or fenced off:
 // frontend/dockerfile/{parser,instructions} and the shell, command and linter packages they
-// import. For 1.27 -> 1.28 (v0.33.1 to v0.34.1) the one non-test change there was shell/lex.go,
-// the shell lexer. Check never expands a variable with it (no Expand on the parse path; `$` in
-// the base, `COPY --from` and `RUN --mount from=` are refused), but BuildKit's parser does lex
-// heredoc words with it, on any RUN, COPY or ADD whose logical line (continuations joined)
-// holds "<<", and the 1.28 lexer no longer doubles a backslash inside double quotes there. So
-// Parse refuses "<<" in a Dockerfile on PreviousSyntax, in its bytes and on every parsed
-// instruction's joined line (a "<" split from a "<" by a line continuation): without one the
-// lexer is never reached, and both releases read the file the same. A bump runs the check in devc-verify README.md, "Releasing and maintenance"; a change
-// that cannot be fenced off this way sets PreviousSyntax = CurrentSyntax instead (fail closed).
-const PreviousSyntax = "docker/dockerfile:1.27@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e"
+// import, plus util/stack and util/suggest. For 1.28 -> 1.29 (v0.34.1 to v0.35.0) the choice
+// (#429) is (a), fence it. The non-test delta is five files: parser/parser.go,
+// instructions/commands.go, instructions/parse.go and the new instructions/parse_reset.go and
+// instructions/parse_unset.go; shell, command, linter, util/stack and util/suggest do not change.
+// The hunks are of three kinds:
+//
+//  1. The new forms (ENV, LABEL and VOLUME --unset, FROM --reset). They are registered only under
+//     the dfunset and dfreset build tags, which the mainline 1.29.0 frontend and devc-verify's
+//     build do not set, and parser.go switches an ENV or LABEL node to a name-list parse only
+//     for a flag named --unset exactly. Parse refuses an --unset or --reset flag on any
+//     instruction, under both syntaxes, so no file that passes reaches them whichever frontend
+//     builds it.
+//  2. Field-only changes (Unset fields, Stage.Reset): no method body changes.
+//  3. Stricter parsing: STOPSIGNAL and ARG now parse flags, so the vendored reader refuses any
+//     flag there, where the 1.28 frontend ignored them. It refuses more, never reads differently.
+//
+// No hunk touches heredoc parsing, and the shell package is unchanged, so the heredoc fence
+// that 1.27 needed (its frontend's shell lexer differed) went with 1.27. A bump runs the check in
+// devc-verify README.md, "Releasing and maintenance"; a change that cannot be fenced off or
+// shown to only refuse more sets PreviousSyntax = CurrentSyntax instead (fail closed).
+const PreviousSyntax = "docker/dockerfile:1.28@sha256:bb22d9815c728170f72750f4e5b0d672e06176142e1d602c7e66c050100b7e5b"
 
 // AllowedSyntax is the allowlist of `# syntax=` values.
 var AllowedSyntax = [2]string{CurrentSyntax, PreviousSyntax}
@@ -72,21 +83,8 @@ func Parse(data []byte) (Parsed, error) {
 		}
 	}
 
-	syntax, err := checkDirectives(data)
-	if err != nil {
+	if _, err := checkDirectives(data); err != nil {
 		return Parsed{}, err
-	}
-	// Under PreviousSyntax the build's frontend lexes heredoc words with the older shell lexer,
-	// which differs from the vendored one (#429, see PreviousSyntax). BuildKit's parser reaches
-	// the lexer only for an instruction whose logical line (continuations joined, comment lines
-	// inside it dropped) holds "<<", so a file with none is read the same by both. The check
-	// runs on the raw bytes and again on every parsed instruction's joined line, which catches
-	// a "<" "\" newline "<" split. It keys on the parsed directive value, never on line 1's
-	// bytes: BuildKit accepts other spellings of that line (no space, `SYNTAX`, spaces around `=`).
-	fenced := PreviousSyntax != CurrentSyntax && syntax == PreviousSyntax
-	heredocErr := check.Failf("a Dockerfile on the previous syntax (%q) may not contain \"<<\" (a heredoc), in a line or across a line continuation; move it to %q first", PreviousSyntax, CurrentSyntax)
-	if fenced && bytes.Contains(data, []byte("<<")) {
-		return Parsed{}, heredocErr
 	}
 
 	res, err := parser.Parse(bytes.NewReader(data))
@@ -96,10 +94,17 @@ func Parse(data []byte) (Parsed, error) {
 	if res.EscapeToken != '\\' {
 		return Parsed{}, check.Failf("Dockerfile escape token is %q, not a backslash", string(res.EscapeToken))
 	}
-	if fenced {
-		for _, n := range res.AST.Children {
-			if len(n.Heredocs) > 0 || strings.Contains(n.Original, "<<") {
-				return Parsed{}, heredocErr
+	// BuildKit 1.29 can reset or unset what the base image sets (ENV, LABEL and VOLUME --unset,
+	// FROM --reset), but only under build tags that neither the mainline frontend nor this
+	// build sets. Refuse the flags outright rather than rely on that, in both modes (#429): a
+	// consumer could otherwise strip the labels, environment or user the base sets. The flag
+	// name is read from the parsed node, as BuildKit reads it: the text before the first "=".
+	// ONBUILD's nested instruction is not walked; ONBUILD is refused below.
+	for _, n := range res.AST.Children {
+		for _, f := range n.Flags {
+			name, _, _ := strings.Cut(f, "=")
+			if strings.EqualFold(name, "--unset") || strings.EqualFold(name, "--reset") {
+				return Parsed{}, check.Failf("flag %q on %s is not allowed on any instruction: --unset and --reset could strip what the base image sets", f, strings.ToUpper(n.Value))
 			}
 		}
 	}
