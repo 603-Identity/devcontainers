@@ -13,12 +13,17 @@
 #
 # Current entries (scanned from base commit fa72985ce85b against images built from it, no
 # ignore file; Trivy 0.74.0, vulnerability DB schema version 2, DB UpdatedAt 2026-11-18;
-# every entry expires 2026-12-17, renewal is #484). Every one is a Go module CVE compiled
-# into an upstream release binary. Fixing it needs a new upstream build: we cannot rebuild
+# every entry expires 2026-12-17, renewal is #484). Every one is a Go module CVE, or the
+# one Go standard library CVE (CVE-2026-97054, yq), compiled into an upstream release binary. Fixing it needs a new upstream build: we cannot rebuild
 # these ourselves without giving up the upstream checksum verification that is the point of
 # pinning them. Pins at the scan: betterleaks 2.0.0-rc.8, tofu 1.13.9,
 # tflint 0.66.0, yq 4.54.3.
-#   * yq and tflint have no entries: the scan lists no finding for either.
+#   * tflint has no entries: the scan lists no finding for it.
+#   * yq carries only CVE-2026-97054 (below), added from PR #622's build run 44532588047
+#     rather than from the no-ignore scan this paragraph describes, for the reason in its
+#     statement.
+#   * usr/bin/pebble (Ubuntu 26.04's optional package, not installed by any Dockerfile here)
+#     carried the same CVE; the base Dockerfile purges the package instead of excepting it.
 #   * gh has no entries since it moved to 2.105.0 (#602): the build Trivy gate (HIGH and
 #     CRITICAL, unfixed findings ignored) passes with no gh entry.
 #   * betterleaks carries only CVE-2026-78661 (below).
@@ -64,4 +69,8 @@ vulnerabilities:
   - id: CVE-2026-78661
     paths: ["usr/local/bin/tofu"]
     statement: "HIGH or CRITICAL in golang.org/x/net/html's parser (addText/fosterParent); golang.org/x/net v0.57.0 is in upstream tofu 1.13.9; no fixed release. The binary has no html.Parse, html.(*parser) or html.fosterParent symbol: no x/net/html package is linked at all (#496)."
+    expired_at: 2026-12-17
+  - id: CVE-2026-97054
+    paths: ["usr/local/bin/yq"]
+    statement: "HIGH in the Go standard library net/http (MaxBytesReader handling), go1.27.3, in upstream yq 4.54.3; no yq release is built with Go 1.27.4 or later, and rebuilding it would give up the checksum pin. The pinned binary has none of the symbols net/http.MaxBytesReader, net/http.(*maxBytesReader).Read, net/http.(*conn).serve or net/http.(*Server).Serve, while the controls runtime.main and main.main are present; yq runs no HTTP server (#625)."
     expired_at: 2026-12-17

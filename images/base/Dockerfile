@@ -49,12 +49,15 @@ RUN userdel -r ubuntu 2>/dev/null || true \
 # (apt, libc, ...): `install` alone never touches them, and the digest only moves when
 # Canonical republishes the image. #494: apt 3.2.0 (CVE-2026-109518) sat in the pinned
 # image while the archive already had the fix.
+# `pebble` is purged (#625) because it carries CVE-2026-97054 with no fixed resolute build
+# and nothing in these images starts it.
 # hadolint ignore=DL3008
 RUN apt-get update \
     && apt-get upgrade -y \
     && apt-get install --no-install-recommends -y \
         ca-certificates curl git gnupg jq less openssh-client procps \
         python3 python3-venv unzip xz-utils \
+    && apt-get purge -y pebble \
     && rm -rf /var/lib/apt/lists/*
 
 # --- gh CLI, from the release tarball rather than the apt repo so the version is
