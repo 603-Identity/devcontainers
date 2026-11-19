@@ -492,6 +492,26 @@ Every repo in both orgs gets a container from these images unless one of these a
   holds no token directory.
 - **No devcontainer** for org profile repos (`.github`), archived repos, or demo
   repositories.
+- **zizmor's `dangerous-triggers` rule is ignored for one line of the template gate.** zizmor
+  1.32.0 flags the `issue_comment` trigger of `template/.github/workflows/architect-review-gate.yml`
+  (1.30.1 did not). The trigger is deliberate (the template's header explains it, and the *Issue,
+  PR and review text* and *Commit statuses* rows above describe what it reads and writes): an
+  `issue_comment` run uses the default branch's copy of the file, a comment only re-triggers the
+  gate and never counts toward the status, the early stop compares the actor's numeric id with
+  `REVIEWER_IDS`, and `resolve` and `post` run `run:` steps only. `.github/zizmor.yml` carries
+  the ignore, keyed to the file name and line (`architect-review-gate.yml:65`; zizmor matches the
+  bare name, in either scanned directory), so the rule still reports any other trigger on another
+  line of the file, `pull_request_target` and `workflow_run` included: an
+  inline `# zizmor: ignore[dangerous-triggers]` comment on the trigger was tried and rejected,
+  because it also hid a renamed `pull_request_target` in the same `on:` block. The residual: the
+  ignore is keyed to a line number, so a change that moves the trigger makes the finding return
+  until the number is updated (a loud failure, not a silent one). Two silent cases are pinned by
+  `tools/tests/zizmor-pin-test.sh` instead: the template's line 65 must be exactly
+  `  issue_comment:` (so another trigger put there is not hidden), and `.github/workflows/` must
+  hold no file named `architect-review-gate.yml` (whose line 65 the same ignore would hide). A
+  change to `issue_comment`'s `types:` is not pinned: review reads it. A consuming repo that copies the
+  template and runs zizmor 1.32 or later needs its own ignore for that trigger; this repo's file
+  does not reach it.
 
 ## Known gaps
 

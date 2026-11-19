@@ -40,6 +40,10 @@ updates:
     ignore:
       - dependency-name: github.com/moby/buildkit
 
+  # A zizmor move from this entry fails tools/check-zizmor-pin.sh: it must land together with
+  # both zizmor container pins (the lint.yml step and the green gate entry in .ai/project.yml)
+  # moved to the new version by digest (README.md "Updating a pinned tool"). How it lands
+  # through the elevated push is a separate task.
   - package-ecosystem: uv
     directory: /images/base/tools
     schedule:

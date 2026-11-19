@@ -1,0 +1,20 @@
+# zizmor config, read by the lint job and the local gate (`--offline .github/workflows
+# template/.github/workflows`). One ignore, keyed to a file name and a line: zizmor matches the
+# bare file name (a path in the key matches nothing), in either scanned directory, so
+# tools/tests/zizmor-pin-test.sh fails if `.github/workflows/` ever holds a file of that name or
+# the template's line 65 is anything but `  issue_comment:`.
+#
+# The template gate's `issue_comment` trigger is deliberate: issue_comment runs use the default
+# branch's copy of the workflow, a comment only re-triggers the gate and never counts toward the
+# status, `resolve` reads API facts only, `post` runs `run:` steps only (no `uses:`) and the
+# early stop compares the actor id with REVIEWER_IDS. The header of the template explains it
+# (template/.github/workflows/architect-review-gate.yml, tools/gate-template.yml.in), and
+# docs/threat_model.md, Exceptions, records it. An inline `# zizmor: ignore[...]` comment was
+# rejected: it also hid a renamed `pull_request_target` in the same `on:` block.
+#
+# The line number is the trigger's line in the rendered template: when the template's `on:`
+# block moves, update it (zizmor reports the new line, and the finding returns until you do).
+rules:
+  dangerous-triggers:
+    ignore:
+      - architect-review-gate.yml:65
