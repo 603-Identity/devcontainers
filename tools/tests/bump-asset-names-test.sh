@@ -91,7 +91,10 @@ G
 out="" url=""
 while [ $# -gt 0 ]; do case "$1" in -o) out="$2"; shift 2 ;; -*) shift ;; *) url="$1"; shift ;; esac; done
 case "$url" in
-  *checksums_hashes_order) printf '%b' "${FAKE_ORDER:-MD5\nSHA-1\nSHA-256\n}" ;;
+  *checksums_hashes_order)
+    # FAKE_ORDER_RC: the order-file download fails (this exit code) with no output.
+    [ -z "${FAKE_ORDER_RC:-}" ] || exit "$FAKE_ORDER_RC"
+    printf '%b' "${FAKE_ORDER:-MD5\nSHA-1\nSHA-256\n}" ;;
   *dist/index.json) printf '[{"version":"v%s","lts":"Fake"}]' "$FAKE_VER" ;;
   *sigstore.json) printf '{}' > "$out" ;;
   *) if [ -n "$out" ]; then printf '%s' "$FAKE_BODY" > "$out"
@@ -175,5 +178,37 @@ rc=$?
 assert_rc "yq without a SHA-256 line in the order file fails" 1 "$rc"
 if grep -qF 'yq: SHA-256 not found in' "$SCRATCH/out"; then pass; else fail "yq says why: SHA-256 not found" "$(cat "$SCRATCH/out")"; fi
 rm -rf "$SCRATCH"
+
+# A failed order-file download must stop the bump, not read as a missing SHA-256 line: the curl in
+# resolve_yq stays a plain assignment with no `|| true` (#378). The checksum body is the real
+# asset's line, so a regression that carried on could write the good hash.
+yq_asset="$(dockerfile_asset "$ROOT_DIR/images/base/Dockerfile" YQ_VERSION)" || yq_asset=""
+if [ -z "$yq_asset" ]; then fail "yq: found the asset its Dockerfile downloads"; else
+setup base
+FAKE_ORDER_RC=22 FAKE_BODY="$(checksum_body yq "$yq_asset")" FAKE_TAG=v99.88.77 FAKE_VER="$NEW_VER" \
+  PATH="$SCRATCH/bin:/usr/bin:/bin" REPO=o/r APP_SLUG=app BOT_USER_ID=1 GH_TOKEN=t \
+  bash "$R/.github/scripts/bump-binaries.sh" yq > "$SCRATCH/out" 2>&1
+rc=$?
+got="$(sed -n "s/^ARG YQ_SHA256=//p" "$R/images/base/Dockerfile")"
+if [ "$rc" -ne 0 ]; then pass; else fail "yq: a failed order-file download fails the bump" "exit $rc: $(cat "$SCRATCH/out")"; fi
+if grep -qF 'SHA-256 not found' "$SCRATCH/out"; then fail "yq: a failed download is not reported as a missing SHA-256 line" "$(cat "$SCRATCH/out")"; else pass; fi
+if [ "$got" != "$SHA_GOOD" ]; then pass; else fail "yq: nothing is written after a failed order-file download" "wrote the hash"; fi
+rm -rf "$SCRATCH"
+
+# An order file listing SHA-256 twice must fail with its own explicit error naming the cause, not a
+# bash arithmetic error and the generic fallback (#379).
+setup base
+FAKE_ORDER='MD5\nSHA-256\nSHA-256\n' FAKE_BODY="$(checksum_body yq "$yq_asset")" FAKE_TAG=v99.88.77 FAKE_VER="$NEW_VER" \
+  PATH="$SCRATCH/bin:/usr/bin:/bin" REPO=o/r APP_SLUG=app BOT_USER_ID=1 GH_TOKEN=t \
+  bash "$R/.github/scripts/bump-binaries.sh" yq > "$SCRATCH/out" 2>&1
+rc=$?
+got="$(sed -n "s/^ARG YQ_SHA256=//p" "$R/images/base/Dockerfile")"
+assert_rc "yq with SHA-256 listed twice in the order file fails" 1 "$rc"
+if grep -qF 'SHA-256 listed 2 times in' "$SCRATCH/out"; then pass; else fail "yq says why: SHA-256 listed twice" "$(cat "$SCRATCH/out")"; fi
+if grep -qF 'could not resolve a new version or checksum' "$SCRATCH/out"; then fail "yq: no generic fallback for a duplicate SHA-256 line" "$(cat "$SCRATCH/out")"; else pass; fi
+if grep -qF 'syntax error' "$SCRATCH/out"; then fail "yq: no bash arithmetic error for a duplicate SHA-256 line" "$(cat "$SCRATCH/out")"; else pass; fi
+if [ "$got" != "$SHA_GOOD" ]; then pass; else fail "yq: nothing is written for a duplicate SHA-256 line" "wrote the hash"; fi
+rm -rf "$SCRATCH"
+fi
 
 summary

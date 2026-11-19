@@ -79,7 +79,7 @@ resolve_gh() {
 }
 
 resolve_yq() {
-  local tag order_url sums_url field sums order
+  local tag order_url sums_url field sums order lines
   IFS=$'\t' read -r tag RELEASE_URL <<< "$(latest_release mikefarah/yq)"
   NEW_VERSION="${tag#v}"
   # The checksums file lists one hash per algorithm, in the order this sidecar file
@@ -90,11 +90,16 @@ resolve_yq() {
   order_url="https://github.com/mikefarah/yq/releases/download/${tag}/checksums_hashes_order"
   # Read into a variable first, and tolerate grep's no-match exit: under pipefail a missing
   # SHA-256 line would otherwise kill the script before the message below (#325). A curl
-  # failure still exits here.
+  # failure still exits here: keep this a plain assignment with no `|| true`, so a failed
+  # download is not reported as a missing SHA-256 line (pinned in tools/tests/bump-asset-names-test.sh, #378).
   order="$(curl -fsSL "$order_url")"
-  field="$(grep -n '^SHA-256$' <<< "$order" | cut -d: -f1 || true)"
-  [ -n "$field" ] || { echo "::error::yq: SHA-256 not found in $order_url" >&2; exit 1; }
-  field=$((field + 1))
+  lines="$(grep -n '^SHA-256$' <<< "$order" | cut -d: -f1 || true)"
+  [ -n "$lines" ] || { echo "::error::yq: SHA-256 not found in $order_url" >&2; exit 1; }
+  # Exactly one SHA-256 line, or fail closed rather than guess a column (#379).
+  field="$(wc -l <<< "$lines")"
+  field="${field//[[:space:]]/}"
+  [ "$field" -eq 1 ] || { echo "::error::yq: SHA-256 listed ${field} times in $order_url, expected exactly one" >&2; exit 1; }
+  field=$((lines + 1))
   sums_url="https://github.com/mikefarah/yq/releases/download/${tag}/checksums"
   # Read into a variable first (see sha256_line): an early-exiting awk on a curl pipe races.
   sums="$(curl -fsSL "$sums_url")"
@@ -186,7 +191,15 @@ resolve_betterleaks() {
     key="$(ver_key "${tag#v}")"
     if [ -z "$best" ] || [[ "$key" > "$best_key" ]]; then best="$tag"; best_key="$key"; best_url="$url"; fi
   done < <(gh api "repos/betterleaks/betterleaks/releases" --paginate --jq '.[] | select(.draft | not) | [.tag_name, .html_url] | @tsv')
-  [ -n "$best" ] || { echo "::error::betterleaks: no release matching ${tag_re} (pin $pin)" >&2; exit 1; }
+  if [ -z "$best" ]; then
+    if [ -n "$pin_core" ]; then
+      # rc mode: tag_re alone also matches the rc tags of a later line that were skipped above.
+      echo "::error::betterleaks: no release matching ${tag_re} (pin $pin): only GA releases or ${pin_core}-rc.N count" >&2
+    else
+      echo "::error::betterleaks: no release matching ${tag_re} (pin $pin)" >&2
+    fi
+    exit 1
+  fi
   command -v cosign > /dev/null || { echo "::error::betterleaks: cosign is required to verify the release signature" >&2; exit 1; }
 
   NEW_VERSION="${best#v}"

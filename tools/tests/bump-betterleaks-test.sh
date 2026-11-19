@@ -126,12 +126,22 @@ assert_rc "rc.1 below the pinned rc.2 is a downgrade" 1 "$RC"
 out_has "downgrade" "refuses the downgrade"
 rm -rf "$SCRATCH"
 
+# In rc mode the error names the pin's own X.Y.Z rule: a later line's rc matches tag_re but is skipped (#377).
+setup 2.0.0-rc.1
+releases 'v2.1.0-rc.1\thttps://example.test/rc21\n'
+run betterleaks
+assert_rc "a later line's rc alone leaves no candidate" 1 "$RC"
+out_has "no release matching" "rc mode still says no release matching"
+out_has "2.0.0-rc.N" "rc mode names the pin's own X.Y.Z rc rule (#377)"
+rm -rf "$SCRATCH"
+
 setup 2.0.0
 releases 'v2.0.0-rc.3\thttps://example.test/rc3\n'
 checksums 2.0.0-rc.3 "$SHA_OK"
 run betterleaks
 assert_rc "a GA pin with only an rc listed fails closed" 1 "$RC"
 out_has "no release matching" "an rc is not a candidate once the pin is GA (#208)"
+case "$OUT" in *"-rc.N"*) fail "the GA message does not carry the rc rule" "$OUT" ;; *) pass ;; esac
 rm -rf "$SCRATCH"
 
 setup 2.0.0-rc.9
