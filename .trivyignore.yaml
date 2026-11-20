@@ -20,12 +20,15 @@
 # pinning them. Pins at the scan: betterleaks 2.0.0-rc.8, tofu 1.13.9,
 # tflint 0.66.0, yq 4.54.3.
 #   * yq and tflint carry only CVE-2026-97054 (below), and tofu carries it besides its
-#     other entries. The three CVE-2026-97054 entries were added from PRs #622 and #628: yq from #622's build run
-#     44532588047, tofu and tflint from #628's build run 44559619691, rather than from the
-#     no-ignore scan this paragraph describes, for the reason in each statement.
-#   * usr/bin/pebble (the pebble service manager in the ubuntu:26.04 image, a rockcraft build,
-#     not an apt package) carried the same CVE; the base Dockerfile removes the binary
-#     instead of excepting it.
+#     other entries. The three CVE-2026-97054 entries were added from PRs #622 and #628: yq
+#     from #622's build run 44532588047, tofu and tflint from #628's build run 44559619691,
+#     rather than from the no-ignore scan this paragraph describes, for the reason in each
+#     statement.
+#   * usr/bin/pebble (the pebble service manager in the ubuntu:26.04 image, a rockcraft
+#     build, not an apt package) carried the same CVE; the base Dockerfile removes the
+#     binary instead of excepting it. The removed binary's bytes still sit in the
+#     ubuntu:26.04 lower layer, a residual recorded in docs/threat_model.md under Known
+#     gaps.
 #   * gh has no entries since it moved to 2.105.0 (#602): the build Trivy gate (HIGH and
 #     CRITICAL, unfixed findings ignored) passes with no gh entry.
 #   * betterleaks carries only CVE-2026-78661 (below).

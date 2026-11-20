@@ -612,6 +612,16 @@ These are stated plainly so nobody trusts the setup for more than it does:
   build, and persist across image bumps (see the input row above).
 - **apt packages** aren't version-pinned. The base digest and the weekly rebuild bound
   them instead.
+- **The removed pebble binary's bytes still ship in the base image's lower layer.**
+  `images/base/Dockerfile` removes `usr/bin/pebble` and its state directory in its apt layer
+  (#625), because that service manager carries CVE-2026-97054 and nothing in these images
+  starts it. The merged filesystem, which the build gate and the daily scan read, no longer
+  has the binary, so neither reports it. Its bytes still sit in the pinned `ubuntu:26.04`
+  layer under that removal, which every published image carries, since all five flavours
+  build on base. Anyone who inspects or extracts that layer without applying the later
+  deletion can still find it. It is not on any container's filesystem. Removing the bytes
+  would need the image built from a layer that never holds them (for example a flattened
+  copy of the base image's filesystem), which is its own task.
 - **`--cap-drop=ALL` is proven in force, not against every repo's workflow.** The template
   proof ([`tests/template-proof.sh`](../tests/template-proof.sh), run in CI) asserts an
   empty capability bounding set, `NoNewPrivs` and uid 1000 in a container brought up from

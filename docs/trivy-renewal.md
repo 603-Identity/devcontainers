@@ -36,14 +36,27 @@ The evidence is the `trivy-evidence` artifact of a `build.yml` run that meets al
 - its job `Build, test, push and attest` concluded success;
 - it carries an artifact named `trivy-evidence` (a failed evidence step leaves none);
 - its head commit equals the artifact's Base commit line, and is the renewal lane's base or an
-  ancestor of it.
+  ancestor of it;
+- the artifact's `Vulnerability DB UpdatedAt` value (in its Trivy section) is a date at most 7 days
+  before the renewal date (UTC), the date the shared `expired_at` is counted from under
+  [The rules](#the-rules).
 
 The ancestry check is the one that carries the weight. A run on a tag named `main` also reports
 `headBranch` `main`, so the branch field alone proves nothing.
 
+The lane uses the newest run, by creation time, that meets every condition. The age bound exists
+because an old vulnerability database can miss a CVE published since, so an old run cannot back a
+fresh 30-day expiry.
+
 Fetch it with `gh run download <run id> --name trivy-evidence`, by run id and artifact name, and
 check the run with `gh run view <run id>` (event, `headBranch`, `headSha`, job conclusion). The
-renewal PR cites the run id and the artifact digest (the build run's step summary shows both).
+renewal PR cites the run id, the artifact digest (the build run's step summary shows both) and the
+`Vulnerability DB UpdatedAt` value.
+
+Both commands need Actions read on the lane's token (the dev-token row of
+[`threat_model.md`](threat_model.md)'s *Credential holders* table records what is observed: reads
+of this repo's runs, jobs and job logs; it records no artifact download). When either is refused,
+the lane stops and reports, opens no PR, and the renewal goes to [Fallback](#fallback).
 
 ## The rules
 
@@ -161,6 +174,10 @@ goes through the normal spec flow. A renewal never adds an id or a path (see The
 
 ## Fallback
 
-When no qualifying run exists (CI unavailable, the evidence step failed, or a lapsed entry already
-failed the build), use Procedure A of [`docs/host-steps.md`](host-steps.md) with
-`tools/host/trivy-rescan.sh`. The renewal rules above apply to its results file unchanged.
+When no qualifying run exists (CI unavailable, the evidence step failed, a lapsed entry already
+failed the build, the newest run's database is older than the bound, or the lane's token is refused
+the run read or the artifact download), use Procedure A of [`docs/host-steps.md`](host-steps.md)
+with `tools/host/trivy-rescan.sh`. The renewal rules above apply to its results file unchanged. The
+same bound applies to it: its `Vulnerability DB UpdatedAt` date (`tools/host/trivy-rescan.sh` writes
+that line) is at most 7 days before the renewal date, and a results file older than that backs no
+renewal.
