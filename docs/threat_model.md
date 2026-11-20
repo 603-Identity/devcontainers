@@ -173,7 +173,7 @@ at build and publish time, before any consumer pulls.
 6. **Changes to `main` are reviewed.** Two live branch rulesets cover `main`. `main-approval`
    requires a pull request with one approving review, a code-owner review (`.github/CODEOWNERS`
    names the one human owner) and approval of the last push, dismisses stale approvals on push,
-   and refuses deletion and non-fast-forward. `main-required-checks` (read live 2026-11-17: it carries only its `required_status_checks` rule; `.ai/project.yml`'s comment that it still holds a 0-approval `pull_request` rule is stale) requires the lint,
+   and refuses deletion and non-fast-forward. `main-required-checks` (read live 2026-11-17: it carries only its `required_status_checks` rule) requires the lint,
    build-and-smoke-test and `selftest` checks and `architect-review` (every check from GitHub
    Actions, integration 15368). The dated 2026-11-15 owner read-back that `.ai/project.yml`'s
    branch-protection comment records shows no bypass actors on either; the dev App's token reads

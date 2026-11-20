@@ -87,15 +87,20 @@ gates:
     - { cwd: ".", run: "bash tests/template-proof.sh" }
 
 # ── branch protection ────────────────────────────────────────────────────────
-# Both branch rulesets on `main`, read back live 2026-11-15 by id through
-# `GET /repos/603-Identity/devcontainers/rulesets/<id>`: `enforcement: active`, no bypass actors.
-#   main-approval (27334996): holds the `pull_request` rule (code-owner review, stale reviews
-#     dismissed on push, last-push approval, 1 approving review), plus `deletion` and
-#     `non_fast_forward`; on ~DEFAULT_BRANCH.
-#   main-required-checks (24183176): `required_status_checks`, every check pinned to GitHub
-#     Actions (integration_id 15368). It also still carries its own 0-approval `pull_request`
-#     rule, which is to be removed from the live ruleset after this change merges:
-#     ruleset-drift.sh judges the approval parameters on every ruleset carrying one.
+# Both branch rulesets on `main`, read 2026-11-20 by id through
+# `GET /repos/603-Identity/devcontainers/rulesets/<id>`, by the dev App's token from the lane's
+# container: self-attested, not the owner's read. As returned:
+#   main-approval (27334996): enforcement active; target branch; ref include `~DEFAULT_BRANCH`;
+#     rule types `pull_request`, `deletion`, `non_fast_forward`; no required checks.
+#   main-required-checks (24183176): enforcement active; target branch; ref include
+#     `refs/heads/main`; rule type `required_status_checks` only; required checks: "hadolint
+#     (Dockerfiles)", "Trivy misconfiguration (Dockerfiles)", "shellcheck (scripts)", "zizmor
+#     (workflow security)", "Build and smoke-test (no push)", "architect-review", "selftest".
+# The owner's 2026-11-15 read-back, kept for what the new read does not record: no bypass actors
+# on either ruleset; `main-approval`'s `pull_request` rule has code-owner review, stale reviews
+# dismissed on push, last-push approval and 1 approving review; every `main-required-checks`
+# check is pinned to GitHub Actions (integration_id 15368). The dev App's token cannot read
+# bypass actors, so the new read does not re-check them.
 # The check names are the jobs' own `name:` fields, not typed from memory (IAC-D14's
 # absent-check trap); `architect-review` is the context review.ci_gate.check names, posted by
 # review-gate.yml, not a job name.
