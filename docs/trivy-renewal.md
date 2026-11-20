@@ -106,8 +106,10 @@ goes through the normal spec flow. A renewal never adds an id or a path (see The
 - **A CVE in more than one flavour group.** Because the first failing flavour ends a `push`-mode
   run, a `main` run names one group's path, and the lane ships with the PR's build check pending
   (the lane-proceeds rule in `CLAUDE.md`). The exception PR's own pull-request build runs in
-  `local` mode, which scans every flavour before it fails, so that one run names every failing
-  flavour group for the same CVE. The extra entries for the later groups come in one fix round on
+  `local` mode, whose Trivy gate is differential: it no longer fails on a flavour group whose
+  finding the published image of that flavour also has. It scans every flavour before it ends and
+  lists every flavour's findings, each marked `added` or `published`, so the extra entries for the
+  later groups are taken from that listing (the `published` lines included), in one fix round on
   the same PR, written by hand under this section's rules (the script refuses the PR's own
   pull-request run), with that PR build run's id in the PR description.
 - **When an entry is allowed.** Only for a pinned upstream release binary whose pin is the latest

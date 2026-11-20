@@ -1,11 +1,21 @@
 #!/usr/bin/env bash
 # Builds base, then tofu and node FROM that exact base, then the dev-App flavour twice
 # (devapp FROM base, devapp-tofu FROM tofu), and smoke-tests each image BEFORE it is pushed.
-# Shared by both jobs in build.yml, so a PR tests exactly the code path main publishes with.
+# Shared by both jobs in build.yml, so a PR builds and smoke-tests exactly the code path main
+# publishes with; its Trivy gate differs (see local mode below).
 #
 #   build-and-test.sh local        build and test only; tags are <name>:local
 #   build-and-test.sh push <TAG>   also push; writes <name>_digest=sha256:... to
 #                                  $GITHUB_OUTPUT for the attestation steps
+#
+# In local mode on a pull request the Trivy gate is differential: a flavour fails only on a
+# finding its image has and the currently published image of that flavour does not (compared by
+# trivy-diff.sh), and on any secret. The published images come from `trivy-daily.sh resolve`, are
+# scanned with the PR base commit's .trivyignore.yaml, and are pulled and removed one at a time.
+# When the before set cannot be had the full gate applies: every finding counts as added, for every
+# flavour when the decision fails (no pull_request event, no base commit, a failed fetch, show or
+# resolve, a bad reference file) and for one flavour when its pull or published scan fails. Push mode is unchanged:
+# it keeps the full gate, so nothing is published with an unexcepted fixable finding.
 #
 # In push mode, tofu and node are built FROM "<registry>/devcontainer-base@<digest>",
 # the digest pushed a moment earlier in this same run, never from a tag. That way a
@@ -180,25 +190,112 @@ trivy() {
     -v "$root:/src" "$TRIVY" "$@"
 }
 
+# The five references of the published images (trivy-daily.sh resolve), by flavour, and whether
+# this run compares against them. Set by decide_gate, in local mode only.
+declare -A published_ref=()
+differential=0
+refs_file="$root/out/trivy-published-refs.tsv"
+# The reference pattern of trivy-daily.sh (REF_CORE): host, organisation, flavour, tag, digest.
+PUBLISHED_REF_RE='^ghcr\.io/603-identity/devcontainer-(base|tofu|node|devapp|devapp-tofu):[0-9]+\.[0-9]+@sha256:[0-9a-f]{64}$'
+
+# decide_gate: local mode only. Decides whether the Trivy gate is differential and prints one line
+# saying so; the first failing step names the word. Output of git and resolve goes to files under
+# out/, never to the log. The reference file is re-checked before any docker call uses a line of it.
+decide_gate() {
+  local word='' base='' line fl rf n=0 seen=' '
+  mkdir -p "$root/out"
+  if [ -z "${GITHUB_EVENT_NAME:-}" ]; then word=no-event
+  elif [ "$GITHUB_EVENT_NAME" != pull_request ]; then word=not-pull-request
+  else
+    base="$(jq -r '.pull_request.base.sha // empty' "${GITHUB_EVENT_PATH:-/nonexistent}" 2>/dev/null)" || base=
+    [[ $base =~ ^[0-9a-f]{40}$ ]] || word=bad-base
+  fi
+  if [ -z "$word" ] && ! git -C "$root" fetch --no-tags --depth=1 origin "$base" >"$root/out/trivy-git.log" 2>&1; then
+    word=fetch-failed
+  fi
+  if [ -z "$word" ] && ! git -C "$root" show "$base:.trivyignore.yaml" >"$root/out/trivy-base-ignore.yaml" 2>>"$root/out/trivy-git.log"; then
+    word=ignorefile-failed
+  fi
+  if [ -z "$word" ] && ! bash "$root/.github/scripts/trivy-daily.sh" resolve "$refs_file" >"$root/out/trivy-resolve.log" 2>&1; then
+    word=resolve-failed
+  fi
+  if [ -z "$word" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      n=$((n + 1))
+      fl=${line%%$'\t'*}
+      rf=${line#*$'\t'}
+      if [ "$n" -gt 5 ] || [[ $line != *$'\t'* ]] || [[ $seen == *" $fl "* ]] \
+        || ! [[ $rf =~ $PUBLISHED_REF_RE ]] || [ "${BASH_REMATCH[1]}" != "$fl" ]; then
+        word=bad-refs; break
+      fi
+      seen="$seen$fl "
+      published_ref[$fl]=$rf
+    done <"$refs_file"
+    [ -n "$word" ] || [ "$n" -eq 5 ] || word=bad-refs
+  fi
+  if [ -n "$word" ]; then
+    published_ref=()
+    echo "::warning::Trivy gate: full gate for every flavour ($word)"
+  else
+    differential=1
+    echo "Trivy gate: differential against the published images"
+  fi
+}
+
+# scan_local <flavor>: the gate in local mode on this flavour's image. The PR image is scanned
+# with today's gate flags, writing JSON instead of failing on a finding; its non-zero status (Trivy's
+# own errors included) is the flavour's result. Otherwise the published image of the flavour, when
+# this run is differential, is pulled, scanned with the base commit's ignore file and removed, and
+# trivy-diff.sh decides. A pull or scan that fails gives this flavour the full gate (`none`).
+# Everything but trivy-diff.sh's own output goes to files under out/.
+scan_local() {
+  local f=$1 rc=0 before=none pub log="$root/out/trivy-$1.log"
+  trivy image --quiet --scanners "vuln,secret" --severity "HIGH,CRITICAL" --ignore-unfixed \
+    --ignorefile /src/.trivyignore.yaml --format json --output "/src/out/trivy-$f-pr.json" "$(ref "$f")" \
+    >"$log" 2>&1 || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    if [ "$differential" -eq 1 ]; then
+      pub="${published_ref[$f]}"
+      if docker pull --quiet "$pub" >>"$log" 2>&1; then
+        if trivy image --quiet --scanners vuln --severity "HIGH,CRITICAL" --ignore-unfixed \
+          --ignorefile /src/out/trivy-base-ignore.yaml --format json --output "/src/out/trivy-$f-published.json" "$pub" \
+          >>"$log" 2>&1; then
+          before="$root/out/trivy-$f-published.json"
+        else
+          echo "::warning::Trivy gate: full gate for $f (scan-failed)"
+        fi
+        docker rmi "$pub" >>"$log" 2>&1 || echo "::warning::Trivy gate: could not remove the published $f image"
+      else
+        echo "::warning::Trivy gate: full gate for $f (pull-failed)"
+      fi
+    fi
+    bash "$root/.github/scripts/trivy-diff.sh" "$f" "$root/out/trivy-$f-pr.json" "$before" || rc=$?
+  fi
+  if [ "$rc" -ne 0 ]; then
+    gate_failed+=("$f")
+    echo "::error::$f: Trivy gate failed (exit $rc); deferred to the end of the run"
+  fi
+}
+
 gate_failed=()  # flavours whose gate scan failed in local mode, in run order
 scan() { # scan <flavor>
-  # THE GATE. It fails the build on any HIGH/CRITICAL vulnerability that HAS a fix, and
-  # on any secret baked into the image. Unfixed findings do not block, because nothing
-  # could be done about them today. They still reach code scanning (the SARIF report
-  # below) and resurface here on the weekly rebuild once a fix ships. The only other
-  # way past this gate is a reviewed entry in .trivyignore.yaml, and each entry
-  # carries an expiry.
+  # THE GATE. In push mode (and for the full gate) it fails the build on any HIGH/CRITICAL
+  # vulnerability that HAS a fix, and on any secret baked into the image. Unfixed findings do not
+  # block, because nothing could be done about them today. They still reach code scanning (the
+  # SARIF report below) and resurface here on the weekly rebuild once a fix ships. The only other
+  # way past this gate is a reviewed entry in .trivyignore.yaml, and each entry carries an expiry.
+  # In local mode on a pull request the gate also lets through a finding the published image of
+  # that flavour already has (scan_local).
   local gate=(image --quiet --scanners "vuln,secret" --severity "HIGH,CRITICAL" --ignore-unfixed
-    --ignorefile /src/.trivyignore.yaml --exit-code 1 "$(ref "$1")") rc=0
+    --ignorefile /src/.trivyignore.yaml --exit-code 1 "$(ref "$1")")
   if [ "$mode" = local ]; then
-    # Local mode records the failure (any non-zero status, Trivy's own errors included) and
-    # goes on; the end of the script fails the run. This is the only command run in a tested
-    # context, so every other failure still ends the run through set -e.
-    trivy "${gate[@]}" || rc=$?
-    if [ "$rc" -ne 0 ]; then
-      gate_failed+=("$1")
-      echo "::error::$1: Trivy gate failed (exit $rc); deferred to the end of the run"
-    fi
+    # Local mode records a failed PR scan or a failed trivy-diff.sh (any non-zero status, Trivy's
+    # own errors included) in gate_failed and goes on; the end of the script fails the run. The
+    # published pull, scan and removal run in a tested context too, but a failure of one only warns
+    # (a failed pull or scan gives this flavour the full gate). In decide_gate the payload read,
+    # the git fetch and show and trivy-daily.sh resolve also fail without ending the run: each
+    # selects a full-gate word. Every other failure still ends the run through set -e.
+    scan_local "$1"
   else
     trivy "${gate[@]}"
   fi
@@ -217,6 +314,8 @@ push_and_digest() { # push_and_digest <flavor> -> prints sha256:...
   docker inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$(ref "$1")" \
     | sed -n "s|^$registry/devcontainer-$1@||p" | head -n1
 }
+
+[ "$mode" != local ] || decide_gate
 
 echo "::group::base"
 docker build --pull -t "$(ref base)" "$root/images/base"

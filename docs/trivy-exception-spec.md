@@ -40,8 +40,9 @@ Steps for the lane:
   else in the file changed except its header lines.
 - Everything each run prints after its entry (run id, event, head commit, job, main ref and its
   resolved commit) is in the PR description.
-- The build check on the PR is CI's to report. A later flavour group failing for the same CVE is
-  handled as the section says (the maintainer decides; by hand, on the same PR).
+- The build check on the PR is CI's to report. A later flavour group for the same CVE shows in
+  the PR build's listing, and its entries come from that listing as the section says (the
+  maintainer decides; by hand, on the same PR).
 
 ### Tests
 

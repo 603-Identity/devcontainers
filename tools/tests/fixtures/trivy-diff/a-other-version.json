@@ -1,0 +1,1 @@
+{"Results":[{"Target":"tool (gobinary)","Class":"lang-pkgs","Vulnerabilities":[{"VulnerabilityID":"CVE-2026-0001","PkgName":"stdlib","InstalledVersion":"1.1","FixedVersion":"2.0","Severity":"HIGH","PkgPath":"usr/local/bin/tool"}]}]}
