@@ -58,6 +58,9 @@ code_paths:
   - docs/trivy-exception-spec.md   # the spec template for an exception task decides what an exception lane builds, so an edit to it is as security-relevant as an edit to the rules
   - .trivyignore.yaml    # an ALLOWLIST past the vulnerability gate: the one file where a real
                          # finding can be parked and the build stays green by design.
+  - .betterleaksignore   # the secret-scan allowlist, read from the base commit: the one file where a real
+                         # secret finding can be parked, so an edit is as security-relevant as one to .trivyignore.yaml.
+  - rulesets/            # the push ruleset consumers are told to apply: loosening it weakens every consumer that copies it.
   - .gitattributes       # forces LF; a CRLF script or lock file breaks inside the image.
   - .ai/project.yml      # the source of truth for code_paths, the gate, the ruleset and the
                          # review gate. An edit weakening any of them must route to review.
@@ -161,11 +164,12 @@ review:
 # ── agents ───────────────────────────────────────────────────────────────────
 agents:
   enabled: [architect, coder, security-critic, docs-consistency]
-  diff_rule: [.betterleaksignore, rulesets/]   # rule-based critic selection is on: the maintainer decided it on
-                                               # 2026-11-18, superseding the 2026-11-15 answer (the pick-list).
-                                               # code_paths covers the code paths; this list adds only the two
-                                               # security paths outside it, the secret-scan allowlist and the
-                                               # rulesets directory. Set to null to restore the pick-list.
+  diff_rule: [.gitignore]   # rule-based critic selection is on: the maintainer decided it on
+                            # 2026-11-18, superseding the 2026-11-15 answer (the pick-list).
+                            # code_paths covers the code paths, the secret-scan allowlist and the
+                            # rulesets folder; this list adds only .gitignore, which decides what
+                            # `git add` can stage but is not a review-gate path. Set to null to
+                            # restore the pick-list.
 models:
   architect: opus
   coder: sonnet
