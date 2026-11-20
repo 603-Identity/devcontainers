@@ -6,8 +6,9 @@
 #
 # It mirrors .github/scripts/build-and-test.sh without running it: that script scans each image
 # right after building it, and in push mode stops at the first finding, which would leave later
-# images unbuilt and unscanned. (Its local mode scans every flavour before failing, but still with
-# the ignore file applied, which this evidence must not use.)
+# images unbuilt and unscanned. (Its local mode scans every flavour before failing and is
+# differential on a pull request, but still applies the ignore file, which this evidence must
+# not use.)
 #
 # Usage:      HOST_RESULTS=<path> bash tools/host/trivy-rescan.sh <base commit>
 #
@@ -40,7 +41,7 @@ export LC_ALL=C
 # The sha256 of .github/scripts/build-and-test.sh as it stands at the commit this script is
 # written against. A clone whose copy differs stops with status 4 before any docker call. There
 # is no way around it: update this constant in a reviewed PR when that script changes.
-BUILD_SCRIPT_SHA256=60b8c49fac773f2c4c42aeb9aa2938ddae1ff17f36b5663467a9c9a9b323fe90
+BUILD_SCRIPT_SHA256=be7a65c2a2a197e0008bee60cfd10386d00a9516c93faf81ad189cce1d885cea
 
 # The same image string as build-and-test.sh's TRIVY variable.
 TRIVY="aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969"
