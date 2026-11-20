@@ -303,6 +303,16 @@ dev-App repo runs the way-of-working plugin's gate. The "reviewer App first" bul
 withdrawn: #267 is superseded, and #139 is superseded by #396, which holds the preconditions
 for turning auto-merge on.
 
+*Amended 2026-11-20, #530 and #532:* since #530 and #532 this repo runs `.github/workflows/review-gate.yml`,
+the way-of-working plugin's gate and the only workflow here that posts `architect-review`, and no longer
+`architect-review-gate.yml`, so "this gate ... governs
+this repo" above no longer holds. Of the checks DEVC-D9 carries forward, this repo's gate keeps only
+the head-SHA binding (#92). It matches the declared reviewer App's numeric id in place of a human
+`REVIEWER_IDS` list. It has no review-editor check (#94), no `Reviewed against head` check (#278) and
+no re-run when a review is edited or dismissed (#315, #281): it triggers on `pull_request_review` of
+type `submitted` only. The template gate, `template/.github/workflows/architect-review-gate.yml`, keeps
+all of them for legacy-route consumers. The threat model's Known gaps record the residuals.
+
 **Context.** `architect-review` is the only review control on `main`. Any writer can turn it
 green without a review: a PR runs its own copy of the gate (#93), and a PR's own workflow can
 post the status itself, because every `GITHUB_TOKEN` run posts as the same integration (F9b,
@@ -438,6 +448,17 @@ repo from editing around either.
   A dev-App repo runs the way-of-working plugin's `review.ci_gate`. That is cited as the dev-App
   repo's obligation and not decided here. Both post a commit status named `architect-review`: two
   gates, one name, a residual that PR C adds to the threat model.
+  *Amended 2026-11-20, #530 and #532:* this repo no longer runs `architect-review-gate.yml`, because
+  #532 removed the root copy. `.github/workflows/review-gate.yml` (the plugin's `review.ci_gate`) is the
+  only workflow here that posts `architect-review`. The template gate posts it only in legacy-route
+  consumers, so "two gates, one name" now describes a legacy-route consumer and a dev-App repo, and no
+  longer this repo. `review-gate.yml` counts a review in state `COMMENTED` by the declared reviewer
+  App's numeric id (`identities.reviewer_app.id`, read from the default branch's `.ai/project.yml`) on
+  the head SHA, whose first and third lines equal the configured header and attestation. Of the latest
+  such review, only a fifth line of exactly `Review verdict: pass` gives `success`. It keeps the
+  head-SHA binding (#92) and has no review-editor check (#94), no `Reviewed against head` check (#278)
+  and no re-run when a review is edited or dismissed (it triggers on `pull_request_review` of type
+  `submitted` only). The threat model's Known gaps record the residuals.
 - **Reviewed only here.** A consuming repo's PR changes a digest and reviews no image
   content. The review of that content happens in this repo alone. The trust is bounded by the
   `org.opencontainers.image.revision` label (with a documented command to diff two tags), by
