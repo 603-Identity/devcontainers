@@ -1,33 +1,36 @@
 # Next steps
 
-**Now:** Milestone 6, Internal hardening, in `implementing`. M6's re-planned build order is applied;
-specs for its first three items are being drafted.
+**Now:** Milestone 6, Internal hardening, in `implementing`. Driver work: lanes run from approved
+specs; two specs are escalated to the maintainer.
 
 **Just done:**
-- M6's new description applied (the text staged on #126, sha256 prefix `dd922af1a13a4a82`); the
-  plugin's parser reads its build order. `lane.sh groups 6` reads `group none` until specs exist.
-- Closed as superseded: #578, #170, #171, #311, #172 and #272 (into #394), #152 (into #574). Closed
-  as done: #397 (the re-plan) and #588 (covered by #637, `5a76663`). #531 was already closed.
-- #652 (`bce4da2`) merged: the 2026-11-20 findings-mode and plan-sprint passes (M6 and M3 triage,
-  M3's order written live).
-- Spec sessions launched by the maintainer for #586, #634 and #647.
+- Merged from lanes: #654 (#586, review gate covers `.betterleaksignore` and `rulesets/`),
+  #655 (#647, renewal evidence age bound, pebble residual), #657 (#634, local mode scans every
+  flavour, `7ad7835`), #660 (#570), #661 (#572), #663 (#394, merge-guard hook replaced by
+  `gh pr merge` deny rules, `2a9427c`).
+- #659 filed and merged as #662 (`6df2137`) through Procedure B: the first run that handed the
+  owner a link to the fixed block instead of a pasted copy.
+- #665 filed (Procedure B runs the reader search and stops on any hit), split out of #642.
+- #642 escalated: the maintainer answered with `choice=amend`, narrowing it to parts (a) and (b).
+- #571 escalated (non-converging comparison rules); the driver's proposed answer narrows it and
+  stops the lane on any live-read difference. Not yet posted.
+- Sessions open when #663 merged keep running the deleted hook (non-blocking errors) until they
+  restart; new sessions load the deny rules.
 
 **Next:** Driver, on **opus** (architect):
-- When the spec sessions report posted comments for #586, #634 and #647, review each (lanes skill,
-  *Review the posted spec*) and advise the maintainer on approval.
-- After each approving reaction, prep its lane on milestone 6, hand over the `wowl` lane command,
-  start `lane.sh wait`, then run `lane.sh groups 6`.
-- #647 should land before the Trivy exceptions' renewal (expiry 2026-12-17).
+- When the #424 and #574 lane PRs are reviewed, run `/way-of-working:pr-checks` and check each
+  diff against its spec. For #424, the PR build log must show the differential decision line and
+  no `pull-failed` or `scan-failed` line (the decision step runs before `out/` exists).
+- Review the #642 redraft, the #571 respec and the #665 spec as each is posted; prep each
+  approved lane. #665 lands after #642 (both edit Procedure B's block).
 
-**HITL Gate: OPEN** — the maintainer reacts to each posted spec comment for #586, #634 and #647
-after the driver review (#586, #570, #572 and #642 also need a fresh maintainer reaction on the
-issue itself, since the 2026-11-20 folds edited their bodies); the owner re-copies the host-steps
-start text from main, which now names only procedure A.
+**HITL Gate: OPEN** — the maintainer approves the #424 and #574 lane PRs; answers #571's
+escalation (spec-task-answer, then -Spec 571); reacts on #665 and runs -Spec 665; reacts to the
+#642 redraft after the driver review.
 
 **Open for the owner (non-blocking):**
 - The Trivy exceptions expire 2026-12-17. Renew them per `docs/trivy-renewal.md`.
-- way-of-working v0.38.0 is out (the pin is v0.37.0). Its migration is the admin-token move (#1608).
-- Leftover spec worktrees under `/tmp/lanes`: clear them with `wowl 603-Identity/devcontainers -SpecSweep`.
+- way-of-working v0.38.0 is out (the pin is v0.37.0).
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan:
 https://github.com/603-Identity/devcontainers/milestone/6 · host steps: [docs/host-steps.md](../docs/host-steps.md)
