@@ -9,7 +9,7 @@
 #     and the weekly rebuild goes red until someone re-reviews it: extends it with a
 #     fresh reason, or removes it because the fix has shipped.
 #
-# How entries are renewed: docs/trivy-renewal.md.
+# How entries are renewed and added: docs/trivy-renewal.md ("Adding an exception" for a new entry).
 #
 # Current entries (scanned from base commit fa72985ce85b against images built from it, no
 # ignore file; Trivy 0.74.0, vulnerability DB schema version 2, DB UpdatedAt 2026-11-18;

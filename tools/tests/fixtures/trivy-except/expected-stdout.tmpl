@@ -1,0 +1,9 @@
+  - id: CVE-2026-97054
+    paths: ["usr/local/bin/yq"]
+    statement: "HIGH or CRITICAL in stdlib v1.27.3 compiled into upstream yq 4.54.3; no fixed upstream release."
+    expired_at: 2026-12-17
+run: 44559619691
+event: push
+head: @HEAD@
+job: Build, test, push and attest (135589525128)
+main ref: trunk @MAIN@
