@@ -1,46 +1,28 @@
 # Next steps
 
-**Now:** Milestone 6, Internal hardening, in `implementing`. CVE-2026-97054 is excepted, image builds
-are green again, and elevated pushes now go through the admin-App publish (Procedure B).
+**Now:** Milestone 6, Internal hardening, in `implementing`. M6's re-planned build order is applied;
+specs for its first three items are being drafted.
 
 **Just done:**
-- #626 merged as #640 (`bc0848d`): the "Adding an exception" procedure, `tools/trivy-except.sh` and the
-  exception spec template. Its spec was refreshed onto the current base first (comment 7024131510).
-  Lanes 423, 627 and 626 cleaned up.
-- Follow-ups: #642 filed (#637's unapplied tightenings); the flake re-occurrence added to #446.
-- `/way-of-working:plan-sprint findings`: 22 review-finding issues unpacked into 46 findings and
-  closed. 8 folded (into #570, #572, #586, #642, which makes a spec on those need a fresh maintainer
-  reaction), 6 declined as done or covered, 32 combined into #643-#651.
-- `/way-of-working:plan-sprint`: 25 issues placed on M6 and 7 on M3 (description written live, order
-  31, 489, 475, 605, 524, 522, 575, 650, 556, 526, 514, 521, 26, 27, 28, 439); #531, #588, #480 and
-  #578 left unmilestoned with reasons. M6's new 47-item description is staged (HITL Gate).
-- #625 merged as #628 (`f44f196`): CVE-2026-97054 exceptions for yq, tofu and tflint; rockcraft's
-  pebble removed. All five images pass the Trivy gate. #377 merged as #622 (`d399698`) after a
-  branch update brought #628 in.
-- #627 merged as #632 (`c56b7e3`): the daily Trivy scan of the published images. Its first dispatch
-  run on main was clean.
-- #423 merged as #635 (`4514575`): zizmor 1.32.0 pinned, with a pin check; the template gate's
-  `issue_comment` finding is ignored by a line-keyed `.github/zizmor.yml` entry (the inline ignore
-  also hid `pull_request_target`).
-- Procedure B in `docs/host-steps.md` replaced by the interim admin-App publish (#637, `5a76663`),
-  after its first two live runs (#632, #635). `docs/host-steps.md` is now in `code_paths`.
-- #626's spec (comment 7018080079) approved after three escalations, scoped to `main` runs only.
-  Filed #634 (scan every flavour before failing the pull-request build).
-- Critic pass on #637 (architect, docs-consistency): 4 rounds, converged. The lanes record their
-  own.
+- M6's new description applied (the text staged on #126, sha256 prefix `dd922af1a13a4a82`); the
+  plugin's parser reads its build order. `lane.sh groups 6` reads `group none` until specs exist.
+- Closed as superseded: #578, #170, #171, #311, #172 and #272 (into #394), #152 (into #574). Closed
+  as done: #397 (the re-plan) and #588 (covered by #637, `5a76663`). #531 was already closed.
+- #652 (`bce4da2`) merged: the 2026-11-20 findings-mode and plan-sprint passes (M6 and M3 triage,
+  M3's order written live).
+- Spec sessions launched by the maintainer for #586, #634 and #647.
 
 **Next:** Driver, on **opus** (architect):
-- Once the owner has applied M6's staged description, run `lane.sh groups 6` and hand over spec
-  commands for the first lane-able items (#586, #634, #647 lead the order).
+- When the spec sessions report posted comments for #586, #634 and #647, review each (lanes skill,
+  *Review the posted spec*) and advise the maintainer on approval.
+- After each approving reaction, prep its lane on milestone 6, hand over the `wowl` lane command,
+  start `lane.sh wait`, then run `lane.sh groups 6`.
 - #647 should land before the Trivy exceptions' renewal (expiry 2026-12-17).
 
-**HITL Gate: OPEN** — the owner places #626 on a milestone (its spec 7018080079 is approved;
-`lane.sh prep` refuses `bad-issue` until it has one) and re-plans M6 (build order, #397, the
-merge-guard cluster, #634 and the #626/#627 placement); re-copies the host-steps start text from
-main, which now names only procedure A.; plan-sprint 2026-11-20 staged: milestone 6's new
-description (read /tmp/tmp.TWUtTBosmd/description-m6.txt, then run /tmp/tmp.TWUtTBosmd/staged.sh;
-the same text is on #126, sha256 prefix dd922af1a13a4a82), then close #578, #170, #171, #311,
-#172, #272, #152 and #397 by hand; verify and close #531 and #588.
+**HITL Gate: OPEN** — the maintainer reacts to each posted spec comment for #586, #634 and #647
+after the driver review (#586, #570, #572 and #642 also need a fresh maintainer reaction on the
+issue itself, since the 2026-11-20 folds edited their bodies); the owner re-copies the host-steps
+start text from main, which now names only procedure A.
 
 **Open for the owner (non-blocking):**
 - The Trivy exceptions expire 2026-12-17. Renew them per `docs/trivy-renewal.md`.
