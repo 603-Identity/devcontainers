@@ -48,7 +48,7 @@ load_bearing_docs:
 # or what a consuming repo's container does at runtime.
 code_paths:
   - images/
-  - template/            # copied into consuming repos (`.devcontainer/`, the two `.github/workflows/` callers, the root `.gitattributes`)
+  - template/            # copied into consuming repos (`.devcontainer/`, the three `.github/workflows/` callers, the root `.gitattributes`)
   - tests/               # the smoke test is the pre-push gate on every image
   - tools/               # devc-verify and the gate scripts: they decide what a consumer PR may
                          # merge, and the rendered gate template is checked against them.
@@ -191,8 +191,9 @@ lanes:
 # The cutover's PR 1 (claude-workbench#411 step 6, #398). Each id is a numeric account id read
 # back from the API: the maintainer's from `gh api users/JaredGroves-603`, each App's from
 # `gh api users/<slug>[bot]` (the `user.id` on its reviews and PRs, not the App ID its settings
-# page shows). The dev App exists but is not installed on this repo, and is not added to the
-# token broker, until the approval side is confirmed (reference/cutover.md § The approval side).
+# page shows). The dev App is installed on this repo, and the host token broker serves its token to
+# this repo's dev container (the read-only /run/wow mount .devcontainer/devcontainer.json declares).
+# Its pushes take commit_route: api.
 identities:
   maintainer:
     - { login: JaredGroves-603, id: 281693088 }
