@@ -12,20 +12,9 @@
       "Bash(git push --no-verify:*)",
       "PowerShell(git commit --no-verify:*)",
       "PowerShell(git commit -n:*)",
-      "PowerShell(git push --no-verify:*)"
-    ]
-  },
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash|PowerShell",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/merge-guard.sh\""
-          }
-        ]
-      }
+      "PowerShell(git push --no-verify:*)",
+      "Bash(gh pr merge:*)",
+      "PowerShell(gh pr merge:*)"
     ]
   },
   "enabledPlugins": {

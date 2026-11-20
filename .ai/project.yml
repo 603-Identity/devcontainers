@@ -64,7 +64,7 @@ code_paths:
   - .gitattributes       # forces LF; a CRLF script or lock file breaks inside the image.
   - .ai/project.yml      # the source of truth for code_paths, the gate, the ruleset and the
                          # review gate. An edit weakening any of them must route to review.
-  - .claude/             # the plugin pin, the merge-guard hook, and the force-push and --no-verify deny rules.
+  - .claude/             # the plugin pin, and the gh pr merge, force-push and --no-verify deny rules.
   - .devcontainer/       # this repo's own dev-App container: FROM pin, extras, token mount.
   - .mcp.json            # a root MCP config loads into every session started in a checkout.
   - CLAUDE.md            # loaded as instructions by every Claude session here; carries the lane-proceeds rule.
@@ -79,7 +79,7 @@ gates:
   green:
     - { cwd: ".", run: "for f in images/*/Dockerfile template/.devcontainer/Dockerfile; do docker run --rm -i hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d < \"$f\" || exit 1; done" }
     - { cwd: ".", run: "for d in images template; do docker run --rm -v \"$PWD:/src:ro\" aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969 config --quiet --severity HIGH,CRITICAL --exit-code 1 \"/src/$d\" || exit 1; done" }
-    - { cwd: ".", run: "shellcheck images/base/files/*.sh images/devapp/files/gh images/devapp/files/dev-token images/devapp/files/devapp-check.sh images/devapp/files/claude-fetch.sh images/devapp/files/plugin-install.sh tests/*.sh .github/scripts/*.sh tools/*.sh tools/host/*.sh tools/tests/*.sh .claude/hooks/*.sh" }
+    - { cwd: ".", run: "shellcheck images/base/files/*.sh images/devapp/files/gh images/devapp/files/dev-token images/devapp/files/devapp-check.sh images/devapp/files/claude-fetch.sh images/devapp/files/plugin-install.sh tests/*.sh .github/scripts/*.sh tools/*.sh tools/host/*.sh tools/tests/*.sh" }
     - { cwd: "tools/devc-verify", run: "GOWORK=off GOFLAGS=-mod=vendor GOPROXY=off GOTOOLCHAIN=local go test ./..." }
     - { cwd: ".", run: "bash tools/tests/run-gate-tests.sh" }
     - { cwd: ".", run: "docker run --rm -v \"$PWD:/repo:ro\" -w /repo ghcr.io/zizmorcore/zizmor:1.32.0@sha256:3014cc8f68f663935f69b3c3e0e41f5ce102b268d97db13db0f62208747f860d --offline .github/workflows template/.github/workflows" }
