@@ -20,9 +20,18 @@
 # devapp smoke test and Trivy run after base, tofu and node are pushed, which is the
 # pattern tofu and node already have: each image is checked before ITS OWN push, not before
 # every push.
+#
+# A failed gate scan ends a push run at once, before that flavour is pushed: later flavours are
+# built FROM digests pushed earlier in the same run. In local mode a failed gate scan is recorded
+# and the run goes on, so one run scans all five flavours and then fails naming each one that
+# failed. A failed build, claude export, revision label or smoke test stops either mode at once.
 set -euo pipefail
 
-mode="${1:?usage: build-and-test.sh local | push <TAG>}"
+mode="${1-}"
+case "$mode" in
+  local|push) ;;
+  *) echo "usage: build-and-test.sh local | push <TAG>" >&2; exit 2 ;;
+esac
 tag="${2:-local}"
 registry="${REGISTRY:-ghcr.io/603-identity}"
 root="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -171,6 +180,7 @@ trivy() {
     -v "$root:/src" "$TRIVY" "$@"
 }
 
+gate_failed=()  # flavours whose gate scan failed in local mode, in run order
 scan() { # scan <flavor>
   # THE GATE. It fails the build on any HIGH/CRITICAL vulnerability that HAS a fix, and
   # on any secret baked into the image. Unfixed findings do not block, because nothing
@@ -178,8 +188,20 @@ scan() { # scan <flavor>
   # below) and resurface here on the weekly rebuild once a fix ships. The only other
   # way past this gate is a reviewed entry in .trivyignore.yaml, and each entry
   # carries an expiry.
-  trivy image --quiet --scanners vuln,secret --severity HIGH,CRITICAL --ignore-unfixed \
-    --ignorefile /src/.trivyignore.yaml --exit-code 1 "$(ref "$1")"
+  local gate=(image --quiet --scanners "vuln,secret" --severity "HIGH,CRITICAL" --ignore-unfixed
+    --ignorefile /src/.trivyignore.yaml --exit-code 1 "$(ref "$1")") rc=0
+  if [ "$mode" = local ]; then
+    # Local mode records the failure (any non-zero status, Trivy's own errors included) and
+    # goes on; the end of the script fails the run. This is the only command run in a tested
+    # context, so every other failure still ends the run through set -e.
+    trivy "${gate[@]}" || rc=$?
+    if [ "$rc" -ne 0 ]; then
+      gate_failed+=("$1")
+      echo "::error::$1: Trivy gate failed (exit $rc); deferred to the end of the run"
+    fi
+  else
+    trivy "${gate[@]}"
+  fi
   if [ "$mode" = push ]; then
     mkdir -p "$root/out"
     # SBOM (attested beside the provenance) and a FULL report, including unfixed and
@@ -258,3 +280,10 @@ tofu_from="$flavor_ref"
 build_flavor node "$base_from"
 build_flavor devapp "$base_from"
 build_flavor devapp-tofu "$tofu_from"
+
+# Local mode deferred its gate scan failures: name every failing flavour, then fail once.
+if [ "${#gate_failed[@]}" -gt 0 ]; then
+  for f in "${gate_failed[@]}"; do echo "::error::Trivy gate failed for $f"; done
+  echo "Trivy gate failed for: ${gate_failed[*]}"
+  exit 1
+fi

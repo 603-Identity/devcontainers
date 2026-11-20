@@ -94,22 +94,22 @@ goes through the normal spec flow. A renewal never adds an id or a path (see The
   and the ancestry check is against the main ref rather than the lane's base. Before running the
   script, the operator brings `origin/main` up to date (a fetch of `main`), so a run newer than
   the checkout's last fetch is not refused as a commit the checkout does not have. The flavour is
-  the one whose scan failed: `build-and-test.sh` runs under `set -euo pipefail`, so the first
-  failing scan ends the run and later flavours are never scanned.
+  the one whose scan failed: in `push` mode, which the `main` runs the script reads use,
+  `build-and-test.sh` runs under `set -euo pipefail`, so the first failing scan ends the run and
+  later flavours are never scanned.
 - **Who runs it.** The exception lane, with the dev token, which reads this repo's Actions runs,
   jobs and job logs. When any `gh` call the script makes is refused, or the script exits non-zero
   for any other reason, the lane stops and reports, and opens no PR. The lane also stops when the
   main-ref commit the script prints differs from its spec's base commit (a renewal or re-pin
   merged since the spec was posted would otherwise give a second `expired_at` or a different pin),
   and the maintainer re-posts the spec on the new base.
-- **A CVE in more than one flavour group.** Because the first failing flavour ends a run, a `main`
-  run names one group's path, and the lane ships with the PR's build check pending (the
-  lane-proceeds rule in `CLAUDE.md`). When the exception PR's own build then fails on a later
-  flavour group for the same CVE, it is handled as #628 was: the maintainer decides, and the extra
-  entries come in a fix round on the same PR, written by hand under this section's rules (the
-  script refuses the PR's own pull-request run), with that PR build run's id in the PR
-  description. This case is not scripted. A separate task makes the build scan every flavour
-  before failing, which removes the case.
+- **A CVE in more than one flavour group.** Because the first failing flavour ends a `push`-mode
+  run, a `main` run names one group's path, and the lane ships with the PR's build check pending
+  (the lane-proceeds rule in `CLAUDE.md`). The exception PR's own pull-request build runs in
+  `local` mode, which scans every flavour before it fails, so that one run names every failing
+  flavour group for the same CVE. The extra entries for the later groups come in one fix round on
+  the same PR, written by hand under this section's rules (the script refuses the PR's own
+  pull-request run), with that PR build run's id in the PR description.
 - **When an entry is allowed.** Only for a pinned upstream release binary whose pin is the latest
   upstream release (the release `bump-binaries.sh` resolves for that tool). That check stands in
   for "no release with the fix exists", checked against the pin rather than asserted. A pin behind
