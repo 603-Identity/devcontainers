@@ -146,6 +146,7 @@ func TestRejectsUnsetAndReset(t *testing.T) {
 		"RUN --unset":                  "RUN --unset true\n",
 		"RUN --reset":                  "RUN --reset true\n",
 		"flag split by a continuation": "ENV --un\\\nset FOO\n",
+		"ENV --unset with quotes inside the flag": "ENV --un\"set\" FOO\n",
 	}
 	froms := map[string]string{
 		"FROM --reset=all":        "FROM --reset=all " + base + "\n",
