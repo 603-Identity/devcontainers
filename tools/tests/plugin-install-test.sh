@@ -206,6 +206,8 @@ bad() { # bad <label> <repo> <ref> [plugin-key]
 bad ref-injection "$REPO" 'v1;touch x' '' 'v1;touch x'
 bad ref-space "$REPO" 'v1 x' '' 'v1 x'
 bad ref-dots "$REPO" '../x' '' '../x'
+bad ref-semicolon "$REPO" 'v1;x' '' 'v1;x'
+bad ref-dotdot "$REPO" 'a/../x' '' 'a/../x'
 bad ref-newline "$REPO" $'v1\nx' '' ''
 bad repo-three a/b/c v1 '' 'a/b/c'
 bad repo-dash -y/x v1 '' '-y/x'
