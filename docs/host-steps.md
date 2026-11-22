@@ -17,8 +17,10 @@ cannot run there, and this file is the standard way to run both:
   approval of the last push from a code owner other than the pusher, and `.github/CODEOWNERS` names
   only the owner, so the owner's own login never pushes a PR it must approve.
 
-Steps for the owner's own login (a hand-made release tag, `gh release create`, ruleset and
-environment changes) are not host steps. The owner does them by hand.
+Steps for the owner's own login (approving the `release` environment's deployment, the
+break-glass tag, made only through the recorded ruleset edit, and ruleset and environment changes)
+are not host steps. The owner does them by hand. Tags and Releases themselves come from
+`.github/workflows/release.yml`.
 
 ## The trust model
 
@@ -37,9 +39,10 @@ branch runs) writes every input a host step receives. So:
   from GitHub; from the container it reads only the driver's manifest, once, into memory, and the files it
   names, once, as data, into a snapshot the container cannot write, each value checked against a grammar. It
   runs nothing from the pushed files, but GitHub does: a pushed workflow, and anything it runs,
-  runs on its own events (on `push`, on the PR) before any review, with the scopes it requests. The
-  owner's read of every pushed file that is not Markdown, in the snapshot, before the token exists,
-  is the control there.
+  runs on its own events (on `push`, on the PR) before any review, with the scopes it requests. For
+  the bytes the block pushes, the owner's read of every pushed file whose name does not end in
+  lowercase `.md`, in the snapshot, before the token exists, is the control there; it does not cover
+  commits pushed to the branch afterwards (Known limits, *later dev-App pushes*).
 - **The elevated token must never be readable by a running container.** `603id-admin[bot]` holds
   Administration, Environments, Actions and Workflows write, so a process that read the token could
   rewrite the rulesets, the environments and the workflows. `wow-admin` now writes it under the
@@ -47,18 +50,19 @@ branch runs) writes every input a host step receives. So:
   container mounts (glunk-works/claude-workbench#1611, WB-D53; this repo's container binds only the
   clone, `.gitconfig.d` and the dev token's folder under `.config/glunk-identity`), so the
   containers and the review pollers keep running through Procedure B. That holds only under the
-  threat model's Exception for a host that holds a token directory (no privileged container, none
-  with the Docker socket); nothing in Procedure B checks it at run time. The token is
+  threat model's Exception for a host that holds a token directory, which lists the containers
+  such a host runs none of; nothing in Procedure B checks it at run time. The token is
   read only by Procedure B's block, in a plain `pwsh` window, and by `wow-admin` itself (to mint and
-  to revoke it), never by a Claude session, and is revoked at the end of every run, a failed one
+  to revoke it), never by a Claude session, and is revoked per step 2.5's rule, failed-revoke hour
   included.
 
 ## Who does what
 
-- **The driver session** (in the container) decides that a host step is needed, prepares the input
-  files and the values block, and hands the values block to the owner. It never runs a host step
-  and never writes procedure text for one. For an elevated push it writes the handoff files and the
-  manifest Procedure B reads, and after the push it checks the commits and opens the PR.
+- **The driver session** (in the container) decides that a host step is needed. For a host clone
+  run it prepares the input files and the values block, and hands the values block to the owner. It
+  never runs a host step and never writes procedure text for one. For an elevated push it hands the
+  owner no values block: it writes the handoff files and the manifest Procedure B reads, and after
+  the push it checks the commits and opens the PR as the dev App.
 - **The owner**, for a host clone run, starts a host-side Claude session from a new, empty
   directory, with the start text, pastes the values block after it, and does what the session asks,
   when it asks: approve a script, read its output. For an elevated push, the owner starts Procedure B's
@@ -111,7 +115,7 @@ You were started from a new, empty directory. Stop and tell me if any CLAUDE.md 
    loaded.
 2. **Check every value against its grammar** before using it. A value that fails, or a key the
    procedure does not list, stops the session. Values reach commands only as quoted shell variables,
-   and JSON only through `jq --arg` or `--rawfile`.
+   and JSON only through `jq --arg`.
 3. **Use git without the host's own config.** Every git command runs with `GIT_CONFIG_GLOBAL=/dev/null`,
    `GIT_CONFIG_NOSYSTEM=1`, `GIT_SSH_COMMAND=false` and `GIT_TERMINAL_PROMPT=0`, so no global
    `insteadOf`, credential helper or SSH key can route a fetch or a push through the owner's login.
@@ -120,13 +124,12 @@ You were started from a new, empty directory. Stop and tell me if any CLAUDE.md 
    otherwise stop.
 
    **On a Windows host** (Git Bash, where `cygpath` is on `PATH`), every `gh`, `docker` and `git`
-   command also runs with `MSYS_NO_PATHCONV=1`, and API endpoints are written without a leading slash
-   (`installation/token`, `repos/…`), so Git Bash does not rewrite an endpoint or a
+   command also runs with `MSYS_NO_PATHCONV=1`, and API endpoints are written without a leading
+   slash, so Git Bash does not rewrite an endpoint or a
    `{container}:/tmp/…` argument into a Windows path. That setting also means a POSIX path reaches a
    native Windows program unchanged, and `jq.exe`, `docker.exe`, `gh.exe` and `git.exe` cannot open
    it. So every local file path given to a native Windows tool is converted first with
-   `cygpath -m` (for example the file after `jq --rawfile`, the host side of `docker cp`, or a file
-   given to `gh api --input`), and so is every
+   `cygpath -m` (for example the host side of `docker cp`), and so is every
    path-valued environment variable such a tool reads (`DOCKER_CONFIG`, `GH_CONFIG_DIR`); a native
    tool silently ignores a variable in POSIX form. `docker cp` converts the host path only, never
    the `{container}:/path` side. `MSYS_NO_PATHCONV=1` and the slash-less endpoints still protect
@@ -163,10 +166,8 @@ braces, such as `{task}`, are filled in by the host session at run time, never b
   of `main`. A task that needs a new host script gets it reviewed and merged first, in its own PR;
   until one exists, Procedure A cannot run. A script under `tools/host/` states its argument grammar
   in its header, takes only such arguments, writes its results to the path in `HOST_RESULTS`, and
-  never pushes, publishes, logs in, or reads a token directory.
-- **For an elevated push:** follows Procedure B's step 1 and hands the owner no values block.
-- **For a host clone run:** hands the owner a values block of `key=value` lines and nothing else,
-  for example:
+  never pushes, publishes, logs in, or reads a token directory. The driver hands the owner a values
+  block of `key=value` lines and nothing else, for example:
 
   ```text
   procedure=A
@@ -176,6 +177,8 @@ braces, such as `{task}`, are filled in by the host session at run time, never b
   args=…
   minutes=15
   ```
+
+- **For an elevated push:** follows Procedure B's step 1 and hands the owner no values block.
 
 ## Procedure A: host clone run
 
@@ -298,7 +301,9 @@ the files from the container; the owner runs one fixed PowerShell block from thi
 the snapshot it makes, mints, confirms and revokes; the driver checks the result and opens the PR.
 The containers and the review pollers keep running throughout (see the trust model). The admin
 App only pushes, so the admin token is used for nothing but the commits; the dev App opens the PR.
-The owner's approval counts under `main-approval` because the owner is not the last pusher.
+The owner's approval counts under `main-approval` because the owner is not the last pusher. In
+Procedure B, `{task}` is the task issue number, which the driver writes into the handoff names and
+the PR body and which the owner types at the block's `Task number` prompt.
 
 ### Step 1: the driver prepares the handoff (no token yet)
 
@@ -324,8 +329,9 @@ The owner's approval counts under `main-approval` because the owner is not the l
    `branch` matches `^[a-z0-9][a-z0-9._/-]{0,80}$`, is not `main` and has no `..`. `expect` is `new`
    (the block creates the branch from `main`) or the 40-hex head of a branch an earlier run of this
    procedure created (a retry after a partial run). Each `src` is `{task}-` and then 1 to 100 of
-   `[A-Za-z0-9._-]`. Each `path` is repo-relative, segments of `[A-Za-z0-9._-]`, no `.` or `..`
-   segment. `old` is the blob sha the file has on `main` (for `new`) or on the branch at `expect`, or
+   `[A-Za-z0-9._-]`, contains no `..`, and appears once in the list (ignoring case, as above).
+   Each `path` is repo-relative, segments of `[A-Za-z0-9._-]`, no `.` or `..` segment, and appears
+   once in the list, compared ignoring case (as the block's `seenPath` set does). `old` is the blob sha the file has on `main` (for `new`) or on the branch at `expect`, or
    `new` for a file that does not exist there: the block sends it to GitHub, which refuses the write
    when the file has changed since, so a change that landed on `main` meanwhile is never silently
    overwritten. `sha256` is the file's SHA-256 in uppercase hex. `msg` is a conventional-commit
@@ -340,48 +346,72 @@ The owner's approval counts under `main-approval` because the owner is not the l
 
 ### Step 2: the owner snapshots, reads, mints, publishes and revokes
 
-1. **Start the block**: in a plain `pwsh` window (never a Claude session), paste the block below
-   once, copied from this file on `main` on GitHub (the `main` branch view), never from a container
-   or another branch, and give the task number when asked. Before any token exists, it reads the
-   manifest once into memory and copies every file it names into a new snapshot folder under `%TEMP%`, refusing a link, a reparse
-   point, a folder, a file over the cap and a repeated `src` or `path`, checks every value against
+1. **Start the block**: in a plain `pwsh` window (never a Claude session) running PowerShell 7.2 or
+   later, paste the block below once, copied from this file on `main` on GitHub (the `main` branch
+   view), never from a container or another branch, and give the task number when asked. The block
+   checks the PowerShell version first and throws below 7.2. Before any token exists, it makes a new
+   snapshot folder under `%TEMP%` and prints its path at once, then reads the manifest once into
+   memory and copies every file it names into the snapshot, refusing a folder, a file over the cap
+   and a repeated `src` or `path`, and refusing a link or reparse point at the path when it is checked
+   (Known limits, *the `Read-Plain` residual*). It checks every value against
    the grammar above and every file's SHA-256, writes each file to the snapshot under its plan
-   number, prints the plan with each file's hash and the snapshot folder, marks every file that is
-   not Markdown `READ`, and waits. From
+   number, prints the plan with each file's hash and the snapshot folder, marks `READ` every file
+   whose name does not end in lowercase `.md` (the test is case-sensitive: a `.MD` or `.markdown`
+   file is marked), and waits. From
    then on it uses only the bytes it read: nothing the container writes into `.git\wow-handoff`
    afterwards reaches GitHub. The container does not mount `%TEMP%` (its bind mounts are the clone,
    the `.gitconfig.d` folder and the dev token's folder).
 2. **Read** every file the block marked `READ`, in the snapshot folder it printed, against the
-   approved spec: every pushed file that is not Markdown, so the read does not depend on the
-   driver's list. GitHub runs a pushed workflow, and what it runs, on its own events as soon as the
-   branch is pushed, before any review: this read is the control on it. Markdown is read at review.
+   approved spec: every pushed file whose name does not end in lowercase `.md`, so the read does not
+   depend on the driver's list. GitHub runs a pushed workflow, and what it runs, on its own events as
+   soon as the branch is pushed, before any review: for the bytes the block pushes, this read is the
+   control on it. Commits pushed to the branch afterwards are not covered by it (Known limits,
+   *later dev-App pushes*). A file whose name ends in lowercase `.md` is read at review.
 3. **Mint**, in Git Bash on the host, while the block waits:
 
    ```bash
-   WOW_HOME=~/.config/603id-identity ~/.config/603id-identity/bin/wow-admin 603-Identity/devcontainers --perms contents=write,pull_requests=write,workflows=write
+   WOW_HOME=~/.config/603id-identity ~/.config/603id-identity/bin/wow-admin 603-Identity/devcontainers --perms contents=write,workflows=write
    ```
 
-   The `granted:` line must list `contents`, `pull_requests` and `workflows` and no other write.
+   The `granted:` line must list `contents` write, `workflows` write and the `metadata` read, and no
+   other permission.
 4. **Publish**: type `yes` at the block's prompt. It reads the token, creates the branch from `main`
    (`expect` `new`) or checks the branch head equals `expect`, publishes each file through the
-   contents API with the request body on standard input, and prints the branch's commit count
-   against `main` and the files it changes: they must be what the driver named. If anything throws,
-   stop, do not run it again, revoke, and tell the driver.
+   contents API with the request body on standard input, and prints the branch's commit count and
+   the files it changes against the branch's starting commit (`main`'s head as the block read it,
+   for `expect` `new`, or `expect` for a retry), not against `main`. It checks them against the plan
+   and throws on a mismatch. If the block throws, take the route below.
 
    ```powershell
    & {
-   $clone = 'C:\Users\SR116\projects\603identity\devcontainers-dev'
-   $tokenFile = 'C:\Users\SR116\.config\603id-identity\admin\603-Identity\devcontainers\admin-token'
+   $ErrorActionPreference = 'Stop'
+   $v = $PSVersionTable.PSVersion
+   if ($v.Major -lt 7 -or ($v.Major -eq 7 -and $v.Minor -lt 2)) { throw 'PowerShell 7.2 or later is required' }
+   $clone = Join-Path $env:USERPROFILE 'projects\603identity\devcontainers-dev'
+   $tokenFile = Join-Path $env:USERPROFILE '.config\603id-identity\admin\603-Identity\devcontainers\admin-token'
    $r = 'repos/603-Identity/devcontainers'
+   function Test-Plain($i) { -not ($i.PSIsContainer -or $i.LinkType -or ($i.Attributes -band [IO.FileAttributes]::ReparsePoint)) }
    function Read-Plain([string]$p, [long]$cap) {
-     $i = Get-Item -LiteralPath $p -Force
-     if ($i.PSIsContainer -or $i.LinkType -or ($i.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $i.Length -gt $cap) { throw "not a plain file within the cap: $p" }
-     ,[IO.File]::ReadAllBytes($p)
+     if (-not (Test-Plain (Get-Item -LiteralPath $p -Force))) { throw "not a plain file within the cap: $p" }
+     $s = [IO.File]::Open($p, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+     try {
+       if (-not (Test-Plain (Get-Item -LiteralPath $p -Force)) -or $s.Length -gt $cap) { throw "not a plain file within the cap: $p" }
+       $n = [int]$s.Length
+       $b = New-Object byte[] $n
+       $got = 0
+       while ($got -lt $n) {
+         $k = $s.Read($b, $got, $n - $got)
+         if ($k -eq 0) { throw "short read: $p" }
+         $got += $k
+       }
+     } finally { $s.Dispose() }
+     ,$b
    }
    $task = Read-Host 'Task number'
    if ($task -cnotmatch '^[1-9][0-9]{0,6}\z') { throw 'bad task number' }
    $h = Join-Path $clone '.git\wow-handoff'
    $snap = (New-Item -ItemType Directory -Path (Join-Path $env:TEMP ('wow-publish-' + [guid]::NewGuid()))).FullName
+   "Snapshot: $snap"
    $m = [Text.Encoding]::UTF8.GetString((Read-Plain (Join-Path $h "$task-manifest.json") 65536)) | ConvertFrom-Json
    $branch = [string]$m.branch
    $expect = [string]$m.expect
@@ -414,21 +444,24 @@ The owner's approval counts under `main-approval` because the owner is not the l
    'Read every file marked READ in that folder, then mint the token.'
    if ((Read-Host 'Publish exactly these? Type yes') -cne 'yes') { throw 'not confirmed' }
    Set-Location $env:TEMP
-   $cfg = (New-Item -ItemType Directory -Path (Join-Path $env:TEMP ('gh-admin-' + [guid]::NewGuid()))).FullName
-   $env:GH_CONFIG_DIR = $cfg
-   $env:GH_TOKEN = Get-Content -LiteralPath $tokenFile -TotalCount 1
+   $cfg = $null
    try {
+     $cfg = (New-Item -ItemType Directory -Path (Join-Path $env:TEMP ('gh-admin-' + [guid]::NewGuid()))).FullName
+     $env:GH_CONFIG_DIR = $cfg
+     $env:GH_TOKEN = Get-Content -LiteralPath $tokenFile -TotalCount 1
      if ($env:GH_TOKEN -cnotmatch '^ghs_[A-Za-z0-9._-]{36,}\z') { throw 'the token file does not hold an installation token' }
      if ($expect -ceq 'new') {
        $base = gh api "$r/git/ref/heads/main" --jq .object.sha
        if ($LASTEXITCODE -ne 0 -or $base -cnotmatch '^[0-9a-f]{40}\z') { throw 'could not read main' }
        "base: $base"
+       $start = $base
        @{ ref = "refs/heads/$branch"; sha = $base } | ConvertTo-Json -Compress | gh api -X POST "$r/git/refs" --input - --jq .object.sha
        if ($LASTEXITCODE -ne 0) { throw 'could not create the branch' }
      } else {
        $head = gh api "$r/git/ref/heads/$branch" --jq .object.sha
        if ($LASTEXITCODE -ne 0 -or $head -cne $expect) { throw "branch head is not $expect" }
        "head before: $head"
+       $start = $expect
      }
      foreach ($f in $plan) {
        $body = @{ message = $f.msg; branch = $branch; content = [Convert]::ToBase64String($f.bytes) }
@@ -437,23 +470,93 @@ The owner's approval counts under `main-approval` because the owner is not the l
        if ($LASTEXITCODE -ne 0) { throw "PUT failed: $($f.path)" }
        "$sha  $($f.path)"
      }
-     gh api "$r/compare/main...$branch" --jq '[.ahead_by, (.files | map(.filename) | join(","))] | @tsv'
+     $raw = gh api "$r/compare/${start}...${branch}"
      if ($LASTEXITCODE -ne 0) { throw 'could not read the compare' }
+     $cmp = $raw | ConvertFrom-Json
+     $changed = @($cmp.files | ForEach-Object { $_.filename })
+     $want = @($plan | ForEach-Object { $_.path })
+     "ahead_by: $($cmp.ahead_by)"
+     $changed
+     if ([int]$cmp.ahead_by -ne $plan.Count -or $changed.Count -ne $want.Count -or @($changed | Where-Object { $_ -cnotin $want }).Count -or @($want | Where-Object { $_ -cnotin $changed }).Count) { throw 'the compare does not match the plan' }
    } finally {
      Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
      Remove-Item Env:GH_CONFIG_DIR -ErrorAction SilentlyContinue
-     Remove-Item -LiteralPath $cfg -Recurse -Force -ErrorAction SilentlyContinue
+     if ($cfg) { Remove-Item -LiteralPath $cfg -Recurse -Force -ErrorAction SilentlyContinue }
    }
    }
    ```
 
-5. **Revoke**, always, a failed run included:
+   **If the block throws,** sort the throw by when it happened against the block's `Publish exactly
+   these? Type yes` prompt, and then by its error. In every case the owner deletes the snapshot
+   folder the first `Snapshot:` line named, if one was made, and revokes per step 2.5 only if a mint
+   command was run. Every route that starts a new run from step 2.1 does so only after that revoke,
+   when one is due, and never within the hour after a failed revoke (step 2.5).
+
+   - **Before `yes` is accepted,** nothing has been pushed and the block has not read the token.
+     - Host fault: `PowerShell 7.2 or later is required`, or a failure to create the snapshot
+       folder or write a file into it. Fix the host (update PowerShell, free or fix `%TEMP%`) and
+       start again from step 2.1, with no driver change.
+     - Owner input: `bad task number`, or a missing or unopenable manifest file itself
+       (`{task}-manifest.json`). The owner first checks the task number typed and that the clone is
+       at the path the block builds; if either was wrong, start again from step 2.1 with it put
+       right; if both were right, it is a handoff fault.
+     - Handoff fault: any other throw while reading or checking the manifest or a handoff file
+       (`bad branch`, `bad expect`, `bad file count`, `bad src`, `repeated src`, `bad path`,
+       `repeated path`, `bad old`, `bad msg`, `hash mismatch`, `not a plain file within the cap`,
+       `short read`, a missing or unopenable `src`, or a manifest that does not parse). Tell the
+       driver the error line; the driver fixes the handoff, and the owner starts again from step 2.1.
+     - `not confirmed` after the owner's read found a problem: tell the driver what it found; the
+       driver fixes the draft and the handoff before any new run.
+     - `not confirmed` after a mint problem: when the mint failed, revoke per step 2.5 (a mint
+       command was run; if the failed mint wrote no token file, that revoke is a failed revoke and
+       its hour applies), fix the mint's cause (`wow-admin`, the admin App's key, or the network),
+       and start again from step 2.1 only after that revoke and never within the hour after a failed
+       revoke. When the `granted:` line was not the one step 2.3 requires, revoke per step 2.5, start
+       no new run and tell the driver and the maintainer, because the admin App's permissions or
+       `wow-admin` are not as expected; a new run starts only after the maintainer has checked both,
+       and never within the hour after a failed revoke.
+     - `not confirmed` after a mistyped answer: revoke per step 2.5 if a mint command was run, then
+       start again from step 2.1, never within the hour after a failed revoke.
+     - Any other throw before `yes`: tell the driver the error line, and start no new run until the
+       driver says whether the handoff or the host is at fault.
+   - **After `yes` is accepted,** any throw (for example the token-pattern throw, a missing token
+     file, `could not read main`, `could not create the branch`, a branch-head throw, `PUT failed`,
+     `could not read the compare` or the compare-mismatch throw): stop, and tell the driver the error
+     line; do not run the block again until the driver, having checked the branch per step 3.1, hands
+     back the next handoff.
+5. **Revoke.** The owner revokes with this command at the end of every run in which a mint command
+   was run, whether or not the mint succeeded, a failed run included:
 
    ```bash
    WOW_HOME=~/.config/603id-identity ~/.config/603id-identity/bin/wow-admin 603-Identity/devcontainers --revoke
    ```
 
-   It must show the 401 and the token file's removal. Delete the snapshot folder afterwards.
+   Right after the revoke, in the `pwsh` window, check that the token file is gone:
+
+   ```powershell
+   Test-Path -LiteralPath (Join-Path $env:USERPROFILE '.config\603id-identity\admin\603-Identity\devcontainers\admin-token')
+   ```
+
+   Delete the snapshot folder afterwards. This rule is the one every other passage uses; they use its
+   terms and never restate the clean-revoke conditions:
+
+   - **A clean revoke** is one whose output shows the 401 and the token file's removal, whose
+     `Test-Path` prints `False`, and for which exactly one mint command was run since the previous
+     revoke, clean or failed (each mint writes the same token file, so a revoke reaches only the
+     newest token). The first revoke after this rule reaches `main` counts only the mint commands run
+     since its run started at step 2.1.
+   - **A failed revoke** is any other revoke, whatever the reason. It includes a revoke after a mint
+     that wrote no token file (it cannot show the removal) and a revoke after two or more mint
+     commands. A repeated revoke with no mint command since the previous revoke is a failed revoke,
+     and it restarts the hour.
+   - **The hour:** after a failed revoke, every admin token is treated as live for one hour from that
+     moment (an installation token lives at most an hour, so every token minted before the failed
+     revoke has expired when the hour ends). No new run of Procedure B starts in that hour, and the
+     owner tells the driver.
+   - **While any admin token may be live** is the span from any mint command until the revoke that
+     follows it, and, when that revoke is failed (or any revoke is failed), through the hour after it.
+     No Procedure A host session runs in that span.
+   - Nothing checks this rule; it is the owner's.
 
 Why the block is shaped this way: `& { … }` makes it one statement, so a paste that breaks partway
 leaves PowerShell waiting for the closing `}` and runs nothing. Every request body goes to `gh` on
@@ -486,13 +589,35 @@ been hashed and read.
 
 ## Known limits
 
-- **The owner's reading is the control on an elevated push.** The snapshot fixes the bytes the block
-  pushes to the bytes the owner can read; only the owner's read of the files marked `READ`, against
-  the approved spec, and the review of the PR before merge, bind them to what was approved. Markdown
-  files are read at review, after the push.
+- **The owner's reading is the control on the bytes the block pushes.** The snapshot fixes the bytes
+  the block pushes to the bytes the owner can read; only the owner's read of the files marked `READ`,
+  against the approved spec, and the review of the PR before merge, bind them to what was approved. A
+  file whose name ends in lowercase `.md` is read at review, after the push. The read does not cover
+  commits pushed to the branch afterwards (the next bullet).
+- **Later dev-App pushes.** After the publish, the dev App can still push more commits to the
+  published branch (any path outside `.github/workflows/`, which its token cannot change). The
+  branch's workflows run on those pushes before any review, with whatever those commits change (a
+  script a workflow runs, say), and neither the owner's snapshot read nor step 3.1's check covers
+  them; the PR review of the final head does.
+- **The `Read-Plain` residual.** Its link and reparse-point queries are on the path, not on the open
+  handle, so a link swapped in between the first query and the open, or a link in a parent folder of
+  the path (the clone's `.git` or `.git\wow-handoff`), can still make the open reach a link's target,
+  a remote one included, which can start an authentication to that remote host; with a link in a
+  parent folder, the path queries themselves can reach the target too. No byte is pushed unless it
+  matches the manifest's SHA-256, and a link still at the path at the second query is refused. A link
+  swapped in before the open and swapped back out before the second query goes unseen, so the block
+  can then read that link target's bytes, and push them only if they match the manifest's SHA-256,
+  which the container could set only by already knowing them; the cap refusal and `hash mismatch`
+  give different error lines, so the owner's report of which line appeared shows whether that target
+  is over the cap, and the error line can also show whether the target exists or opens. When the
+  swapped path is the manifest itself, the target's bytes are parsed as the manifest, and the error
+  line the handoff-fault route passes to the driver can carry fragments of that target file (a
+  `ConvertFrom-Json` error, or a line that echoes a value, such as `bad src` or `bad path`). Closing
+  this needs an open that does not follow links, which this procedure does not have.
 - **The token's folder is outside every container, not outside the host.** A host process outside
   a container (in WSL, say) that is running untrusted code could still read the identity home; the
-  owner runs nothing like that while a token exists.
+  owner runs nothing like that while any admin token may be live, as step 2.5 defines it. This
+  includes a Procedure A host session, and nothing checks it.
 - **Procedure B is interim.** glunk-works/claude-workbench#1681 replaces it with a mechanical
   route; until then this section on `main` is the only procedure for an elevated push.
 - **Nothing in the block checks the token's permissions.** `wow-admin`'s `granted:` line, read by
