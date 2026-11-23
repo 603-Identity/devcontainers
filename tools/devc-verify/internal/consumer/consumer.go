@@ -20,7 +20,11 @@ import (
 const (
 	dockerfileRel = ".devcontainer/Dockerfile"
 	devcontRel    = ".devcontainer/devcontainer.json"
-	maxFile       = 1 << 20
+	// selfRepo and selfTemplateRel name the one exemption from the "no other devcontainer.json"
+	// rule: this repo's own consumer template, so it can verify its root .devcontainer/ beside it.
+	selfRepo        = "603-Identity/devcontainers"
+	selfTemplateRel = "template/.devcontainer/devcontainer.json"
+	maxFile         = 1 << 20
 	// irregularRel is fetch-consumer.sh's marker: the head's .devcontainer/ holds an entry it
 	// would not fetch (a symlink, a submodule, an unsafe name, or too many files).
 	irregularRel = "_irregular/.devcontainer"
@@ -46,7 +50,8 @@ type Result struct {
 
 // Files checks dir/.devcontainer/Dockerfile and dir/.devcontainer/devcontainer.json and
 // that no other devcontainer.json exists anywhere under dir, in the mode the head alone
-// implies. It returns the base image.
+// implies. It passes no repository, so it always refuses template/.devcontainer/devcontainer.json
+// (see Check). It returns the base image.
 func Files(dir string) (image.Ref, error) {
 	r, err := Check(Options{Dir: dir})
 	return r.Ref, err
@@ -66,7 +71,7 @@ func HeadImage(dir string) (image.Ref, error) {
 // dev-App; in dev-App mode the head must itself be dev-App, with its FROM and its token mount
 // agreeing, and is then compared with the template. Otherwise plain mode's allowlist applies.
 func Check(o Options) (Result, error) {
-	if err := noOtherDevcontainerJSON(o.Dir); err != nil {
+	if err := noOtherDevcontainerJSON(o.Dir, o.Repo); err != nil {
 		return Result{}, err
 	}
 	df, err := readRegular(o.Dir, dockerfileRel)
@@ -205,8 +210,10 @@ func readRegular(dir, rel string) ([]byte, error) {
 
 // noOtherDevcontainerJSON walks dir (skipping dir/.git) and rejects any entry named
 // devcontainer.json or .devcontainer.json other than the one canonical path. The name
-// match is case-insensitive: stricter than the spec, and harmless.
-func noOtherDevcontainerJSON(dir string) error {
+// match is case-insensitive: stricter than the spec, and harmless. The one exemption is the
+// regular file template/.devcontainer/devcontainer.json (exact case), and only when repo is
+// exactly 603-Identity/devcontainers; Files passes no repo, so it never applies there.
+func noOtherDevcontainerJSON(dir, repo string) error {
 	gitDir := filepath.Join(dir, ".git")
 	return filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -225,6 +232,9 @@ func noOtherDevcontainerJSON(dir string) error {
 		rel, err := filepath.Rel(dir, p)
 		if err != nil {
 			return err
+		}
+		if repo == selfRepo && filepath.ToSlash(rel) == selfTemplateRel && d.Type().IsRegular() {
+			return nil
 		}
 		if filepath.ToSlash(rel) != devcontRel {
 			return check.Failf("another devcontainer.json exists at %q", filepath.ToSlash(rel))

@@ -104,3 +104,65 @@ func TestFilesMissingDirIsAnError(t *testing.T) {
 		t.Fatalf("an unreadable consumer dir is an error, not a failed predicate; got %v", err)
 	}
 }
+
+func TestCheckSelfTemplateExemption(t *testing.T) {
+	const self = "603-Identity/devcontainers"
+	const tmpl = "template/.devcontainer/devcontainer.json"
+	cases := []struct {
+		name   string
+		repo   string
+		mutate func(t *testing.T, d string)
+		ok     bool
+	}{
+		{"exempt path in this repo", self, func(t *testing.T, d string) { write(t, d, tmpl, goodDJ) }, true},
+		{"exempt path, letter-case repo variant", "603-identity/devcontainers", func(t *testing.T, d string) { write(t, d, tmpl, goodDJ) }, false},
+		{"exempt path, another owner", "other/devcontainers", func(t *testing.T, d string) { write(t, d, tmpl, goodDJ) }, false},
+		{"exempt path, no repo", "", func(t *testing.T, d string) { write(t, d, tmpl, goodDJ) }, false},
+		{"template/devcontainer.json", self, func(t *testing.T, d string) { write(t, d, "template/devcontainer.json", goodDJ) }, false},
+		{"template/.devcontainer.json", self, func(t *testing.T, d string) { write(t, d, "template/.devcontainer.json", goodDJ) }, false},
+		{"template/.devcontainer/.devcontainer.json", self, func(t *testing.T, d string) { write(t, d, "template/.devcontainer/.devcontainer.json", goodDJ) }, false},
+		{"template/.devcontainer/sub/devcontainer.json", self, func(t *testing.T, d string) { write(t, d, "template/.devcontainer/sub/devcontainer.json", goodDJ) }, false},
+		{"x/template/.devcontainer/devcontainer.json", self, func(t *testing.T, d string) { write(t, d, "x/"+tmpl, goodDJ) }, false},
+		{"Template/ case variant", self, func(t *testing.T, d string) { write(t, d, "Template/.devcontainer/devcontainer.json", goodDJ) }, false},
+		{".DevContainer case variant", self, func(t *testing.T, d string) { write(t, d, "template/.DevContainer/devcontainer.json", goodDJ) }, false},
+		{"DevContainer.json case variant", self, func(t *testing.T, d string) { write(t, d, "template/.devcontainer/DevContainer.json", goodDJ) }, false},
+		{"exempt file beside sub/devcontainer.json", self, func(t *testing.T, d string) {
+			write(t, d, tmpl, goodDJ)
+			write(t, d, "sub/devcontainer.json", goodDJ)
+		}, false},
+		{"symlink at the exempt path", self, func(t *testing.T, d string) {
+			write(t, d, "real.json", goodDJ)
+			p := filepath.Join(d, filepath.FromSlash(tmpl))
+			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(filepath.Join(d, "real.json"), p); err != nil {
+				t.Skipf("cannot create symlinks here: %v", err)
+			}
+		}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir := setup(t)
+			c.mutate(t, dir)
+			_, err := Check(Options{Dir: dir, Repo: c.repo})
+			if c.ok {
+				if err != nil {
+					t.Fatalf("want pass, got %v", err)
+				}
+				return
+			}
+			if !check.IsFailure(err) {
+				t.Fatalf("want a check failure, got %v", err)
+			}
+		})
+	}
+}
+
+func TestFilesRefusesSelfTemplate(t *testing.T) {
+	dir := setup(t)
+	write(t, dir, "template/.devcontainer/devcontainer.json", goodDJ)
+	if _, err := Files(dir); !check.IsFailure(err) {
+		t.Fatalf("want a check failure, got %v", err)
+	}
+}

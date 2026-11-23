@@ -143,6 +143,56 @@ setup; mut "git__trees__$HEAD" '(.tree[] | select(.path==".devcontainer/Dockerfi
 assert_rc "executable Dockerfile is still a regular file" 0 "$RC"
 end_scenario
 
+# --- this repo's own template devcontainer.json is exempt from the marker, only here ------
+SELF=603-Identity/devcontainers
+TMPL=template/.devcontainer/devcontainer.json
+fetch_as() { # repo: fetch with that repo argument (the script-wide R is untouched)
+  RC=0; bash "$TOOLS_DIR/fetch-consumer.sh" "$1" "$HEAD" "$SCRATCH/out" > "$SCRATCH/stdout" 2> "$SCRATCH/stderr" || RC=$?
+}
+tree_add() { # path type mode
+  mut "git__trees__$HEAD" ".tree += [{\"path\":\"$1\",\"type\":\"$2\",\"mode\":\"$3\"}]"
+}
+marked() { [ -e "$SCRATCH/out/_other/devcontainer.json" ] && echo yes || echo no; }
+
+setup; tree_add "$TMPL" blob 100644; fetch_as "$SELF"
+assert_rc "self template: exempt in this repo" 0 "$RC"
+assert_eq "self template: no marker in this repo" no "$(marked)"
+end_scenario
+
+setup; tree_add "$TMPL" blob 100755; fetch_as "$SELF"
+assert_rc "self template, mode 100755" 0 "$RC"
+assert_eq "self template, mode 100755: no marker" no "$(marked)"
+end_scenario
+
+for other in 603-identity/devcontainers glunk-works/devcontainers 603-Identity/devcontainers2; do
+  setup; tree_add "$TMPL" blob 100644; fetch_as "$other"
+  assert_rc "self template in $other" 0 "$RC"
+  assert_eq "self template in $other is marked" yes "$(marked)"
+  end_scenario
+done
+
+for p in template/devcontainer.json template/.devcontainer.json template/.devcontainer/.devcontainer.json \
+         template/.devcontainer/sub/devcontainer.json x/template/.devcontainer/devcontainer.json \
+         Template/.devcontainer/devcontainer.json template/.DevContainer/devcontainer.json \
+         template/.devcontainer/DevContainer.json; do
+  setup; tree_add "$p" blob 100644; fetch_as "$SELF"
+  assert_rc "$p in $SELF" 0 "$RC"
+  assert_eq "$p in $SELF is marked" yes "$(marked)"
+  end_scenario
+done
+
+setup; tree_add "$TMPL" blob 100644; tree_add sub/devcontainer.json blob 100644; fetch_as "$SELF"
+assert_eq "exempt file beside sub/devcontainer.json is marked" yes "$(marked)"
+end_scenario
+
+setup; tree_add "$TMPL" blob 120000; fetch_as "$SELF"
+assert_eq "symlink at the exempt path is marked" yes "$(marked)"
+end_scenario
+
+setup; tree_add "$TMPL" commit 160000; fetch_as "$SELF"
+assert_eq "submodule at the exempt path is marked" yes "$(marked)"
+end_scenario
+
 # --- the extras under .devcontainer/ (#418) ------------------------------------------------
 there() { [ -e "$SCRATCH/out/$1" ] && echo yes || echo no; }
 extra() { # path [mode] [size]: add a tree entry and its served contents

@@ -481,7 +481,12 @@ Every repo in both orgs gets a container from these images unless one of these a
   line; beyond those only review holds the directory: `.github/dependabot.yml` has no `docker`
   entry for it and no workflow here calls `verify-devcontainer-image.yml` on this repo's own pull
   requests, so its `FROM` line and its Go download change only by a hand-made PR under the
-  `code_paths` review and `main-approval`. **Residual:** an ad hoc host run of one of those steps
+  `code_paths` review and `main-approval`. The verifier exempts exactly one path for this repo,
+  `template/.devcontainer/devcontainer.json` (the consumer template), from its "no other
+  `devcontainer.json`" rule, in both `tools/fetch-consumer.sh` and `devc-verify`; it is keyed on
+  `github.repository`, which the reusable workflow passes as the repo argument and no caller input
+  can set, and it holds only for a regular file at that exact path and case. That lets this repo's
+  root `.devcontainer/` be checked by `verify / verify` once its caller exists. **Residual:** an ad hoc host run of one of those steps
   (for example a host Trivy scan) must use a checkout no container mounts, since code in the
   container can plant hooks or `.git/config` entries in the checkout it mounts; and because such a
   run executes the branch's own tracked scripts (for example `.github/scripts/build-and-test.sh` or
