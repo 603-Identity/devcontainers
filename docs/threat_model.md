@@ -910,3 +910,41 @@ These are stated plainly so nobody trusts the setup for more than it does:
   (the dev token is per repo and mounted from the host, so it is not shared). `owner-check.sh`
   detects this after the fact and cannot prevent it.
 
+- **No ruleset covers a tag named `main`, and a run on one at an old commit of `main` publishes (#383).**
+  `release-tags` covers only `refs/tags/v*` and `refs/tags/devc-automerge-*` (the `ref_patterns`
+  in `.ai/project.yml`), and the branch rulesets cover only the `main` branch, so none of this
+  repo's three rulesets stops a tag named `main`. A writer can push such a tag at a commit of
+  `main`'s history older than b4a490b and dispatch `build.yml` on it. The run uses that commit's
+  own historical `build.yml`, whose publish job has no ref guard: at b4a490b's parent it runs
+  whenever the event is not `pull_request`. It builds from that commit's sources and pushes to
+  the same GHCR packages the current workflow publishes, `devcontainer-base`, `devcontainer-tofu`
+  and `devcontainer-node` there (the devapp flavours came later), under the `REGISTRY` that file
+  sets, tagged `<MAJOR>.<run number>` with that commit's own `MAJOR`, and that file's smoke tests and Trivy gate
+  still run before each push, so such a run may publish only some images or none. Nothing here
+  claims which existing tags it overwrites. Those images carry no provenance signed for
+  `refs/heads/main` (the run's ref is `refs/tags/main`), so the consumer-side verify of
+  [Boundary 3](#boundaries-meant-to-hold), which pins the signer identity and source ref to
+  `refs/heads/main`, refuses them wherever it runs: on every new digest in a repo that has adopted
+  #30's workflows (the gap above on verifying a new digest is the limit), and only when a human
+  runs it elsewhere. That verify is the control of record; this gap is a case of the writer-dispatch
+  path Boundary 3 already accepts for the `if:` guard. It qualifies two statements, which hold
+  for the `build.yml` on `main` today and not for a historical copy run on a tag: Boundary 3's
+  "`build.yml` publishes only from `main`", and the Sinks row for `ghcr.io/603-identity/devcontainer-*`
+  that lists manual dispatch on `main`.
+  A tag at a commit of `main`'s history from b4a490b on publishes nothing: every such copy of
+  `build.yml` keeps `publish` off any ref but `refs/heads/main`, through `publish`'s own `if:` at
+  b4a490b, through its `needs` on the ref-guarded `scope` job from ff9539f, and through its own `if:`
+  again from 9d38b76. A tag at a commit outside `main`'s history carries whatever `build.yml` that
+  commit has, which is Boundary 3's existing edited-copy case, not a new one.
+  The route needs two capabilities: creating a tag outside the protected patterns, and dispatching
+  `build.yml`. Any human account with write access holds both, which for a human writer is the same
+  reach as editing a workflow directly: defence in depth, not an outsider path. Whether any App
+  token on this repo holds both is not verified (the [Credential holders](#credential-holders)
+  table records that the bump-binaries App can create tags outside the protected patterns, and that
+  the dev token lacks the Workflows permission). The effect on the scope lookup stays bounded as the
+  `GITHUB_TOKEN` row with `actions: read` there already says: the commit must be an ancestor of
+  HEAD, so a successful publish job from such a run only widens the next diff and so builds.
+  The remedy not taken is extending `release-tags`, or adding a tag ruleset, to restrict creating
+  a tag named `main` (and possibly any tag that shadows a branch name). That is a live ruleset edit
+  by an admin identity (the owner's admin login, or `603id-admin[bot]` with Administration write),
+  which no lane makes; it is left to the owner (#383).
