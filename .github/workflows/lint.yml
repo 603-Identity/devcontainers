@@ -23,7 +23,7 @@ jobs:
           persist-credentials: false
       - name: hadolint
         run: |
-          for f in images/*/Dockerfile template/.devcontainer/Dockerfile; do
+          for f in images/*/Dockerfile template/.devcontainer/Dockerfile .devcontainer/Dockerfile; do
             echo "== $f"
             docker run --rm -i hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d < "$f"
           done
@@ -42,7 +42,7 @@ jobs:
       # things.
       - name: trivy config
         run: |
-          for dir in images template; do
+          for dir in images template .devcontainer; do
             docker run --rm -v "$PWD:/src:ro" \
               aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969 \
               config --quiet --severity HIGH,CRITICAL --exit-code 1 "/src/$dir"
