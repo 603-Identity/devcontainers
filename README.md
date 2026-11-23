@@ -854,7 +854,9 @@ A human still has to:
 1. Read the linked release notes and the diff since the current tag (not linked -- open
    it yourself from the release page or the tags comparison on GitHub).
 2. Check the Dockerfile's own prose for anything tied to the specific version being
-   replaced -- the node image's npm-bundled-CVE override block and its "Node X bundles
+   replaced -- the node image's npm-bundled-CVE override block (the bundled-package swap
+   block, absent since #510; when the image carries one, the npm bump PR body names the
+   swapped packages and the removal to push if the build fails) and its "Node X bundles
    npm Y" comments, the tofu image's per-bump CVE/Trivy-count notes and its
    `SHA256SUMS` signature record (repeat the whole check it describes, cosign and the
    grep against the pin, or leave the record naming the version it covers) -- and update or remove what the new version

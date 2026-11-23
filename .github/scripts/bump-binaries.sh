@@ -28,6 +28,15 @@
 # (PYTHON_VERSION, PYTHON_BUILD, PYTHON_SHA256) and its branch is bump/python-<version>-<build>. A
 # move to another minor stays a hand re-pin (tests/smoke.sh hardcodes the major.minor).
 #
+# npm also looks for the node image's bundled-package swap block: a `RUN` that defines a shell
+# function `swap() {` and calls it once per package, as a line whose first field is exactly `swap`
+# and whose second is the package name (`swap undici "${UNDICI_VERSION}" ...`). The block fails the
+# build by design once npm bundles that package at or above the swap pin, so when the Dockerfile has
+# call lines the PR body names the packages and the removal a human pushes if the build goes red. It
+# only reads the call lines' names (each must match ^[a-z0-9][a-z0-9._-]*$, or the script stops before
+# any branch is cut); it reads no npm tarball, parses no pins and compares no versions. A definition
+# must be written `swap() {`, and a call chained after `&&` is not detected.
+#
 # Every resolver sets CHECKSUM_URL, the URL its checksum was actually read from, next to
 # RELEASE_URL; the bump PR body cites both (#85).
 #
@@ -453,6 +462,26 @@ if printf '%s\n' "$remote_refs" | BUMP_REF="refs/heads/$branch" awk '$2 == ENVIR
   exit 0
 fi
 
+# npm only: the node image's bundled-package swap calls (see the header). Runs before the branch is
+# cut, so a refused name leaves no branch, commit or PR. The names are validated before they reach
+# the PR body, and the refusal never echoes one.
+swap_note=""
+if [ "$tool" = npm ]; then
+  swap_names=""
+  while IFS= read -r line || [ -n "$line" ]; do
+    read -r first second _ <<< "$line" || true
+    [ "$first" = swap ] || continue
+    if ! [[ "$second" =~ ^[a-z0-9][a-z0-9._-]*$ ]]; then
+      echo "::error::npm: a swap call in images/node/Dockerfile has no valid package name (lower-case letters, digits, '.', '_' and '-' only): refusing before any branch is cut" >&2
+      exit 1
+    fi
+    swap_names="${swap_names:+$swap_names, }$second"
+  done < "$dockerfile"
+  if [ -n "$swap_names" ]; then
+    swap_note="The node image carries a bundled-package swap block (swapped: ${swap_names}). It fails the build by design once npm bundles a swapped package at or above its swap pin. If this PR is red with that message, before review remove that package's \`swap\` line and both its ARGs from \`images/node/Dockerfile\` (the whole block when no swap remains) and the package's mention in the npm row of the \`docs/threat_model.md\` inputs table."
+  fi
+fi
+
 git -C "$root" config user.name "${APP_SLUG:?APP_SLUG must be set}[bot]"
 git -C "$root" config user.email "${BOT_USER_ID:?BOT_USER_ID must be set}+${APP_SLUG}[bot]@users.noreply.github.com"
 git -C "$root" switch -c "$branch"
@@ -498,6 +527,7 @@ consumer moves its tofu_version in the PR that takes the new image digest. The
 ordinary gates (hadolint, Trivy, the smoke test, the template test, and
 architect-review because \`images/\` is a code_path) run on this PR like any other.
 $consumer_note
+$swap_note
 EOF
 )"
 gh pr create --repo "$repo" --head "$branch" --base main \
