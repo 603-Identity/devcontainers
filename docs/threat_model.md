@@ -474,12 +474,11 @@ Every repo in both orgs gets a container from these images unless one of these a
   jobs, the `gate-tests` job of `verify-selftest.yml` (aggregated by `selftest`), and `build.yml`'s
   `Build and smoke-test (no push)`, which builds the images and runs the template proof when the PR
   changes an image, the template or another path `.github/scripts/image-scope.sh` scopes in; a change made in the container ships with those steps named as
-  pending in its PR. Nothing but review holds this repo's own `.devcontainer/`:
-  `.github/dependabot.yml` has no `docker` entry for it, no workflow here calls
-  `verify-devcontainer-image.yml` on this repo's own pull requests, and no CI lint covers
-  `.devcontainer/Dockerfile` (`lint.yml`'s hadolint reads `images/*/Dockerfile` and
-  `template/.devcontainer/Dockerfile`, and its Trivy config scan covers `images` and `template`
-  only), so its `FROM` line and its Go download change only by a hand-made PR under the
+  pending in its PR. `lint.yml`'s hadolint and Trivy config scans now read this repo's own
+  `.devcontainer/Dockerfile`, and `verify-selftest.yml` ties its `ARG GO_VERSION` to go.mod's `go`
+  line; beyond those only review holds the directory: `.github/dependabot.yml` has no `docker`
+  entry for it and no workflow here calls `verify-devcontainer-image.yml` on this repo's own pull
+  requests, so its `FROM` line and its Go download change only by a hand-made PR under the
   `code_paths` review and `main-approval`. **Residual:** an ad hoc host run of one of those steps
   (for example a host Trivy scan) must use a checkout no container mounts, since code in the
   container can plant hooks or `.git/config` entries in the checkout it mounts; and because such a
