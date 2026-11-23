@@ -705,6 +705,83 @@ assert_eq "an unmapped path" "1" "$(post_body 1 | grep -c "; pin: not in this sc
 assert_eq "and no pin line" "0" "$(post_body 1 | grep -c '^Pin: ')"
 end_case
 
+# the upstream words are resolved once per tool, in the parent shell, before the per-id loop
+ID2=CVE-2026-2222
+GH_CALLS="repos/cli/cli/releases/latest"
+YQ_CALLS="repos/mikefarah/yq/releases/latest"
+new_case
+fl $ID1 base usr/local/bin/gh libfoo 1 2 >"$S/findings.tsv"; fl $ID2 base usr/local/bin/gh libbar 1 2 >>"$S/findings.tsv"; mk_summary
+echo v99.0.0 >"$DA_FIX/rel.cli_cli"
+run_sub file "$S/findings.tsv" "$S/summary.tsv"
+assert_rc "two ids on one tool" 0 "$RC"
+assert_eq "two ids on one tool: one releases/latest call" "1" "$(log_n "$GH_CALLS")"
+assert_eq "two ids on one tool: two issues opened" "2" "$(cat "$DA_STATE/posts")"
+assert_eq "two ids on one tool: the same Pin line in both bodies" "$(post_body 1 | grep '^Pin: ')" "$(post_body 2 | grep '^Pin: ')"
+assert_eq "two ids on one tool: the word is the latest release" "Pin: \`GH_VERSION\` \`$GHV\`; upstream: latest release is \`v99.0.0\`" "$(post_body 1 | grep '^Pin: ')"
+assert_quiet "two ids on one tool"
+assert_no_violations "two ids on one tool"
+end_case
+
+new_case
+fl $ID1 base usr/local/bin/gh libfoo 1 2 >"$S/findings.tsv"; fl $ID2 base usr/local/bin/gh libbar 1 2 >>"$S/findings.tsv"; mk_summary
+run_sub file "$S/findings.tsv" "$S/summary.tsv"
+assert_rc "two ids, the one lookup fails" 0 "$RC"
+assert_eq "two ids, the one lookup fails: one call" "1" "$(log_n "$GH_CALLS")"
+assert_eq "two ids, the one lookup fails: unknown in both bodies" "2" "$( { post_body 1; post_body 2; } | grep -c "^Pin: .*upstream: unknown\$")"
+assert_quiet "two ids, the one lookup fails"
+end_case
+
+new_case # each id has rows on both tools: one call per tool, not per id
+for id in $ID1 $ID2; do
+  fl "$id" base usr/local/bin/gh libfoo 1 2 >>"$S/findings.tsv"; fl "$id" base usr/local/bin/yq libbar 1 2 >>"$S/findings.tsv"
+done
+mk_summary
+echo v99.0.0 >"$DA_FIX/rel.cli_cli"; echo v99.0.0 >"$DA_FIX/rel.mikefarah_yq"
+run_sub file "$S/findings.tsv" "$S/summary.tsv"
+assert_rc "two ids on two tools" 0 "$RC"
+assert_eq "two ids on two tools: one call for gh" "1" "$(log_n "$GH_CALLS")"
+assert_eq "two ids on two tools: one call for yq" "1" "$(log_n "$YQ_CALLS")"
+assert_eq "two ids on two tools: the same Pin lines in both bodies" "$(post_body 1 | grep '^Pin: ')" "$(post_body 2 | grep '^Pin: ')"
+assert_quiet "two ids on two tools"
+end_case
+
+# an unreadable pin of a looked-up tool fails the run before any issue is touched
+new_case
+mkdir -p "$S/tree/.github/scripts" "$S/tree/images/base" "$S/tree/images/tofu" "$S/tree/images/node" "$S/tree/images/devapp"
+cp "$SRC" "$S/tree/.github/scripts/"
+for d in base tofu node devapp; do cp "$ROOT_DIR/images/$d/Dockerfile" "$S/tree/images/$d/"; done
+sed -i '/^ARG YQ_VERSION=/d' "$S/tree/images/base/Dockerfile"
+fl $ID1 base usr/local/bin/gh libfoo 1 2 >"$S/findings.tsv"; fl $ID2 base usr/local/bin/yq libbar 1 2 >>"$S/findings.tsv"; mk_summary
+echo v99.0.0 >"$DA_FIX/rel.cli_cli"
+RC=0; env PATH="$S/bin:$PATH" GH_TOKEN=t GITHUB_REPOSITORY="$REPO" GITHUB_RUN_ID=$RUN GITHUB_STEP_SUMMARY="$S/GITHUB_STEP_SUMMARY" \
+  bash "$S/tree/.github/scripts/trivy-daily.sh" file "$S/findings.tsv" "$S/summary.tsv" >"$S/stdout" 2>"$S/stderr" || RC=$?
+assert_rc "an unreadable pin on the second id's tool" 1 "$RC"
+assert_eq "an unreadable pin: exactly the fixed reason line on stderr" "trivy-daily: a pinned version could not be read from a Dockerfile" "$(cat "$S/stderr")"
+assert_eq "an unreadable pin: no issue opened or commented on" "0" "$(cat "$DA_STATE/posts" 2>/dev/null || echo 0)"
+assert_eq "an unreadable pin: the open issues were never listed" "0" "$(log_n 'issues?state=open')"
+end_case
+
+# the pre-pass runs only after the input checks: no gh call on a bad summary, repository or run id
+new_case
+fl $ID1 base usr/local/bin/gh libfoo 1 2 >"$S/findings.tsv"; mk_summary; echo v99.0.0 >"$DA_FIX/rel.cli_cli"
+printf 'not a summary line\n' >>"$S/summary.tsv"
+run_sub file "$S/findings.tsv" "$S/summary.tsv"
+assert_rc "a malformed summary line" 1 "$RC"
+assert_eq "a malformed summary line: no gh call" "0" "$(log_n 'gh ')"
+end_case
+new_case
+fl $ID1 base usr/local/bin/gh libfoo 1 2 >"$S/findings.tsv"; mk_summary; echo v99.0.0 >"$DA_FIX/rel.cli_cli"
+REPO_OVERRIDE=other/repo run_sub file "$S/findings.tsv" "$S/summary.tsv"
+assert_rc "a GITHUB_REPOSITORY that is not this repository" 1 "$RC"
+assert_eq "a foreign repository: no gh call" "0" "$(log_n 'gh ')"
+end_case
+new_case
+fl $ID1 base usr/local/bin/gh libfoo 1 2 >"$S/findings.tsv"; mk_summary; echo v99.0.0 >"$DA_FIX/rel.cli_cli"
+RUN_OVERRIDE=abc run_sub file "$S/findings.tsv" "$S/summary.tsv"
+assert_rc "a non-numeric GITHUB_RUN_ID" 1 "$RC"
+assert_eq "a non-numeric run id: no gh call" "0" "$(log_n 'gh ')"
+end_case
+
 suite trivy-daily-file-ends
 new_case # a secret in SUMMARY with a vulnerability in FINDINGS
 fl $ID1 base /usr/local/bin/gh libfoo 1 2 >"$S/findings.tsv"; mk_summary base=aws-access-key-id

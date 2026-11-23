@@ -20,9 +20,11 @@ HEADER='**Opus/Architect HITL review (automated)**'
 ATTESTATION='*Fresh-session review: this session did not author the diff.*'
 
 # The level-2 sections of a Trivy results file, in order, as `grep '^## '` lists them joined by `|`.
-# Shared by the suites for tools/host/trivy-rescan.sh and .github/scripts/trivy-evidence.sh, which
-# write the same file.
+# For the suite of tools/host/trivy-rescan.sh. .github/scripts/trivy-evidence.sh writes the same
+# file plus a `## Published digests` section after `## Images`: see EVIDENCE_SECTIONS.
 EXPECTED_SECTIONS='## Base commit|## Pins|## Images|## Trivy|## Findings: base|## Findings: tofu|## Findings: node|## Findings: devapp|## Findings: devapp-tofu|## Binaries|'
+# The evidence file's level-2 sections: the rescan list with `## Published digests` after `## Images`.
+EVIDENCE_SECTIONS='## Base commit|## Pins|## Images|## Published digests|## Trivy|## Findings: base|## Findings: tofu|## Findings: node|## Findings: devapp|## Findings: devapp-tofu|## Binaries|'
 
 PASSED=0
 FAILED=0

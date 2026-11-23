@@ -4,9 +4,10 @@
 # TRIVY_EXCEPT_ROOT), with a stub `gh` first on PATH that serves recorded run, jobs, job-log and
 # release responses and logs every call. Needs bash, jq, yq (mikefarah), git, awk and GNU date.
 #
-# Fixtures: tools/tests/fixtures/trivy-except/. The job log of build run 44532588047 is a verbatim
-# excerpt of its base group (fetched with the dev token, timestamps included), which fixes the
-# format. Every other log is built here by mkjoblog/block from that format and is CONSTRUCTED: its
+# Fixtures: tools/tests/fixtures/trivy-except/. The job logs of build runs 44532588047 and
+# 40327485254 are verbatim excerpts of their base groups (fetched with the dev token, timestamps
+# included): the first fixes the format, the second holds a real multi-CVE table (gh, five rows, a
+# merged Library cell). Every other log is built here by mkjoblog/block from that format and is CONSTRUCTED: its
 # first line says so, outside any group. Every case that carries a fixed date pins TRIVY_EXCEPT_TODAY.
 set -uo pipefail
 # shellcheck source=lib.sh
@@ -232,6 +233,11 @@ new_case; { echo '##[group]devapp'; block usr/local/libexec/gh-real gobinary 'st
 run_s "$RUN" devapp CVE-2026-97054 usr/local/libexec/gh-real
 accepted "gh-real finding in the devapp group" "$(entry CVE-2026-97054 "$GH2" 'HIGH or CRITICAL in stdlib v1.27.3 compiled into upstream gh 2.105.0; no fixed upstream release.' 2026-12-17)"
 
+# a real multi-CVE table: the gh table of run 40327485254's base group (verbatim, cut to that table)
+new_case; cp "$FX/run-40327485254-base-group-gh.log" "$FIX/log.txt"; echo '{"tag_name":"v2.105.0"}' >"$FIX/release.json"
+run_s 40327485254 base CVE-2026-78667 usr/local/bin/gh
+accepted "real multi-CVE table: a row under a merged Library cell" "$(entry CVE-2026-78667 "$GH2" 'HIGH or CRITICAL in stdlib v1.27.1 compiled into upstream gh 2.105.0; no fixed upstream release.' 2026-12-17)"
+
 # tofu after a complete base group, the pin from the tofu Dockerfile
 new_case; { echo '##[group]base'; block usr/local/bin/yq gobinary 'stdlib|CVE-2026-0001|v1.0.0|t'; echo '##[endgroup]'; echo '##[group]tofu'; block usr/local/bin/tofu gobinary 'golang.org/x/net|CVE-2026-97054|v0.57.0|t'; } | mkjoblog
 echo '{"tag_name":"v1.13.9"}' >"$FIX/release.json"; run_s "$RUN" tofu CVE-2026-97054 usr/local/bin/tofu
@@ -241,6 +247,22 @@ accepted "tofu finding after a complete base group" "$(entry CVE-2026-97054 '"us
 new_case; { echo '##[group]base'; block usr/local/bin/yq gobinary 'github.com/foo/bar|CVE-2026-1111|v1.2.3|first' '||v1.2.3|wrapped title' '|CVE-2026-97054||second' '|||wrapped again'; } | mkjoblog
 run_s "$RUN" base CVE-2026-97054 usr/local/bin/yq
 accepted "merged library and version cell" "$(entry CVE-2026-97054 '"usr/local/bin/yq"' 'HIGH or CRITICAL in github.com/foo/bar v1.2.3 compiled into upstream yq 4.54.3; no fixed upstream release.' 2026-12-17)"
+
+# a Library cell Trivy wrapped onto a continuation row (empty Vulnerability cell, non-empty Library cell)
+WRAPMSG="the matched row's Library cell continues on a wrapped row"
+new_case; { echo '##[group]base'; block usr/local/bin/yq gobinary 'github.com/foo/ba|CVE-2026-97054|v1.2.3|t' 'r/baz||v1.2.3|'; } | mkjoblog
+run_s "$RUN" base CVE-2026-97054 usr/local/bin/yq; refused "the matched row's own Library cell wrapped" "$WRAPMSG"
+new_case; { echo '##[group]base'; block usr/local/bin/yq gobinary 'github.com/foo/ba|CVE-2026-1111|v1.2.3|t' 'r/baz||v1.2.3|' '|CVE-2026-97054||t'; } | mkjoblog
+run_s "$RUN" base CVE-2026-97054 usr/local/bin/yq; refused "the inherited Library source's cell wrapped" "$WRAPMSG"
+new_case; { echo '##[group]base'; block usr/local/bin/yq gobinary 'github.com/foo/ba|CVE-2026-1111|v1.2.3|t' 'r/baz||v1.2.3|' 'stdlib|CVE-2026-97054|v1.27.3|t'; } | mkjoblog
+run_s "$RUN" base CVE-2026-97054 usr/local/bin/yq
+accepted "a wrapped Library cell on an unrelated earlier row" "$YQ_ENTRY"
+new_case; { echo '##[group]base'; block usr/local/bin/yq gobinary 'stdlib|CVE-2026-97054|v1.27.3|t' 'github.com/foo/ba|CVE-2026-2222|v1.2.3|t' 'r/baz||v1.2.3|'; } | mkjoblog
+run_s "$RUN" base CVE-2026-97054 usr/local/bin/yq
+accepted "a wrapped Library cell on a later row past the matched row's window" "$YQ_ENTRY"
+new_case; { echo '##[group]base'; block usr/local/bin/yq gobinary 'stdlib|CVE-2026-97054|v1.27.3|t' '||v1.27.3|wrapped title'; } | mkjoblog
+run_s "$RUN" base CVE-2026-97054 usr/local/bin/yq
+accepted "a wrapped title after the matched row" "$YQ_ENTRY"
 
 # a group that runs to the end of the log (the default fixture), and an underscore in a library name
 new_case; { echo '##[group]base'; block usr/local/bin/yq gobinary 'github.com/foo_bar/baz|CVE-2026-97054|v1.2.3|t'; } | mkjoblog; run_s "${GOOD[@]}"
