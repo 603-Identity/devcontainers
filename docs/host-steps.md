@@ -503,7 +503,7 @@ the PR body and which the owner types at the block's `Task number` prompt.
          if ($item.PSIsContainer -or $item.LinkType -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw $bad }
          $cfg = $env:TEMP + [IO.Path]::DirectorySeparatorChar + (New-Guid).ToString()
          if (Test-Path -LiteralPath $cfg) { throw 'reader search: the config path exists' }
-         foreach ($n in $names) { [Environment]::SetEnvironmentVariable($n, $null) }
+         foreach ($n in $names) { Remove-Item -LiteralPath "Env:\$n" -ErrorAction SilentlyContinue }
          [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
          $call = {
            param([string[]]$a)
@@ -610,7 +610,7 @@ the PR body and which the owner types at the block's `Task number` prompt.
          throw 'reader search: the list cannot be built'
        }
      } finally {
-       foreach ($n in $names) { [Environment]::SetEnvironmentVariable($n, $savedEnv[$n]) }
+       foreach ($n in $names) { if ($null -eq $savedEnv[$n]) { Remove-Item -LiteralPath "Env:\$n" -ErrorAction SilentlyContinue } else { [Environment]::SetEnvironmentVariable($n, $savedEnv[$n]) } }
        [Console]::OutputEncoding = $savedEnc
      }
    }
