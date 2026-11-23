@@ -31,7 +31,8 @@ jobs:
           go-version: "1.26.8"
           cache: false
       # go.mod must declare the version setup-go installs: GOTOOLCHAIN=local refuses a mismatch.
-      - name: go.mod and every workflow agree on the Go version
+      # The devcontainer's `ARG GO_VERSION` is part of the check: it is the Go the container tests with.
+      - name: go.mod, every workflow and the devcontainer agree on the Go version
         run: |
           set -euo pipefail
           want="$(sed -n 's/^go //p' tools/devc-verify/go.mod)"
@@ -42,6 +43,11 @@ jobs:
           while IFS= read -r v; do
             [ "$v" = "$want" ] || { echo "::error::a workflow installs Go $v but go.mod declares $want"; exit 1; }
           done <<< "$versions"
+          n="$(grep -c '^ARG GO_VERSION=' .devcontainer/Dockerfile || true)"
+          [ "$n" -ge 1 ] || { echo "::error::no ARG GO_VERSION= line in .devcontainer/Dockerfile"; exit 1; }
+          [ "$n" -le 1 ] || { echo "::error::more than one ARG GO_VERSION= line in .devcontainer/Dockerfile"; exit 1; }
+          dv="$(sed -n 's/^ARG GO_VERSION=//p' .devcontainer/Dockerfile)"
+          [ "$dv" = "$want" ] || { echo "::error::.devcontainer/Dockerfile sets GO_VERSION $dv but go.mod declares $want"; exit 1; }
       - name: go test (vendored, offline)
         working-directory: tools/devc-verify
         env:
