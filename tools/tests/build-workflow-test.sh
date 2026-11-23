@@ -50,7 +50,7 @@ done
   assert_eq "logout.name" "Log out of GHCR before the evidence pass" "$(yq -r "$PUB.steps[] | select(.id == \"logout\") | .name" "$WF")"
   assert_eq "evidence.if" "\${{ !cancelled() && steps.logout.outcome == 'success' }}" "$(yq -r "$PUB.steps[] | select(.id == \"evidence\") | .if" "$WF")"
   assert_eq "evidence.timeout-minutes" "45" "$(yq -r "$PUB.steps[] | select(.id == \"evidence\") | .\"timeout-minutes\"" "$WF")"
-  assert_eq "evidence.env" '{"TAG":"${{ env.MAJOR }}.${{ github.run_number }}"}' "$(yq -o=json -I=0 "$PUB.steps[] | select(.id == \"evidence\") | .env" "$WF")"
+  assert_eq "evidence.env" '{"TAG":"${{ env.MAJOR }}.${{ github.run_number }}","BASE_DIGEST":"${{ steps.push.outputs.base_digest }}","TOFU_DIGEST":"${{ steps.push.outputs.tofu_digest }}","NODE_DIGEST":"${{ steps.push.outputs.node_digest }}","DEVAPP_DIGEST":"${{ steps.push.outputs.devapp_digest }}","DEVAPP_TOFU_DIGEST":"${{ steps.push.outputs.devapp_tofu_digest }}"}' "$(yq -o=json -I=0 "$PUB.steps[] | select(.id == \"evidence\") | .env" "$WF")"
   assert_eq "evidence.run" 'bash .github/scripts/trivy-evidence.sh "$TAG" out/trivy-evidence.md' "$(yq -r "$PUB.steps[] | select(.id == \"evidence\") | .run" "$WF")"
   assert_eq "upload.if" "\${{ !cancelled() && steps.evidence.outcome == 'success' }}" "$(yq -r "$PUB.steps[] | select(.id == \"upload\") | .if" "$WF")"
   assert_eq "upload.with" '{"name":"trivy-evidence","path":"out/trivy-evidence.md","if-no-files-found":"error"}' "$(yq -o=json -I=0 "$PUB.steps[] | select(.id == \"upload\") | .with" "$WF")"
