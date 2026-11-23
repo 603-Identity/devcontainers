@@ -4,8 +4,10 @@ version: 2
 #   * docker: images/base's `FROM ubuntu:26.04@sha256:...` digest. The tofu, node and devapp
 #     Dockerfiles have no fixed FROM to bump (it is a build arg, set by CI).
 #   * uv: images/base/tools/pyproject.toml -> uv.lock (hashes kept).
+#   * gomod: tools/devc-verify's vendored modules, buildkit's version updates excepted.
 # NOT bumped by Dependabot: the ARG-pinned binaries (gh, yq, uv, tofu, tflint, node,
-# npm), and the `# syntax=docker/dockerfile:...@sha256:...` line on line 1 of the
+# npm), the vendored BuildKit (see the last paragraph), and the
+# `# syntax=docker/dockerfile:...@sha256:...` line on line 1 of the
 # Dockerfiles (the docker updater reads only FROM lines). That line moves in two steps:
 # the four image Dockerfiles with devc-verify's CurrentSyntax and vendored BuildKit,
 # then, after a release, template/.devcontainer/Dockerfile with the self-pin bump
@@ -14,6 +16,10 @@ version: 2
 # Updating a pinned tool); fall back to a manual PR, same section, only while that
 # workflow is down or for a tool it doesn't cover. A consuming repo moves its
 # setup-opentofu `tofu_version` in the same PR that takes the image digest with a new tofu.
+# The vendored BuildKit is also not version-bumped: it moves only in the paired bump with the
+# frontend line. A buildkit security-update PR (when Dependabot security updates are enabled on this repository)
+# fails TestBuildkitMatchesFrontend until that paired bump; for ordinary releases nothing
+# prompts it yet, and #683 plans a scheduled check.
 updates:
   - package-ecosystem: github-actions
     directory: /
@@ -32,13 +38,25 @@ updates:
   # changes vendor/ and go.sum together. The buildkit pin is tied to the allowed
   # `# syntax=` values by a unit test (TestBuildkitMatchesFrontend), so it moves only in a
   # paired bump with the Dockerfile frontend pin (README.md "Updating a pinned tool",
-  # tools/devc-verify/README.md), never on its own: Dependabot ignores it (#537, #553).
+  # tools/devc-verify/README.md), never on its own: Dependabot ignores buildkit's version updates
+  # (#537, #553). Per GitHub's Dependabot options reference
+  # (https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference,
+  # `ignore`), an ignore naming only a dependency-name also suppresses security updates for it,
+  # while one restricted by update-types alone affects version updates only. So the ignore below
+  # lists update-types, and
+  # when Dependabot security updates are enabled on this repository, a security update for
+  # buildkit still opens a PR, which fails TestBuildkitMatchesFrontend and so prompts the
+  # paired bump.
   - package-ecosystem: gomod
     directory: /tools/devc-verify
     schedule:
       interval: weekly
     ignore:
       - dependency-name: github.com/moby/buildkit
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+          - version-update:semver-patch
 
   # A zizmor move from this entry fails tools/check-zizmor-pin.sh: it must land together with
   # both zizmor container pins (the lint.yml step and the green gate entry in .ai/project.yml)
