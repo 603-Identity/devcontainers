@@ -42,7 +42,12 @@ branch runs) writes every input a host step receives. So:
   runs on its own events (on `push`, on the PR) before any review, with the scopes it requests. For
   the bytes the block pushes, the owner's read of every pushed file whose name does not end in
   lowercase `.md`, in the snapshot, before the token exists, is the control there; it does not cover
-  commits pushed to the branch afterwards (Known limits, *later dev-App pushes*).
+  commits pushed to the branch afterwards (Known limits, *later dev-App pushes*). One named
+  exception: after a second-run reader-search throw (step 2, *If the block throws*), the mint that
+  came before it and the revoke per step 2.5 that follows it may both have run a `wow-admin` that a
+  container rewrote, the identity home being a folder a container may reach, so the mint's
+  `granted:` line is untrusted too; the procedure keeps that revoke, as the maintainer decided, and
+  step 2.5 counts it as a failed revoke.
 - **The elevated token must never be readable by a running container.** `603id-admin[bot]` holds
   Administration, Environments, Actions and Workflows write, so a process that read the token could
   rewrite the rulesets, the environments and the workflows. `wow-admin` now writes it under the
@@ -51,7 +56,10 @@ branch runs) writes every input a host step receives. So:
   clone, `.gitconfig.d` and the dev token's folder under `.config/glunk-identity`), so the
   containers and the review pollers keep running through Procedure B. That holds only under the
   threat model's Exception for a host that holds a token directory, which lists the containers
-  such a host runs none of; nothing in Procedure B checks it at run time. The token is
+  such a host runs none of. Procedure B's block checks that with the reader search at two points
+  (before it prints the plan, and after `yes` before it reads the token), for running containers on
+  the one engine the search reaches and within the limits Known limits names; nothing checks it
+  between or after those points or outside Procedure B, and a hit stops the procedure. The token is
   read only by Procedure B's block, in a plain `pwsh` window, and by `wow-admin` itself (to mint and
   to revoke it), never by a Claude session, and is revoked per step 2.5's rule, failed-revoke hour
   included.
@@ -218,12 +226,8 @@ CI artifact (`docs/trivy-renewal.md`); this procedure is its fallback when no qu
      regular file and not a link (`test -f` and not `test -L`); its folder's path, in `cygpath -m`
      form, must match (d)'s grammar except that it ends in `/Docker/cli-plugins`; and it and its own
      folder must pass both of (e)'s checks before `docker buildx version` runs with the empty
-     config. For a system folder, the reader search's ancestors are that folder's own ancestors in
-     each normalised form: the `Docker` folder holding it, the `%ProgramData%` or `%ProgramFiles%`
-     folder, every folder between that and the drive root, the drive root, and `/`, `/run`,
-     `/run/desktop`, `/run/desktop/mnt`, `/run/desktop/mnt/host`, `/mnt`, `/mnt/host` and
-     `/host_mnt`, never the home-folder list (e) gives for the user's plugin folder. Stop if any of
-     these fails or cannot be completed. If they pass and `docker buildx version` succeeds, write no
+     config. For a system folder, the reader search is applied with that system folder as the folder.
+     Stop if any of these fails or cannot be completed. If they pass and `docker buildx version` succeeds, write no
      `config.json` and go to (g); if it fails, go to (d). The system folders' other plugins are an
      accepted residual: no container can reach the folder (the search above), and the script
      invokes only buildx.
@@ -244,13 +248,7 @@ CI artifact (`docs/trivy-renewal.md`); this procedure is its fallback when no qu
      stops. `powershell.exe` is not used: started from PowerShell 7, it inherits PowerShell 7's
      `PSModulePath`, from which it cannot load the `Microsoft.PowerShell.Security` module that
      provides `Get-AuthenticodeSignature`. Second, the reader search below, applied to the plugin folder,
-     must find no running container: none with a bind mount whose source (normalised and compared as the
-     search says) is the folder, any path inside it, or any ancestor of it in each normalised form
-     (the `.docker` folder that holds it, the user's home, every folder between the home and the
-     drive root, the drive root, and `/`, `/run`, `/run/desktop`, `/run/desktop/mnt`,
-     `/run/desktop/mnt/host`, `/mnt`, `/mnt/host` and `/host_mnt`); none `Privileged`, with any
-     `CapAdd` or with `PidMode` `host`; and none mounting `docker.sock` or the `docker_engine` pipe.
-     Stop if either check fails or cannot be completed, reporting the container ids found (Procedure
+     must find no hit. Stop if either check fails or cannot be completed, reporting the container ids found (Procedure
      A stops no container itself). The folder's other plugins are trusted on the same two grounds
      (no container can reach the folder, and it is the owner's normal plugin folder); the script
      invokes only buildx among them.
@@ -279,19 +277,49 @@ CI artifact (`docs/trivy-renewal.md`); this procedure is its fallback when no qu
 
 ## The reader search
 
-Procedure A's Windows-host branch uses this search to prove no running container can reach a host
-folder. With `docker ps` and `docker inspect`, list every running container that has any of:
+Procedure A's Windows-host branch and Procedure B use this search to prove no running container can
+reach a host folder. It uses `docker ps` and `docker inspect` only; a volume is read with `docker
+inspect --type volume`, which stays within Procedure A step 3 (a)'s allowed commands. Procedure B
+runs it through the block's search code (the lines between the block's two `reader-search` comment
+markers, which `tools/tests/reader-search-test.sh` runs against fixtures); Procedure A
+applies the same criteria by hand. Each has its own Docker environment (Procedure A's is set by its
+step 3). The search judges each mount of each running container, and the settings, as follows.
 
-- a bind mount whose source, after normalising Docker Desktop's forms (`C:\…`,
-  `/run/desktop/mnt/host/c/…`, `/host_mnt/c/…`, `/mnt/host/c/…`) to one and comparing
-  case-insensitively, is the folder, any path inside it, or any ancestor of it, in each of those
-  forms: every folder between it and the drive root, a drive root, `/`, `/run`, `/run/desktop`,
-  `/run/desktop/mnt`, `/run/desktop/mnt/host`, `/mnt`, `/mnt/host` or `/host_mnt` (every one after
-  `/` is a Docker Desktop VM-side folder that normalising cannot map to a drive root);
-- `Privileged`, any `CapAdd`, or `PidMode` `host`;
-- a mount of the Docker socket (`docker.sock`) or the `docker_engine` pipe.
+- **Parsing a path.** A path parses only as one of two forms: a drive letter, a colon, a separator,
+  then zero or more segments; or one of the prefixes `/run/desktop/mnt/host/`, `/host_mnt/`,
+  `/mnt/host/` followed by exactly one drive letter, then zero or more segments after a separator
+  (the prefix is matched exactly as written, in lower case, since those are case-sensitive VM-side
+  paths; the prefix form may end right after the drive letter, with or without one trailing separator).
+  Backslash and forward slash are both separators and may be mixed. Every segment must be
+  non-empty, not `.` or `..`, contain no `~` (which rules out 8.3 short names) and no `:`, and not
+  end in `.` or a space. Zero segments is the drive root. A parsed path is compared with a folder
+  case-insensitively, ordinal (never culture-sensitive), segment by segment.
+- **Precedence.** For each mount, the first rule that applies decides, giving one criterion word:
+  1. `socket`: the source's last segment, split on either separator, begins with `docker.sock` or
+     `docker_engine`, compared case-insensitively, whatever the type.
+  2. `unknown-type`: the `Type` field is missing or empty, or is not `bind`, `npipe`, `volume` or
+     `tmpfs`.
+  3. A `tmpfs` mount is ignored.
+  4. `empty-source`: a `bind` or `npipe` with a missing or empty `Source`.
+  5. For a `volume`, its volume decides: a `local` volume whose `Options` is absent, null or empty
+     does not qualify; a `local` volume whose options are exactly the keys `type` `none`, `o` equal
+     to `bind` or `rbind`, and `device` is judged by its device as a source in rules 6 and 7; every
+     other volume (another option set, a `cifs` or `nfs` type, another driver) is `volume`.
+  6. `unparsed-source`: the source (or a bind-like volume's device) does not parse. That covers `/`,
+     `/run`, `/var`, `/var/run`, the other VM-side folders, UNC and device paths, pipes, the Git
+     Bash `/c/...` form and Docker Desktop's WSL bind-mount folders.
+  7. `bind`: a parsed source is the folder, a path inside it, or an ancestor of it (the drive root
+     included).
+- **Settings.** Separately from the mounts: `privileged` when `Privileged` is true, `capadd` when
+  `CapAdd` is non-empty (null or empty does not qualify), `pidmode` when `PidMode` is `host`.
+- **What a hit names.** Rule 7 names each folder it matches; every other criterion reaches every
+  folder and names `*`. Hits are one per distinct (container id, criterion word, folder or `*`).
+- **What the search does not see.** It judges a source's text and never follows it, so a bind whose
+  source reaches a folder through a symbolic link, junction or other reparse point is not seen; it
+  sees only running containers that `docker ps` lists on the engine it reaches.
 
-If the list cannot be built, the search has failed.
+If the list cannot be built, or a mount type, source or volume configuration has no rule, the search
+fails closed: that is a hit (or, for a list that cannot be built, a failure), never a pass.
 
 ## Procedure B: elevated push (`603id-admin[bot]`)
 
@@ -346,7 +374,9 @@ the PR body and which the owner types at the block's `Task number` prompt.
 
 ### Step 2: the owner snapshots, reads, mints, publishes and revokes
 
-1. **Start the block**: in a plain `pwsh` window (never a Claude session) running PowerShell 7.2 or
+1. **Start the block**: in a plain `pwsh` window (never a Claude session) started with `-NoProfile`
+   (so no PowerShell profile under the user profile can redefine a command the search relies on,
+   `New-Guid` included) running PowerShell 7.2 or
    later, paste the block below once, copied from this file on `main` on GitHub (the `main` branch
    view), never from a container or another branch, and give the task number when asked. The block
    checks the PowerShell version first and throws below 7.2. Before any token exists, it makes a new
@@ -355,7 +385,8 @@ the PR body and which the owner types at the block's `Task number` prompt.
    and a repeated `src` or `path`, and refusing a link or reparse point at the path when it is checked
    (Known limits, *the `Read-Plain` residual*). It checks every value against
    the grammar above and every file's SHA-256, writes each file to the snapshot under its plan
-   number, prints the plan with each file's hash and the snapshot folder, marks `READ` every file
+   number, runs the reader search on the identity home and the snapshot folder (any hit, or a
+   container list the search cannot build, makes it print each qualifying container and throw), prints the plan with each file's hash and the snapshot folder, marks `READ` every file
    whose name does not end in lowercase `.md` (the test is case-sensitive: a `.MD` or `.markdown`
    file is marked), and waits. From
    then on it uses only the bytes it read: nothing the container writes into `.git\wow-handoff`
@@ -375,7 +406,8 @@ the PR body and which the owner types at the block's `Task number` prompt.
 
    The `granted:` line must list `contents` write, `workflows` write and the `metadata` read, and no
    other permission.
-4. **Publish**: type `yes` at the block's prompt. It reads the token, creates the branch from `main`
+4. **Publish**: type `yes` at the block's prompt. It runs the reader search again, and only then
+   reads the token, creates the branch from `main`
    (`expect` `new`) or checks the branch head equals `expect`, publishes each file through the
    contents API with the request body on standard input, and prints the branch's commit count and
    the files it changes against the branch's starting commit (`main`'s head as the block read it,
@@ -389,6 +421,8 @@ the PR body and which the owner types at the block's `Task number` prompt.
    if ($v.Major -lt 7 -or ($v.Major -eq 7 -and $v.Minor -lt 2)) { throw 'PowerShell 7.2 or later is required' }
    $clone = Join-Path $env:USERPROFILE 'projects\603identity\devcontainers-dev'
    $tokenFile = Join-Path $env:USERPROFILE '.config\603id-identity\admin\603-Identity\devcontainers\admin-token'
+   $identityHome = Join-Path $env:USERPROFILE '.config\603id-identity'
+   $dockerCli = Join-Path $env:ProgramFiles 'Docker\Docker\resources\bin\docker.exe'
    $r = 'repos/603-Identity/devcontainers'
    function Test-Plain($i) { -not ($i.PSIsContainer -or $i.LinkType -or ($i.Attributes -band [IO.FileAttributes]::ReparsePoint)) }
    function Read-Plain([string]$p, [long]$cap) {
@@ -407,6 +441,185 @@ the PR body and which the owner types at the block's `Task number` prompt.
      } finally { $s.Dispose() }
      ,$b
    }
+   # reader-search: begin
+   function Find-Readers([string]$Docker, [string[]]$Folders) {
+     $ErrorActionPreference = 'Stop'
+     $fixed = @('reader search: a folder is not in long drive-letter form', 'reader search: the list cannot be built', 'reader search: the config path exists')
+     $names = @('DOCKER_CONFIG', 'DOCKER_HOST', 'DOCKER_CONTEXT')
+     $savedEnv = @{}
+     foreach ($n in $names) { $savedEnv[$n] = [Environment]::GetEnvironmentVariable($n) }
+     $savedEnc = [Console]::OutputEncoding
+     try {
+       try {
+         $parse = {
+           param([string]$p, [bool]$prefixes)
+           if ([string]::IsNullOrEmpty($p) -or $p -cmatch '[\x00-\x1f\x7f]') { return $null }
+           $letter = $null
+           $rest = ''
+           if ($p -cmatch '^[A-Za-z]:[\\/]') {
+             $letter = $p.Substring(0, 1)
+             $rest = $p.Substring(3)
+           } elseif ($prefixes) {
+             foreach ($pre in '/run/desktop/mnt/host/', '/host_mnt/', '/mnt/host/') {
+               if ($p.StartsWith($pre, [StringComparison]::Ordinal)) {
+                 $r = $p.Substring($pre.Length)
+                 if ($r -cmatch '^[A-Za-z](?:[\\/]|\z)') {
+                   $letter = $r.Substring(0, 1)
+                   $rest = if ($r.Length -gt 1) { $r.Substring(2) } else { '' }
+                 }
+                 break
+               }
+             }
+           }
+           if ($null -eq $letter) { return $null }
+           $segs = @()
+           if ($rest.Length -gt 0) {
+             $segs = @($rest.Split([char[]]@('\', '/')))
+             foreach ($s in $segs) {
+               if ($s.Length -eq 0 -or $s -ceq '.' -or $s -ceq '..' -or $s.Contains('~') -or $s.Contains(':') -or $s.EndsWith('.', [StringComparison]::Ordinal) -or $s.EndsWith(' ', [StringComparison]::Ordinal)) { return $null }
+             }
+           }
+           [pscustomobject]@{ L = $letter.ToUpperInvariant(); S = [string[]]$segs }
+         }
+         $isPrefix = {
+           param([string[]]$a, [string[]]$b)
+           if ($a.Count -gt $b.Count) { return $false }
+           for ($i = 0; $i -lt $a.Count; $i++) { if (-not [string]::Equals($a[$i], $b[$i], [StringComparison]::OrdinalIgnoreCase)) { return $false } }
+           $true
+         }
+         $isObj = { param($x) $null -ne $x -and $x -is [System.Management.Automation.PSCustomObject] }
+         $isStrOrNull = { param($x) $null -eq $x -or $x -is [string] }
+         $get = { param($o, [string]$n) $p = $o.PSObject.Properties[$n]; if ($null -ne $p) { , $p.Value } else { $null } }
+         $bad = 'reader search: the list cannot be built'
+
+         $parsed = @()
+         foreach ($f in $Folders) {
+           $pf = & $parse $f $false
+           if ($null -eq $pf) { throw 'reader search: a folder is not in long drive-letter form' }
+           $parsed += , $pf
+         }
+         if ([string]::IsNullOrEmpty($env:TEMP)) { throw $bad }
+         $item = Get-Item -LiteralPath $Docker -Force
+         if ($item.PSIsContainer -or $item.LinkType -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw $bad }
+         $cfg = $env:TEMP + [IO.Path]::DirectorySeparatorChar + (New-Guid).ToString()
+         if (Test-Path -LiteralPath $cfg) { throw 'reader search: the config path exists' }
+         foreach ($n in $names) { Remove-Item -LiteralPath "Env:\$n" -ErrorAction SilentlyContinue }
+         [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+         $call = {
+           param([string[]]$a)
+           $o = @(& $Docker '--config' $cfg '--context' 'default' @a 2>$null)
+           if ($LASTEXITCODE -ne 0) { throw $bad }
+           $o
+         }
+
+         $ids = @(& $call @('ps', '--no-trunc', '--quiet'))
+         foreach ($l in $ids) { if ($l -isnot [string] -or $l -cnotmatch '^[0-9a-f]{64}\z') { throw $bad } }
+         $recs = @{}
+         if ($ids.Count -gt 0) {
+           $listed = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+           foreach ($i in $ids) { if (-not $listed.Add($i)) { throw $bad } }
+           $arr = ((& $call (@('inspect') + $ids)) -join "`n") | ConvertFrom-Json -NoEnumerate
+           if ($arr -isnot [object[]] -or $arr.Count -ne $ids.Count) { throw $bad }
+           foreach ($rec in $arr) {
+             if (-not (& $isObj $rec)) { throw $bad }
+             $id = & $get $rec 'Id'
+             if ($id -isnot [string] -or -not $listed.Contains($id) -or $recs.ContainsKey($id)) { throw $bad }
+             $mounts = & $get $rec 'Mounts'
+             $hc = & $get $rec 'HostConfig'
+             if ($mounts -isnot [object[]] -or -not (& $isObj $hc)) { throw $bad }
+             foreach ($m in $mounts) {
+               if (-not (& $isObj $m)) { throw $bad }
+               foreach ($k in 'Type', 'Source', 'Name') { if (-not (& $isStrOrNull (& $get $m $k))) { throw $bad } }
+             }
+             if (-not (& $isStrOrNull (& $get $hc 'PidMode'))) { throw $bad }
+             $cap = & $get $hc 'CapAdd'
+             if ($null -ne $cap) {
+               if ($cap -isnot [object[]]) { throw $bad }
+               foreach ($c in $cap) { if ($c -isnot [string]) { throw $bad } }
+             }
+             $pv = & $get $hc 'Privileged'
+             if ($null -ne $pv -and $pv -isnot [bool]) { throw $bad }
+             $recs[$id] = $rec
+           }
+         }
+
+         $hits = [Collections.Generic.List[object]]::new()
+         $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+         $add = {
+           param([string]$id, [string]$crit, [string]$folder)
+           if ($seen.Add("$id`t$crit`t$folder")) { $hits.Add([pscustomobject]@{ Id = $id; Criterion = $crit; Folder = $folder }) }
+         }
+         $judge = {
+           param([string]$id, [string]$src)
+           $ps = & $parse $src $true
+           if ($null -eq $ps) { & $add $id 'unparsed-source' '*'; return }
+           for ($k = 0; $k -lt $parsed.Count; $k++) {
+             if ($ps.L -ceq $parsed[$k].L -and ((& $isPrefix $ps.S $parsed[$k].S) -or (& $isPrefix $parsed[$k].S $ps.S))) { & $add $id 'bind' $Folders[$k] }
+           }
+         }
+         foreach ($id in $ids) {
+           $rec = $recs[$id]
+           $hc = & $get $rec 'HostConfig'
+           if ((& $get $hc 'Privileged') -eq $true) { & $add $id 'privileged' '*' }
+           $cap = & $get $hc 'CapAdd'
+           if ($null -ne $cap -and $cap.Count -gt 0) { & $add $id 'capadd' '*' }
+           if ((& $get $hc 'PidMode') -ceq 'host') { & $add $id 'pidmode' '*' }
+           foreach ($m in (& $get $rec 'Mounts')) {
+             $type = & $get $m 'Type'
+             $src = & $get $m 'Source'
+             if (-not [string]::IsNullOrEmpty($src)) {
+               $last = $src.Split([char[]]@('\', '/'))[-1]
+               if ($last.StartsWith('docker.sock', [StringComparison]::OrdinalIgnoreCase) -or $last.StartsWith('docker_engine', [StringComparison]::OrdinalIgnoreCase)) { & $add $id 'socket' '*'; continue }
+             }
+             if ($type -cnotin @('bind', 'npipe', 'volume', 'tmpfs')) { & $add $id 'unknown-type' '*'; continue }
+             if ($type -ceq 'tmpfs') { continue }
+             if ($type -ceq 'volume') {
+               $vn = & $get $m 'Name'
+               if ($vn -isnot [string] -or $vn -cnotmatch '^[A-Za-z0-9][A-Za-z0-9_.-]*\z') { throw $bad }
+               $vr = ((& $call @('inspect', '--type', 'volume', $vn)) -join "`n") | ConvertFrom-Json -NoEnumerate
+               if ($vr -isnot [object[]] -or $vr.Count -ne 1 -or -not (& $isObj $vr[0])) { throw $bad }
+               $v = $vr[0]
+               $vname = & $get $v 'Name'
+               $drv = & $get $v 'Driver'
+               $opt = & $get $v 'Options'
+               if ($vname -isnot [string] -or -not [string]::Equals($vname, $vn, [StringComparison]::Ordinal) -or $drv -isnot [string]) { throw $bad }
+               $optProps = @()
+               if ($null -ne $opt) {
+                 if (-not (& $isObj $opt)) { throw $bad }
+                 $optProps = @($opt.PSObject.Properties)
+                 foreach ($op in $optProps) { if ($op.Value -isnot [string]) { throw $bad } }
+               }
+               if ($drv -ceq 'local' -and $optProps.Count -eq 0) { continue }
+               $on = @($optProps | ForEach-Object { $_.Name })
+               if ($drv -ceq 'local' -and $on.Count -eq 3 -and ($on -ccontains 'type') -and ($on -ccontains 'o') -and ($on -ccontains 'device') -and (& $get $opt 'type') -ceq 'none' -and (& $get $opt 'o') -cin @('bind', 'rbind')) {
+                 & $judge $id ([string](& $get $opt 'device'))
+               } else {
+                 & $add $id 'volume' '*'
+               }
+               continue
+             }
+             if ([string]::IsNullOrEmpty($src)) { & $add $id 'empty-source' '*'; continue }
+             & $judge $id $src
+           }
+         }
+         if (Test-Path -LiteralPath $cfg) { throw 'reader search: the config path exists' }
+         $hits
+       } catch {
+         $msg = $_.Exception.Message
+         if ($msg -cin $fixed) { throw $msg }
+         throw 'reader search: the list cannot be built'
+       }
+     } finally {
+       foreach ($n in $names) { if ($null -eq $savedEnv[$n]) { Remove-Item -LiteralPath "Env:\$n" -ErrorAction SilentlyContinue } else { [Environment]::SetEnvironmentVariable($n, $savedEnv[$n]) } }
+       [Console]::OutputEncoding = $savedEnc
+     }
+   }
+   function Assert-NoReaders([string]$Docker, [string[]]$Folders) {
+     $hits = @(Find-Readers $Docker $Folders)
+     foreach ($h in $hits) { "reader: $($h.Id) $($h.Criterion) $($h.Folder)" }
+     if ($hits.Count -gt 0) { throw "reader search: $($hits.Count) hit(s); stop" }
+   }
+   # reader-search: end
    $task = Read-Host 'Task number'
    if ($task -cnotmatch '^[1-9][0-9]{0,6}\z') { throw 'bad task number' }
    $h = Join-Path $clone '.git\wow-handoff'
@@ -438,11 +651,13 @@ the PR body and which the owner types at the block's `Task number` prompt.
      [IO.File]::WriteAllBytes((Join-Path $snap $name), $bytes)
      $plan += @{ path = $path; old = $old; msg = $msg; bytes = $bytes; hash = $hash; name = $name; read = $read }
    }
+   Assert-NoReaders $dockerCli @($identityHome, $snap)
    "branch: $branch (expect $expect)"
    foreach ($f in $plan) { "  $($f.read)$($f.path)  <-  $($f.name)  sha256 $($f.hash)  old $($f.old)  [$($f.msg)]" }
    "Snapshot: $snap"
    'Read every file marked READ in that folder, then mint the token.'
    if ((Read-Host 'Publish exactly these? Type yes') -cne 'yes') { throw 'not confirmed' }
+   Assert-NoReaders $dockerCli @($identityHome, $snap)
    Set-Location $env:TEMP
    $cfg = $null
    try {
@@ -517,13 +732,25 @@ the PR body and which the owner types at the block's `Task number` prompt.
        and never within the hour after a failed revoke.
      - `not confirmed` after a mistyped answer: revoke per step 2.5 if a mint command was run, then
        start again from step 2.1, never within the hour after a failed revoke.
+     - Reader-search host fault: `reader search: a folder is not in long drive-letter form`. Check
+       that `%TEMP%` and the user profile path are plain local paths in long form (no 8.3 short
+       names), put right the one that is not, and start again from step 2.1, with no driver change.
+     - Any other first-run search throw: any error line starting `reader search: ` (a hit,
+       `reader search: <n> hit(s); stop`, or a list the search cannot build). No mint command has
+       been run at that point, so nothing is revoked. Delete the snapshot folder, start no new run,
+       and tell the driver and the maintainer; a new run starts only when the maintainer says so.
      - Any other throw before `yes`: tell the driver the error line, and start no new run until the
        driver says whether the handoff or the host is at fault.
    - **After `yes` is accepted,** any throw (for example the token-pattern throw, a missing token
      file, `could not read main`, `could not create the branch`, a branch-head throw, `PUT failed`,
      `could not read the compare` or the compare-mismatch throw): stop, and tell the driver the error
      line; do not run the block again until the driver, having checked the branch per step 3.1, hands
-     back the next handoff.
+     back the next handoff. A second-run search throw (an error line starting `reader search: `,
+     before the token was read) is one of these: because a mint command was run, the revoke per
+     step 2.5 follows. That revoke runs a `wow-admin` in a folder a container may reach (the named
+     exception in the trust model, kept as the maintainer decided), and step 2.5 counts it as a
+     failed revoke, so its hour applies. After a search throw a new run starts only when the
+     maintainer says so, not on the driver's next handoff alone.
 5. **Revoke.** The owner revokes with this command at the end of every run in which a mint command
    was run, whether or not the mint succeeded, a failed run included:
 
@@ -544,11 +771,13 @@ the PR body and which the owner types at the block's `Task number` prompt.
      `Test-Path` prints `False`, and for which exactly one mint command was run since the previous
      revoke, clean or failed (each mint writes the same token file, so a revoke reaches only the
      newest token). The first revoke after this rule reaches `main` counts only the mint commands run
-     since its run started at step 2.1.
+     since its run started at step 2.1. A revoke that follows a second-run reader-search throw is
+     never clean, even when it shows the 401, the token file's removal, a `False` from `Test-Path`
+     and exactly one mint command.
    - **A failed revoke** is any other revoke, whatever the reason. It includes a revoke after a mint
      that wrote no token file (it cannot show the removal) and a revoke after two or more mint
      commands. A repeated revoke with no mint command since the previous revoke is a failed revoke,
-     and it restarts the hour.
+     and it restarts the hour. It also includes a revoke after a second-run reader-search throw.
    - **The hour:** after a failed revoke, every admin token is treated as live for one hour from that
      moment (an installation token lives at most an hour, so every token minted before the failed
      revoke has expired when the hour ends). No new run of Procedure B starts in that hour, and the
@@ -557,6 +786,20 @@ the PR body and which the owner types at the block's `Task number` prompt.
      follows it, and, when that revoke is failed (or any revoke is failed), through the hour after it.
      No Procedure A host session runs in that span.
    - Nothing checks this rule; it is the owner's.
+
+**The stop-only rule.** A reader-search hit stops the procedure. The only steps that follow any hit
+are deleting the snapshot folder and the revoke per step 2.5, when one is due. Whether the host can
+be trusted afterwards, and what to clean, reinstall, rotate or check, is the owner's decision outside
+this procedure, which describes no remediation. The revoke after a second-run search throw runs
+`wow-admin` from the identity home, a folder a container may reach; the procedure keeps that revoke
+anyway, as the maintainer decided, and step 2.5 counts it as a failed revoke. A `wow-admin` that a
+container rewrote ran the mint with whatever the admin App's mint uses, so it may have minted a
+token with any of the App's permissions (the `granted:` line is untrusted) or taken what the mint
+uses, and it ran as the owner on the host, in Git Bash, with everything the owner's user can reach
+(every repo's token directory, the owner's logins, anything it can leave behind). Neither the revoke
+nor the hour bounds that: the hour bounds only how long the tokens this run minted live, and bounds
+neither what the mint uses nor any change such a token made within the hour (a ruleset, a bypass
+actor, an environment's protection rules, a workflow).
 
 Why the block is shaped this way: `& { … }` makes it one statement, so a paste that breaks partway
 leaves PowerShell waiting for the closing `}` and runs nothing. Every request body goes to `gh` on
@@ -618,6 +861,21 @@ been hashed and read.
   a container (in WSL, say) that is running untrusted code could still read the identity home; the
   owner runs nothing like that while any admin token may be live, as step 2.5 defines it. This
   includes a Procedure A host session, and nothing checks it.
+- **The reader search does not establish host integrity.** After a hit the procedure only stops
+  (the stop-only rule). The search proves nothing about: the time between its two runs and after the
+  second; stopped containers; containers Docker Desktop hides from `docker ps`; containers on any
+  engine other than the default context's (a WSL distro's own engine, another container runtime); an
+  engine reached over TCP with no mounted socket or pipe (Docker Desktop's setting that exposes the
+  daemon on localhost); a bind whose source reaches a folder through a symbolic link, junction or
+  other reparse point (it judges the source's text and never follows it); host state a container
+  wrote before the first run (a folder on PATH, an installed program); or a host process outside a
+  container (the token-folder bullet above covers that). The unmade config path leaves one race
+  open: a container that binds `%TEMP%`, or a folder holding it, and writes at that path between two
+  docker calls could make the later calls read a Docker config it wrote, which can change what they
+  print or make the Docker CLI run a program it chose, before the search reports that container; the
+  fresh GUID name, the existence checks before the first call and after the last, and that bind
+  being itself a hit narrow this to a race the container must win while watching `%TEMP%`, and do
+  not close it.
 - **Procedure B is interim.** glunk-works/claude-workbench#1681 replaces it with a mechanical
   route; until then this section on `main` is the only procedure for an elevated push.
 - **Nothing in the block checks the token's permissions.** `wow-admin`'s `granted:` line, read by

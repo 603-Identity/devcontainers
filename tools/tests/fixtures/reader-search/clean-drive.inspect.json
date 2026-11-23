@@ -1,0 +1,70 @@
+[
+ {
+  "Id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "Name": "/devcontainers-dev",
+  "State": {
+   "Status": "running"
+  },
+  "Mounts": [
+   {
+    "Type": "bind",
+    "Source": "C:\\Users\\tester\\projects\\603identity\\devcontainers-dev",
+    "Destination": "/workspaces/devcontainers-dev",
+    "Mode": "",
+    "RW": true
+   },
+   {
+    "Type": "bind",
+    "Source": "C:\\Users\\tester/.gitconfig.d",
+    "Destination": "/home/app/.gitconfig.d",
+    "Mode": "ro",
+    "RW": false
+   },
+   {
+    "Type": "bind",
+    "Source": "C:\\Users\\tester\\.config\\glunk-identity\\tokens\\603-Identity\\devcontainers",
+    "Destination": "/run/wow",
+    "Mode": "ro",
+    "RW": false
+   },
+   {
+    "Type": "volume",
+    "Name": "dc-home",
+    "Source": "/var/lib/docker/volumes/dc-home/_data",
+    "Destination": "/home/app",
+    "Driver": "local",
+    "RW": true
+   },
+   {
+    "Type": "volume",
+    "Name": "dc-cache",
+    "Source": "/var/lib/docker/volumes/dc-cache/_data",
+    "Destination": "/home/app/.cache",
+    "Driver": "local",
+    "RW": true
+   },
+   {
+    "Type": "volume",
+    "Name": "dc-uv",
+    "Source": "/var/lib/docker/volumes/dc-uv/_data",
+    "Destination": "/home/app/.local/share/uv",
+    "Driver": "local",
+    "RW": true
+   },
+   {
+    "Type": "volume",
+    "Name": "dc-claude",
+    "Source": "/var/lib/docker/volumes/dc-claude/_data",
+    "Destination": "/home/app/.claude",
+    "Driver": "local",
+    "RW": true
+   }
+  ],
+  "HostConfig": {
+   "Privileged": false,
+   "CapAdd": null,
+   "PidMode": "",
+   "NetworkMode": "bridge"
+  }
+ }
+]

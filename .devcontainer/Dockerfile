@@ -57,7 +57,8 @@ FROM ghcr.io/603-identity/devcontainer-devapp:4.661@sha256:b7a6d96a660b9f929ff05
 # This repo's extras: the two tools gates.green runs that the image lacks. The gate's other
 # steps (hadolint, trivy, zizmor, the image builds and the template proof) run in Docker, which
 # this container has no access to by design; they run on the host and in CI. The gate tests'
-# claude-fetch suite needs gpg, which the dev-App flavour removes on purpose: it runs there too.
+# claude-fetch suite needs gpg, which the dev-App flavour removes on purpose, and its reader-search
+# suite needs pwsh, which the image does not ship: both run in CI too.
 USER 0
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
