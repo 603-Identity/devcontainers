@@ -833,7 +833,7 @@ the newest release the current node pin supports; python: the newest python-buil
 own published checksum file (npm: the registry's `integrity` field) -- never from
 hashing the download -- and opens one PR per tool that is behind, with the release page
 and the URL the checksum was read from linked in the body (not a diff -- see step 1 below). To decline a version, close its PR and leave the `bump/<tool>-<version>` branch (python's is `bump/python-<version>-<build>`, so closing its PR declines that build only and a later build of the same patch is proposed again): the
-next run skips that tool with a warning (#86), and deleting the branch proposes the version again. **betterleaks is the exception** (#190): while its pin is a release candidate (`X.Y.Z-rc.N`, today 2.0.0-rc.7) it
+next run skips that tool with a warning (#86), and deleting the branch proposes the version again. When the job proposes a newer python build it closes the older open python bump PRs its App opened, even one a human pushed to or approved, with a comment naming the new branch, and leaves their branches, so a later run treats such a build like a declined one; and it opens nothing while a python bump PR that is not older is open. **betterleaks is the exception** (#190): while its pin is a release candidate (`X.Y.Z-rc.N`, today 2.0.0-rc.7) it
 takes the highest-versioned release among any GA release and the release candidates of its own `X.Y.Z` (never a later line's rc, #304), and once the pin is on a GA
 release it takes stable releases only, like every other tool (#208). It takes the sha256 only after `cosign verify-blob` accepts the
 release's sigstore bundle for `checksums.txt` against the signer identity for that exact tag
@@ -856,8 +856,9 @@ A human still has to:
 2. Check the Dockerfile's own prose for anything tied to the specific version being
    replaced -- the node image's npm-bundled-CVE override block (the bundled-package swap
    block, absent since #510; when the image carries one, the npm bump PR body names the
-   swapped packages and the removal to push if the build fails) and its "Node X bundles
-   npm Y" comments, the tofu image's per-bump CVE/Trivy-count notes and its
+   swapped packages and the removal to push if the build fails) and the npm block's comment
+   (the npm major it installs and its drop condition's npm and undici versions, which a
+   node or npm bump can make stale), the tofu image's per-bump CVE/Trivy-count notes and its
    `SHA256SUMS` signature record (repeat the whole check it describes, cosign and the
    grep against the pin, or leave the record naming the version it covers) -- and update or remove what the new version
    makes stale. The workflow only ever touches the `ARG`

@@ -129,4 +129,13 @@ out_has "PR already open" "the open-PR notice wins"
 if git_has "-C $R ls-remote"; then fail "no ls-remote when a PR is already open"; else pass; fi
 rm -rf "$SCRATCH"
 
+# --- only python supersedes: a gh bump that opens its PR lists and closes no other PR ------
+setup 0 0 "" 0
+run
+assert_rc "a gh bump that opens its PR succeeds" 0 "$RC"
+if log_has "gh pr create"; then pass; else fail "the PR is created"; fi
+if grep -q '^gh pr list .*--limit' "$FAKE_LOG"; then fail "a non-python bump makes no supersede listing call" "$(cat "$FAKE_LOG")"; else pass; fi
+if log_has "gh pr close"; then fail "a non-python bump closes no PR" "$(cat "$FAKE_LOG")"; else pass; fi
+rm -rf "$SCRATCH"
+
 summary

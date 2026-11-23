@@ -10,7 +10,11 @@
 # bump/<tool>-<version> branch and PR (skipped if that PR is already open, or if the branch
 # already exists on origin, e.g. after a human closed its PR unmerged), and leaves
 # everything else -- the surrounding comments, consumer CI pins, .trivyignore.yaml --
-# for the human review the PR goes through.
+# for the human review the PR goes through. python is the exception to the rule and the branch
+# shape: it takes the newest build of the image's pinned major.minor, a new build tag alone
+# counting as a bump (all three of its ARGs are rewritten), its branch is
+# bump/python-<version>-<build>, and a newer python build closes the older open python bump PRs
+# this App opened (they are superseded; their branches stay).
 #
 # betterleaks (#190) is the exception to "stable only", but only while its pin is itself a release
 # candidate (X.Y.Z-rc.N): then it takes the highest-versioned release among any GA release and the
@@ -26,7 +30,10 @@
 # cpython-X.Y.N+TAG-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz for the pinned X.Y. A new
 # build tag with the same CPython patch counts as a bump, so it rewrites all three ARGs
 # (PYTHON_VERSION, PYTHON_BUILD, PYTHON_SHA256) and its branch is bump/python-<version>-<build>. A
-# move to another minor stays a hand re-pin (tests/smoke.sh hardcodes the major.minor).
+# candidate whose SHA256SUMS cannot be read is skipped with a warning and the next one is tried; once
+# one has failed, no candidate at or below the pin's build is fetched, and a run left with no usable
+# candidate fails with a count of the unreadable ones. A move to another minor stays a hand re-pin
+# (tests/smoke.sh hardcodes the major.minor).
 #
 # npm also looks for the node image's bundled-package swap block: a `RUN` that defines a shell
 # function `swap() {` and calls it once per package, as a line whose first field is exactly `swap`
@@ -41,7 +48,8 @@
 # RELEASE_URL; the bump PR body cites both (#85).
 #
 # Usage: bump-binaries.sh <gh|yq|uv|tofu|tflint|node|npm|betterleaks|python>
-# Env:   REPO (owner/repo), GH_TOKEN (gh, authenticated for push+PR), APP_SLUG,
+# Env:   REPO (owner/repo), GH_TOKEN (gh, authenticated for push+PR, and, for python, to close and
+#        comment on the superseded PRs), APP_SLUG,
 #        BOT_USER_ID (the bot's user id, for the commit's noreply email)
 set -euo pipefail
 
@@ -88,7 +96,7 @@ resolve_gh() {
 }
 
 resolve_yq() {
-  local tag order_url sums_url field sums order lines
+  local tag order_url sums_url field sums order lines n_sha
   IFS=$'\t' read -r tag RELEASE_URL <<< "$(latest_release mikefarah/yq)"
   NEW_VERSION="${tag#v}"
   # The checksums file lists one hash per algorithm, in the order this sidecar file
@@ -105,9 +113,9 @@ resolve_yq() {
   lines="$(grep -n '^SHA-256$' <<< "$order" | cut -d: -f1 || true)"
   [ -n "$lines" ] || { echo "::error::yq: SHA-256 not found in $order_url" >&2; exit 1; }
   # Exactly one SHA-256 line, or fail closed rather than guess a column (#379).
-  field="$(wc -l <<< "$lines")"
-  field="${field//[[:space:]]/}"
-  [ "$field" -eq 1 ] || { echo "::error::yq: SHA-256 listed ${field} times in $order_url, expected exactly one" >&2; exit 1; }
+  n_sha="$(wc -l <<< "$lines")"
+  n_sha="${n_sha//[[:space:]]/}"
+  [ "$n_sha" -eq 1 ] || { echo "::error::yq: SHA-256 listed ${n_sha} times in $order_url, expected exactly one" >&2; exit 1; }
   field=$((lines + 1))
   sums_url="https://github.com/mikefarah/yq/releases/download/${tag}/checksums"
   # Read into a variable first (see sha256_line): an early-exiting awk on a curl pipe races.
@@ -296,11 +304,11 @@ resolve_npm() {
 
 # python-build-standalone (#561). The pin (PYTHON_VERSION, PYTHON_BUILD) is read from the Dockerfile
 # and checked before any network call; every value taken from upstream is checked by shape again
-# before anything is written. Errors name only repo-side values (the pinned minor, a count), never
-# an upstream tag or a SHA256SUMS line, so upstream text cannot reach the Actions log.
+# before anything is written. Errors and warnings name only repo-side values (the pinned minor, a
+# count), never an upstream tag or a SHA256SUMS line, so upstream text cannot reach the Actions log.
 PBS_REPO="astral-sh/python-build-standalone"
 resolve_python() {
-  local df="$root/images/base/Dockerfile" pin_ver minor listing tag url cands sums_url sums matches n
+  local df="$root/images/base/Dockerfile" pin_ver minor listing tag url cands sums_url sums matches n failed=0
   pin_ver="$(sed -n 's/^ARG PYTHON_VERSION=//p' "$df")"
   PIN_BUILD="$(sed -n 's/^ARG PYTHON_BUILD=//p' "$df")"
   [[ "$pin_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
@@ -321,10 +329,17 @@ resolve_python() {
 
   while IFS=$'\t' read -r tag url; do
     [ -n "$tag" ] || continue
+    # After a failed fetch never reach for the pin's own release or an older one (string compare
+    # of equal-length digit tags): that could only end on a downgrade or the up-to-date message.
+    if [ "$failed" -gt 0 ] && ! [[ "$tag" > "$PIN_BUILD" ]]; then break; fi
     sums_url="https://github.com/$PBS_REPO/releases/download/${tag}/SHA256SUMS"
-    # Read into a variable first and fail on a failed transfer (see sha256_line).
-    sums="$(curl -fsSL "$sums_url")" \
-      || { echo "::error::python: could not read SHA256SUMS of a candidate release for $minor" >&2; exit 1; }
+    # Read into a variable first (see sha256_line). A failed transfer skips this candidate with a
+    # warning and tries the next, so one unreadable release does not fail the whole leg.
+    sums="$(curl -fsSL "$sums_url")" || {
+      echo "::warning::python: could not read the SHA256SUMS of a candidate release for $minor, trying the next"
+      failed=$((failed + 1))
+      continue
+    }
     # A literal comparison, not a regex: fixed prefix, digits-only patch, fixed suffix. The
     # values travel through ENVIRON. Prints "<sha256> <X.Y.N>" per matching line.
     matches="$(PBS_PFX="cpython-${minor}." PBS_SFX="+${tag}-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz" awk '
@@ -347,6 +362,10 @@ resolve_python() {
     fi
   done <<< "$cands"
 
+  if [ "$failed" -gt 0 ]; then
+    echo "::error::python: could not read the SHA256SUMS of $failed candidate release(s) for $minor, and no readable release above the pin carries the asset" >&2
+    exit 1
+  fi
   echo "::error::python: none of the listed releases carries a $minor install_only_stripped linux x86_64 asset" >&2
   exit 1
 }
@@ -435,9 +454,46 @@ if [ "$open_count" != "0" ]; then
   exit 0
 fi
 
+# python only: list the open PRs this App opened for older python builds, so that a newer build
+# supersedes them (closed after the new PR is created, below). Runs before any git call, and holds
+# the write token, so a record is used only when ALL of these hold: the author is exactly
+# app/$APP_SLUG and a bot, the PR is not from a fork, the head is bump/python-<pinned minor>.<digits>-<8
+# digits> (the minor compared as a literal string, never as a regex) and the number is a plain
+# positive integer. Anything else is ignored and never printed. Branches are never deleted.
+superseded=()
+if [ "$tool" = python ]; then
+  : "${APP_SLUG:?APP_SLUG must be set}"
+  pr_listing="$(gh pr list --repo "$repo" --state open --limit 500 \
+    --json number,headRefName,author,isCrossRepository \
+    --jq '.[] | [(.number | tostring), .headRefName, (.author.login // "-"), ((.author.is_bot // false) | tostring), (.isCrossRepository | tostring)] | @tsv')" \
+    || { echo "::error::python: could not list the open pull requests" >&2; exit 1; }
+  if [ "$(printf '%s' "$pr_listing" | awk 'END { print NR }')" -ge 500 ]; then
+    echo "::error::python: the open pull request listing may be truncated" >&2
+    exit 1
+  fi
+  head_pfx="bump/python-${current_version%.*}."
+  while IFS=$'\t' read -r pr_num pr_head pr_login pr_bot pr_cross; do
+    [ -n "$pr_num" ] && [ -n "$pr_head" ] && [ -n "$pr_login" ] && [ -n "$pr_bot" ] && [ -n "$pr_cross" ] || continue
+    [[ "$pr_num" =~ ^[1-9][0-9]*$ ]] || continue
+    [ "$pr_login" = "app/${APP_SLUG}" ] && [ "$pr_bot" = true ] && [ "$pr_cross" = false ] || continue
+    pr_rest="${pr_head#"$head_pfx"}"
+    [ "$pr_rest" != "$pr_head" ] || continue
+    [[ "$pr_rest" =~ ^([0-9]+)-([0-9]{8})$ ]] || continue
+    pr_ver="${head_pfx#bump/python-}${BASH_REMATCH[1]}"
+    pr_build="${BASH_REMATCH[2]}"
+    if [[ "$pr_build" < "$NEW_BUILD" ]] && ! [[ "$(ver_key "$pr_ver")" > "$(ver_key "$NEW_VERSION")" ]]; then
+      superseded+=("$pr_num")
+    else
+      echo "python: open PR #${pr_num} (${pr_head}) is not older than ${new_label}, nothing to do"
+      exit 0
+    fi
+  done <<< "$pr_listing"
+fi
+
 # A human who closes a bump PR unmerged and leaves its branch has declined that version. Cutting
 # a fresh branch would be rejected as non-fast-forward against it on every weekly run (#86), so
-# skip with a warning, and never force-push or delete the branch. `gh auth setup-git` only wires a
+# skip with a warning, and never force-push or delete the branch. A python PR this job closed as
+# superseded leaves its branch too, so a later run treats that build the same way. `gh auth setup-git` only wires a
 # credential helper (the checkout does not persist one), so ls-remote also works on a private repo.
 gh auth setup-git
 
@@ -533,3 +589,15 @@ EOF
 gh pr create --repo "$repo" --head "$branch" --base main \
   --title "build(images): bump $tool $current_label -> $new_label" \
   --body "$body"
+
+# python only: close the older PRs the new one supersedes, once the new PR exists (a failed
+# `gh pr create` above exits first, so nothing is closed). Every close is attempted; the branches
+# stay, so a closed PR can be reopened.
+if [ "${#superseded[@]}" -gt 0 ]; then
+  close_failed=0
+  for pr_num in "${superseded[@]}"; do
+    gh pr close "$pr_num" --repo "$repo" --comment "Superseded by ${branch}." \
+      || { echo "::error::python: could not close superseded PR #${pr_num}" >&2; close_failed=1; }
+  done
+  [ "$close_failed" -eq 0 ] || exit 1
+fi

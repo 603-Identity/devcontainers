@@ -42,10 +42,10 @@ RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-l
     && rm /tmp/node.tar.xz \
     && node --version && npm --version
 
-# --- npm 12. Node 26.13.0 bundles npm 11.20.0; we move to npm 12, the standard the
-# fleet is taking (#27). This is a major above what Node bundles, so consuming
-# repos' CI (`setup-node`, npm 11 bundled) does not match the image until each takes
-# npm 12 in CI (#27). The tarball is verified against the
+# --- npm 12. We move to npm 12, the standard the fleet is taking (#27). The npm
+# bundled with the image's Node is older than the npm 12 installed here, so consuming
+# repos' CI, which uses the npm its Node bundles, does not match the image until each
+# takes npm 12 in CI (#27). The tarball is verified against the
 # registry's published sha512 `integrity`, the same check `npm ci` applies to every
 # package.
 # Drop this block once the image's Node major bundles npm >= 12.2.2 (the first npm 12
