@@ -37,6 +37,7 @@ EOF
 printf 'docker %s\n' "$*" >> "$TE_LOG"
 violation() { echo "$*" >> "$TE_STATE/violations"; echo "fake docker: $*" >&2; exit 99; }
 fake_id() { printf 'sha256:%s' "$(printf '%s' "$1" | sha256sum | cut -c1-64)"; }
+fake_digest() { printf 'sha256:%s' "$(printf 'digest-%s' "$1" | sha256sum | cut -c1-64)"; }
 flavor_of() { # flavor_of <ref>: only the push-mode ref shape is accepted
   local r=${1:-} p="${TE_REGISTRY:-ghcr.io/603-identity}/devcontainer-"
   case $r in
@@ -49,10 +50,20 @@ sub=${1:-}
 shift || true
 case $sub in
   image)
-    [ "${1:-}" = inspect ] && [ "${2:-}" = --format ] && [ "${3:-}" = '{{.Id}}' ] && [ "$#" -eq 4 ] || violation "image arguments: $*"
+    [ "${1:-}" = inspect ] && [ "${2:-}" = --format ] && [ "$#" -eq 4 ] || violation "image arguments: $*"
     f=$(flavor_of "$4")
     [ "${TE_MISSING:-}" != "$f" ] || { echo "Error: No such image: $4" >&2; exit 1; }
-    if [ "${TE_BADID:-}" = "$f" ]; then echo sha256:short; else fake_id "$f"; fi
+    case $3 in
+      '{{.Id}}')
+        if [ "${TE_BADID:-}" = "$f" ]; then echo sha256:short; else fake_id "$f"; fi ;;
+      '{{range .RepoDigests}}{{println .}}{{end}}')
+        r=${TE_REGISTRY:-ghcr.io/603-identity}
+        [ "${TE_NODIGEST:-}" = "$f" ] || {
+          echo "$r/other@sha256:$(printf '0%.0s' $(seq 64))"
+          if [ "${TE_OTHERDIGEST:-}" = "$f" ]; then echo "$r/devcontainer-$f@$(fake_digest "other-$f")"; else echo "$r/devcontainer-$f@$(fake_digest "$f")"; fi
+        } ;;
+      *) violation "inspect format: $3" ;;
+    esac
     exit 0 ;;
   save)
     [ "${1:-}" = -o ] || violation "save without -o"
@@ -143,7 +154,11 @@ begin() {
   SCRATCH="$(mktemp -d)"
   export TE_SCRATCH="$SCRATCH" TE_STATE="$SCRATCH/state" TE_LOG="$SCRATCH/calls.log"
   export TE_TEMPLATE="$TEMPLATE" TE_TAG="$TAG" TE_BUILD_SCRIPT="$ROOT_DIR/.github/scripts/build-and-test.sh"
-  unset TE_MISSING TE_BADID TE_BADCID TE_CPFAIL TE_SCAN_RC TE_VERSION_RC TE_GREP_RC TE_NONE TE_REGISTRY REGISTRY
+  for f in base tofu node devapp devapp-tofu; do
+    v=$(printf '%s' "$f" | tr 'a-z-' 'A-Z_')_DIGEST
+    export "$v=sha256:$(printf 'digest-%s' "$f" | sha256sum | cut -c1-64)"
+  done
+  unset TE_NODIGEST TE_OTHERDIGEST TE_MISSING TE_BADID TE_BADCID TE_CPFAIL TE_SCAN_RC TE_VERSION_RC TE_GREP_RC TE_NONE TE_REGISTRY REGISTRY
   while read -r v; do unset "$v"; done < <(compgen -v | grep -E '^TE_(BIN|DROP)_' || true)
   mkdir -p "$TE_STATE" "$SCRATCH/tmp" "$SCRATCH/out" "$SCRATCH/cwd"
   : >"$TE_LOG"
@@ -216,6 +231,15 @@ begin; go_raw GITHUB_SHA= -- "$TAG" "$RESULTS"; usage_done "GITHUB_SHA empty"; f
 begin; go_raw GITHUB_SHA="${COMMIT:0:39}" -- "$TAG" "$RESULTS"; usage_done "a 39-character GITHUB_SHA"; finish
 begin; go_raw GITHUB_SHA="${COMMIT^^}" -- "$TAG" "$RESULTS"; usage_done "an uppercase GITHUB_SHA"; finish
 begin; go_raw GITHUB_SHA="zzzz${COMMIT:4}" -- "$TAG" "$RESULTS"; usage_done "a non-hex GITHUB_SHA"; finish
+for dv in BASE_DIGEST TOFU_DIGEST NODE_DIGEST DEVAPP_DIGEST DEVAPP_TOFU_DIGEST; do
+  begin; go_raw -u "$dv" GITHUB_SHA="$COMMIT" -- "$TAG" "$RESULTS"; usage_done "$dv unset"; finish
+  begin; go_raw GITHUB_SHA="$COMMIT" "$dv=" -- "$TAG" "$RESULTS"; usage_done "$dv empty"; finish
+  begin; go_raw GITHUB_SHA="$COMMIT" "$dv=sha256:abc" -- "$TAG" "$RESULTS"; usage_done "$dv short"; finish
+  begin; go_raw GITHUB_SHA="$COMMIT" "$dv=sha256:$(rep A 64)" -- "$TAG" "$RESULTS"; usage_done "$dv uppercase"; finish
+  begin; go_raw GITHUB_SHA="$COMMIT" "$dv=sha256:$(rep g 64)" -- "$TAG" "$RESULTS"; usage_done "$dv non-hex"; finish
+  begin; go_raw GITHUB_SHA="$COMMIT" "$dv=$(rep a 64)" -- "$TAG" "$RESULTS"; usage_done "$dv without the sha256: prefix"; finish
+  if [ ! -e "$RESULTS" ]; then pass; else fail "usage: $dv: OUTPUT created"; fi
+done
 
 begin; echo precious >"$RESULTS"; go "$TAG" "$RESULTS"; usage_done "a non-empty OUTPUT"
 assert_eq "usage: a non-empty OUTPUT (left unchanged)" precious "$(cat "$RESULTS")"; finish
@@ -257,6 +281,9 @@ fail_case "an empty TFLINT_VERSION pin" no_pin TFLINT_VERSION tofu
 fail_case "a missing GH_VERSION pin" no_pin GH_VERSION base
 fail_case "a local image missing under its push-mode ref" set_env TE_MISSING=devapp-tofu
 fail_case "an image id of the wrong shape" set_env TE_BADID=node
+fail_case "a local image with no RepoDigests" set_env TE_NODIGEST=node
+fail_case "a local image carrying a different digest" set_env TE_OTHERDIGEST=devapp
+fail_case "the first flavour's image carrying a different digest" set_env TE_OTHERDIGEST=base
 fail_case "the scan run exiting non-zero" set_env TE_SCAN_RC=125
 fail_case "the --version run exiting non-zero" set_env TE_VERSION_RC=125
 fail_case "a docker create id of the wrong shape" set_env TE_BADCID=1
@@ -329,7 +356,8 @@ clean_checks() { # clean_checks <description> <results file>
   local d=$1 f=$2 flavor id
   assert_rc "$d" 0 "$RC"
   assert_eq "$d: no stdout (no warning line)" "" "$(cat "$SCRATCH/stdout")"
-  assert_eq "$d: the level-2 sections, in order" "$EXPECTED_SECTIONS" "$(section_order "$f")"
+  assert_eq "$d: the level-2 sections, in order" "$EVIDENCE_SECTIONS" "$(section_order "$f")"
+  assert_eq "$d: the Published digests section, five lines in flavour order" "$(for flavor in base tofu node devapp devapp-tofu; do printf -- '- %s `%s/devcontainer-%s@sha256:%s`\n' "$flavor" "${TE_REGISTRY:-ghcr.io/603-identity}" "$flavor" "$(printf 'digest-%s' "$flavor" | sha256sum | cut -c1-64)"; done)" "$(awk '/^## Published digests/{f=1;next} /^## /{f=0} f && NF' "$f")"
   assert_eq "$d: the title" "# Trivy re-scan results" "$(head -n 1 "$f")"
   for flavor in base tofu node devapp devapp-tofu; do
     id="sha256:$(printf '%s' "$flavor" | sha256sum | cut -c1-64)"
@@ -380,7 +408,7 @@ begin; clean_env; : >"$RESULTS"
 printf 'Version: 0.74`0\nVulnerability DB:\n  Version: 3\n  UpdatedAt: 2026-12-01 00:00:00 +0000 UTC' >"$SCRATCH/version.txt"
 go "$TAG" "$RESULTS"
 assert_rc "clean run, OUTPUT pre-created" 0 "$RC"
-assert_eq "clean run, pre-created: the section order" "$EXPECTED_SECTIONS" "$(section_order "$RESULTS")"
+assert_eq "clean run, pre-created: the section order" "$EVIDENCE_SECTIONS" "$(section_order "$RESULTS")"
 if grep -qF 'Trivy version: `0.74?0`' "$RESULTS"; then pass; else fail "clean run: a backtick in the Trivy version becomes ?"; fi
 if grep -qF 'Vulnerability DB version: `3`' "$RESULTS" && grep -qF 'UpdatedAt: `2026-12-01 00:00:00 +0000 UTC`' "$RESULTS"; then pass; else fail "clean run: the last section's values are recorded"; fi
 common_checks "clean run, pre-created OUTPUT"; finish

@@ -257,7 +257,10 @@ dockerfile_arg() { # dockerfile_arg <image dir> <ARG name>: its value in the che
   printf '%s' "${v//$KEEP/?}"
 }
 
-upstream_word() { # upstream_word <repo> <pin>: the comparison with the latest release tag
+# upstream_fill <repo> <pin>: makes the cache hold the comparison word for the key, prints nothing.
+# Call it in the shell that owns UPSTREAM_CACHE (never inside a command substitution, whose writes
+# are lost): do_file does, once per looked-up tool, before its per-id loop.
+upstream_fill() {
   local key="$1 $2" tag
   if [ -z "${UPSTREAM_CACHE[$key]+x}" ]; then
     if gh api "repos/$1/releases/latest" --jq .tag_name >"$tmp/tag.txt" 2>>"$tmp/err.log" \
@@ -271,28 +274,72 @@ upstream_word() { # upstream_word <repo> <pin>: the comparison with the latest r
       UPSTREAM_CACHE[$key]=unknown
     fi
   fi
-  printf '%s' "${UPSTREAM_CACHE[$key]}"
+}
+
+upstream_word() { # upstream_word <repo> <pin>: the word, from the cache (filled on a miss)
+  upstream_fill "$1" "$2"
+  printf '%s' "${UPSTREAM_CACHE[$1 $2]}"
+}
+
+# pin_spec <key>: sets PIN_ARG, PIN_DIR and PIN_REPO (empty when the tool's upstream is not looked up)
+# for a pin-table entry that has a Dockerfile ARG; returns 1 for `lock`, which has none.
+pin_spec() {
+  PIN_ARG='' PIN_DIR='' PIN_REPO=''
+  case $1 in
+    gh) PIN_ARG=GH_VERSION PIN_DIR=base PIN_REPO=cli/cli ;;
+    yq) PIN_ARG=YQ_VERSION PIN_DIR=base PIN_REPO=mikefarah/yq ;;
+    betterleaks) PIN_ARG=BETTERLEAKS_VERSION PIN_DIR=base PIN_REPO=betterleaks/betterleaks ;;
+    uv) PIN_ARG=UV_VERSION PIN_DIR=base PIN_REPO=astral-sh/uv ;;
+    tofu) PIN_ARG=TOFU_VERSION PIN_DIR=tofu PIN_REPO=opentofu/opentofu ;;
+    tflint) PIN_ARG=TFLINT_VERSION PIN_DIR=tofu PIN_REPO=terraform-linters/tflint ;;
+    claude) PIN_ARG=CLAUDE_VERSION PIN_DIR=devapp ;;
+    node) PIN_ARG=NODE_VERSION PIN_DIR=node ;;
+    npm) PIN_ARG=NPM_VERSION PIN_DIR=node ;;
+    *) return 1 ;;
+  esac
+}
+# pin_looks_up <key> <pin>: succeeds when the pin makes an upstream lookup (PIN_REPO from pin_spec
+# set): a tool with an upstream repo, except a betterleaks pin on a release candidate. The one rule
+# pin_line and the pre-pass share.
+pin_looks_up() {
+  [ -n "$PIN_REPO" ] || return 1
+  if [ "$1" = betterleaks ] && [[ $2 == *-rc.* ]]; then return 1; fi
+  return 0
+}
+
+# prefetch_upstream <findings file>: fills UPSTREAM_CACHE in this shell for every looked-up pin of
+# the findings, so the per-id renders (command substitutions) only read it and every issue block of
+# the run carries the same word for a tool. Prints nothing. A pin that cannot be read fails the run
+# here, before any issue is touched; the status of the read is checked explicitly, since errexit is
+# suspended in a condition.
+prefetch_upstream() {
+  local line key val
+  local -A seen_keys=()
+  while IFS= read -r line || [ -n "$line" ]; do
+    split_tabs "$line"
+    key=$(pin_key "${F[3]}")
+    [ -n "$key" ] || continue
+    [ -z "${seen_keys[$key]+x}" ] || continue
+    seen_keys[$key]=1
+    pin_spec "$key" || continue
+    [ -n "$PIN_REPO" ] || continue
+    val=$(dockerfile_arg "$PIN_DIR" "$PIN_ARG") || exit 1
+    pin_looks_up "$key" "$val" || continue
+    upstream_fill "$PIN_REPO" "$val"
+  done <"$1"
 }
 
 pin_line() { # pin_line <key>: the one line for a pin-table entry
-  local arg dir repo=
-  case $1 in
-    gh) arg=GH_VERSION dir=base repo=cli/cli ;;
-    yq) arg=YQ_VERSION dir=base repo=mikefarah/yq ;;
-    betterleaks) arg=BETTERLEAKS_VERSION dir=base repo=betterleaks/betterleaks ;;
-    uv) arg=UV_VERSION dir=base repo=astral-sh/uv ;;
-    tofu) arg=TOFU_VERSION dir=tofu repo=opentofu/opentofu ;;
-    tflint) arg=TFLINT_VERSION dir=tofu repo=terraform-linters/tflint ;;
-    claude) arg=CLAUDE_VERSION dir=devapp ;;
-    node) arg=NODE_VERSION dir=node ;;
-    npm) arg=NPM_VERSION dir=node ;;
-    lock) printf 'Pin: %simages/base/tools/uv.lock%s: pinned by images/base/tools/uv.lock' "$BT" "$BT"; return 0 ;;
-  esac
   local val word
-  val=$(dockerfile_arg "$dir" "$arg")
+  if ! pin_spec "$1"; then
+    printf 'Pin: %simages/base/tools/uv.lock%s: pinned by images/base/tools/uv.lock' "$BT" "$BT"
+    return 0
+  fi
+  val=$(dockerfile_arg "$PIN_DIR" "$PIN_ARG")
+  local arg=$PIN_ARG repo=$PIN_REPO
   if [ -z "$repo" ]; then
     word='upstream not looked up'
-  elif [ "$1" = betterleaks ] && [[ $val == *-rc.* ]]; then
+  elif ! pin_looks_up "$1" "$val"; then
     word='upstream: not compared (pinned to a release candidate)'
   else
     word="upstream: $(upstream_word "$repo" "$val")"
@@ -428,6 +475,7 @@ do_file() {
   : >"$tmp/results.lines"
   if [ "$nfind" -gt 0 ]; then
     mapfile -t ids < <(cut -f1 "$findings" | sort -u)
+    prefetch_upstream "$findings"
     gh_get "repos/$GITHUB_REPOSITORY/issues?state=open&per_page=100" --paginate >"$tmp/issues.json"
     for id in "${ids[@]}"; do
       awk -F'\t' -v id="$id" '$1 == id' "$findings" >"$tmp/rows.tsv"

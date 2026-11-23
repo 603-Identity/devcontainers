@@ -187,6 +187,10 @@ JOB_ID=$(jfield "$T/job.json" jobs .id)
 ghget "job log" "$T/log.txt" --allow-escape-sequences "repos/$REPO/actions/jobs/$JOB_ID/logs"
 
 # Parse contract: the awk program below is the contract. The log is untrusted text and nothing from it is evaluated.
+# A row with an empty Vulnerability cell is skipped, except that it refuses (exit 1, ignore file untouched)
+# when it holds a Library cell and sits in the window of the matched row or of the row whose Library cell
+# the matched row inherits (up to the next row with a Vulnerability cell): a wrapped Library cell would
+# be cut to its first fragment, so it is refused, never joined.
 parsed=$(awk -v flav="$FLAVOUR" -v path="$TPATH" -v cve="$CVE" '
 function trim(s) { sub(/^ +/, "", s); sub(/ +$/, "", s); return s }
 function fail(msg) { print "refuse"; print msg; exit 0 }
@@ -227,7 +231,7 @@ END {
     if (l ~ /^=+$/ || l ~ /^Total: / || l == "") continue
     fail("an unexpected line between the target line and its table")
   }
-  bot = 0; hdr = 0; havel = 0; havev = 0; m = 0
+  bot = 0; hdr = 0; havel = 0; havev = 0; m = 0; nr = 0; cur = 0
   for (k = top + 1; k <= n; k++) {
     l = G[k]
     if (substr(l, 1, 3) == BL) { bot = k; break }
@@ -245,18 +249,20 @@ END {
       continue
     }
     vuln = (vcol <= nc) ? c[vcol] : ""
-    if (vuln == "") continue
     lib = (lcol <= nc) ? c[lcol] : ""
+    if (vuln == "") { if (cur > 0 && lib != "") wrap[cur] = 1; continue }
     ver = (icol <= nc) ? c[icol] : ""
-    if (lib == "") { if (!havel) fail("the first data row has an empty Library cell"); lib = lastl }
+    nr++; cur = nr; wrap[cur] = 0
+    if (lib == "") { if (!havel) fail("the first data row has an empty Library cell"); lib = lastl; src = lastsrc } else src = nr
     if (ver == "") { if (!havev) fail("the first data row has an empty Installed Version cell"); ver = lastv }
-    lastl = lib; havel = 1; lastv = ver; havev = 1
-    if (vuln == cve) { m++; ml = lib; mv = ver }
+    lastl = lib; havel = 1; lastsrc = src; lastv = ver; havev = 1
+    if (vuln == cve) { m++; ml = lib; mv = ver; mr = nr; msrc = src }
   }
   if (!bot) fail("the target table has no bottom border before the group end")
   if (!hdr) fail("the target table has no header row")
   if (m == 0) fail("no row for the id under the target")
   if (m > 1) fail("more than one row for the id under the target")
+  if (wrap[mr] || wrap[msrc]) fail("the matched row\047s Library cell continues on a wrapped row")
   print "ok"; print ml; print mv
 }' "$T/log.txt") || refuse "the log could not be parsed"
 mapfile -t P <<<"$parsed"

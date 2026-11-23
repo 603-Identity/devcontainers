@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Early warning for .trivyignore.yaml: lists every `vulnerabilities` entry whose `expired_at` is on
-# or before today plus 10 days (UTC, already-expired entries included), and fails when there is
-# at least one. After an entry's date Trivy ignores it and the weekly build goes red, so this
+# Early warning for .trivyignore.yaml: lists every `vulnerabilities`, `secrets`, `misconfigurations`
+# and `licenses` entry whose `expired_at` is on or before today plus 10 days (UTC, already-expired
+# entries included), and fails when there is at least one. After an entry's date Trivy ignores it and the weekly build goes red, so this
 # gives a renewal lane ten days of notice (docs/trivy-renewal.md).
 #
 # Usage:      bash .github/scripts/trivy-expiry.sh <ignore file>
@@ -13,10 +13,15 @@
 #   0  no entry expires within the window
 #   1  at least one entry does, or an entry's expired_at is missing, not YYYY-MM-DD, or not a real
 #      date (listed as malformed)
-#   2  wrong argument count, an unreadable file, a file yq cannot parse, or a bad TRIVY_EXPIRY_TODAY
+#   2  wrong argument count, an unreadable file, a file yq cannot parse, a bad TRIVY_EXPIRY_TODAY,
+#      a file with no top-level `vulnerabilities` key, or any of the four lists given as something
+#      other than a list or null (an empty `vulnerabilities:` is null and counts as an empty list)
 #
-# It makes no network call and needs no token. Only `vulnerabilities` is read. Each printed field
-# is cut to a safe character set, because a pull request can edit the file.
+# It makes no network call and needs no token. The four lists named above are read; `vulnerabilities`
+# must be present, the other three are optional. A listed line from `secrets`, `misconfigurations`
+# or `licenses` starts with the list name after its leading "- "; a `vulnerabilities` line has no
+# prefix. Each printed field is cut to a safe character set, because a pull request can edit the
+# file.
 set -euo pipefail
 export LC_ALL=C
 
@@ -50,22 +55,39 @@ SEP=$'\037'; export SEP
 bad=$(yq -r '[.. | select(anchor != "" or tag == "!!merge" or kind == "alias")] | length' "$file") \
   || usage_error "yq could not read $file"
 [ "$bad" = 0 ] || usage_error "$file uses YAML anchors, aliases or merge keys"
-# Every field has its control characters (the separator and newlines included) replaced in yq, so
-# a value cannot move a row boundary: one entry is exactly one line of three fields.
-rows=$(yq -r '(.vulnerabilities // [])[] | [(.id // ""), ((.paths // []) | join(",")), (.expired_at // "")] | map(tostring | sub("[\x01-\x1f]"; "?")) | join(strenv(SEP))' "$file") \
-  || usage_error "yq could not read $file"
+LISTS=(vulnerabilities secrets misconfigurations licenses)
+for list in "${LISTS[@]}"; do
+  present=$(yq -r "tag == \"!!map\" and has(\"$list\")" "$file") || usage_error "yq could not read $file"
+  if [ "$present" != true ]; then
+    [ "$list" != vulnerabilities ] || usage_error "$file has no top-level vulnerabilities key"
+    continue
+  fi
+  kind=$(yq -r ".$list | tag" "$file") || usage_error "yq could not read $file"
+  case $kind in
+    '!!seq' | '!!null') ;;
+    *) usage_error "$list in $file is neither a list nor empty" ;;
+  esac
+done
 
 lines=()
-[ -z "$rows" ] || while IFS=$'\037' read -r id paths expired || [ -n "${id}${paths}${expired}" ]; do
-  id=${id//$KEEP/?}
-  paths=${paths//$KEEP/?}
-  expired_clean=${expired//$KEEP/?}
-  if ! real_date "$expired"; then
-    lines+=("- ${id:-?} (${paths:-?}): malformed expired_at \`${expired_clean}\`")
-  elif [[ $expired < $limit || $expired == "$limit" ]]; then
-    lines+=("- ${id:-?} (${paths:-?}): expires ${expired}")
-  fi
-done <<<"$rows"
+for list in "${LISTS[@]}"; do
+  # Every field has its control characters (the separator and newlines included) replaced in yq,
+  # so a value cannot move a row boundary: one entry is exactly one line of three fields.
+  rows=$(yq -r "(.$list // [])[] | [(.id // \"\"), ((.paths // []) | join(\",\")), (.expired_at // \"\")] | map(tostring | sub(\"[\\x01-\\x1f]\"; \"?\")) | join(strenv(SEP))" "$file") \
+    || usage_error "yq could not read $file"
+  prefix=
+  [ "$list" = vulnerabilities ] || prefix="$list: "
+  [ -z "$rows" ] || while IFS=$'\037' read -r id paths expired || [ -n "${id}${paths}${expired}" ]; do
+    id=${id//$KEEP/?}
+    paths=${paths//$KEEP/?}
+    expired_clean=${expired//$KEEP/?}
+    if ! real_date "$expired"; then
+      lines+=("- ${prefix}${id:-?} (${paths:-?}): malformed expired_at \`${expired_clean}\`")
+    elif [[ $expired < $limit || $expired == "$limit" ]]; then
+      lines+=("- ${prefix}${id:-?} (${paths:-?}): expires ${expired}")
+    fi
+  done <<<"$rows"
+done
 
 if [ "${#lines[@]}" -eq 0 ]; then
   echo "trivy-expiry: no entry expires on or before $limit"

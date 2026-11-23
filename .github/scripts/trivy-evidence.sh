@@ -1,27 +1,33 @@
 #!/usr/bin/env bash
 # CI no-ignore Trivy re-scan: scans the five images the `publish` job of build.yml just built
 # with NO Trivy exceptions applied, and writes one results file in the format
-# tools/host/trivy-rescan.sh writes, so a .trivyignore.yaml renewal can cite a workflow artifact
-# instead of a host session (docs/trivy-renewal.md).
+# tools/host/trivy-rescan.sh writes plus a `## Published digests` section, so a .trivyignore.yaml
+# renewal can cite a workflow artifact instead of a host session (docs/trivy-renewal.md).
 #
-# Usage:      GITHUB_SHA=<40 hex> [REGISTRY=<registry>] bash .github/scripts/trivy-evidence.sh TAG OUTPUT
+# Usage:      GITHUB_SHA=<40 hex> BASE_DIGEST=<d> TOFU_DIGEST=<d> NODE_DIGEST=<d> DEVAPP_DIGEST=<d> \
+#             DEVAPP_TOFU_DIGEST=<d> [REGISTRY=<registry>] bash .github/scripts/trivy-evidence.sh TAG OUTPUT
 #
 #   TAG          the MAJOR.run_number value build-and-test.sh push mode tags the images with
 #                (matches ^[0-9]+\.[0-9]+$).
 #   GITHUB_SHA   must be set: 40 lowercase hex, the base commit the results file records.
+#   *_DIGEST     the five registry digests the push step of build.yml outputs, one per flavour; each
+#                must be set and match ^sha256:[0-9a-f]{64}$. The script checks that the local image of
+#                the flavour carries REGISTRY/devcontainer-FLAVOR@DIGEST among its RepoDigests (local
+#                image metadata, no registry call) and records the five references.
 #   REGISTRY     default ghcr.io/603-identity, as in build-and-test.sh.
 #   OUTPUT       follows trivy-rescan.sh's HOST_RESULTS contract: a path that does not exist (in an
 #                existing directory), or an existing empty regular file that is not a symlink. The
 #                script writes it once, at the very end, by moving the finished file over it.
 #
-# It reads the five LOCAL images under the refs build-and-test.sh push mode tags them with
+# It reads the five LOCAL images (their ids and RepoDigests) under the refs build-and-test.sh push mode tags them with
 # ($REGISTRY/devcontainer-<flavor>:TAG). It builds, pulls and pushes nothing, logs in to nothing,
 # never reads the out/*.sarif files, and mounts no Docker socket into any container.
 #
 # Exit status:
 #   0  success
-#   2  usage error: argument count, TAG, GITHUB_SHA or OUTPUT breaking its contract; nothing touched
-#   1  any other failure; no results file is left (an empty OUTPUT that existed is removed)
+#   2  usage error: argument count, TAG, GITHUB_SHA, one of the five digest variables or OUTPUT
+#      breaking its contract; nothing touched
+#   1  any other failure, a local image that does not carry its digest included; no results file is left (an empty OUTPUT that existed is removed)
 # Each failure (1, 2) prints exactly one line on stdout, a fixed `::warning::` text that carries no
 # scan-derived field, and the reason on stderr as plain text. The results file is published as a
 # workflow artifact, so every field taken from scan output is checked before it can reach it.
@@ -74,6 +80,13 @@ results=$2
 [[ $tag =~ ^[0-9]+\.[0-9]+$ ]] || usage_error "TAG must match ^[0-9]+\\.[0-9]+\$"
 commit=${GITHUB_SHA-}
 [[ $commit =~ ^[0-9a-f]{40}$ ]] || usage_error "GITHUB_SHA must be set to 40 lowercase hex characters"
+digest_vars=(BASE_DIGEST TOFU_DIGEST NODE_DIGEST DEVAPP_DIGEST DEVAPP_TOFU_DIGEST)
+digests=()
+for v in "${digest_vars[@]}"; do
+  d=${!v-}
+  [[ $d =~ ^sha256:[0-9a-f]{64}$ ]] || usage_error "$v must be set to sha256: and 64 lowercase hex characters"
+  digests+=("$d")
+done
 [ -n "$results" ] || usage_error "OUTPUT must name the results path"
 case $results in */) usage_error "OUTPUT must name a file, not a directory" ;; esac
 if [ -L "$results" ]; then
@@ -108,10 +121,20 @@ pin_tflint=$(pin tofu TFLINT_VERSION)
 flavors=(base tofu node devapp devapp-tofu)
 ids=()
 ref() { printf '%s/devcontainer-%s:%s' "$registry" "$1" "$tag"; }
-for flavor in "${flavors[@]}"; do
+pub_refs=()
+for i in "${!flavors[@]}"; do
+  flavor=${flavors[i]}
   v=$(docker image inspect --format '{{.Id}}' "$(ref "$flavor")")
   [[ $v =~ ^sha256:[0-9a-f]{64}$ ]] || die "$flavor: docker returned an unexpected image id"
   ids+=("$v")
+  # the same RepoDigests template push_and_digest in build-and-test.sh reads
+  rd=$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$(ref "$flavor")")
+  want="$registry/devcontainer-$flavor@${digests[i]}"
+  case $'\n'"$rd"$'\n' in
+    *$'\n'"$want"$'\n'*) ;;
+    *) die "$flavor: the local image does not carry the pushed digest among its RepoDigests" ;;
+  esac
+  pub_refs+=("$want")
 done
 
 # --- scan, with no Docker socket and no ignore file ---------------------------------------------
@@ -286,6 +309,10 @@ clean() { printf '%s' "${1//$KEEP/?}"; }
   printf '## Images\n\n'
   for i in "${!flavors[@]}"; do
     printf -- "- %s ${BT}%s${BT}\n" "${flavors[i]}" "${ids[i]}"
+  done
+  printf '\n## Published digests\n\n'
+  for i in "${!flavors[@]}"; do
+    printf -- "- %s ${BT}%s${BT}\n" "${flavors[i]}" "$(clean "${pub_refs[i]}")"
   done
   printf '\n## Trivy\n\n'
   printf -- "- Trivy version: ${BT}%s${BT}\n" "$(clean "$trivy_version")"

@@ -315,6 +315,11 @@ jobs:
         timeout-minutes: 45
         env:
           TAG: ${{ env.MAJOR }}.${{ github.run_number }}
+          BASE_DIGEST: ${{ steps.push.outputs.base_digest }}
+          TOFU_DIGEST: ${{ steps.push.outputs.tofu_digest }}
+          NODE_DIGEST: ${{ steps.push.outputs.node_digest }}
+          DEVAPP_DIGEST: ${{ steps.push.outputs.devapp_digest }}
+          DEVAPP_TOFU_DIGEST: ${{ steps.push.outputs.devapp_tofu_digest }}
         run: bash .github/scripts/trivy-evidence.sh "$TAG" out/trivy-evidence.md
 
       - name: Upload Trivy evidence

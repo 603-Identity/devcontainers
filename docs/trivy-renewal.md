@@ -9,8 +9,12 @@ A renewal is an ordinary lane. The evidence comes from CI, not from a host sessi
 scheduled and manually dispatched run on `main`, `build.yml`'s `publish` job runs
 `.github/scripts/trivy-evidence.sh` over the five images it just built (no ignore file) and uploads
 the results as the `trivy-evidence` workflow artifact. The file has the format
-`tools/host/trivy-rescan.sh` writes: Base commit, Pins, Images, Trivy, one Findings section per
-image, then Binaries.
+`tools/host/trivy-rescan.sh` writes, plus a Published digests section: Base commit, Pins, Images,
+Published digests, Trivy, one Findings section per image, then Binaries. Published digests lists the
+registry digest of each pushed image, which the script checked against the local image's
+RepoDigests, so a renewal can match them to the published, attested images; the host re-scan's file
+does not carry the section, and matching them is informational, not a condition for which run
+qualifies.
 
 ## Early warning
 
