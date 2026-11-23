@@ -1,0 +1,11 @@
+[
+ {
+  "Name": "dc-home",
+  "Driver": "local",
+  "Mountpoint": "/var/lib/docker/volumes/dc-home/_data",
+  "Scope": "local",
+  "Labels": null,
+  "Options": null,
+  "CreatedAt": "2026-11-01T00:00:00Z"
+ }
+]
