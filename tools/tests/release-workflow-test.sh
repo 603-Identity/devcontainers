@@ -8,7 +8,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 WF="$ROOT_DIR/.github/workflows/release.yml"
 CHECKOUT='actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1'
-APP_TOKEN='actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510'
+APP_TOKEN='actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc'
 j() { yq -o=json -I=0 "$1" "$WF"; }
 r() { yq -r "$1" "$WF"; }
 has() { # description haystack needle
