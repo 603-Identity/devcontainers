@@ -1,36 +1,41 @@
 # Next steps
 
-**Now:** Milestone 6, Internal hardening, in `implementing`. Driver work: no lanes live; #571's
-lane waits on the v0.40.0 plugin pin.
+**Now:** Milestone 6, Internal hardening, in `implementing`. Driver work: no lanes live; specs
+for #573 and #711 wait on the maintainer's amend answers.
 
 **Just done:**
-- Merged from lanes: #667 (#574, retire the README's WSL section) and #668 (#424, differential
-  PR Trivy gate, `5988f20`). The #668 build log showed the differential decision line, five
-  `0 added` count lines and no fallback line. Both lanes cleaned up.
-- #571's redraft (spec comment 7046555473) reviewed against `2a9427c` and a live read of both
-  branch rulesets (no stop-rule trigger); the maintainer reacted.
-- #642 escalated again (yes-keyed throw routing); the maintainer posted the amend answer
-  7046906219. #665 still has no spec comment.
-- PR #670 opened: way-of-working pin v0.37.0 to v0.40.0 (no `.ai/project.yml` change; the
-  review gate workflow is unchanged since v0.36.0). Handed off without a critic pass (one-line
-  pin bump). Its auto-merge arm was refused by the `gh pr merge` deny rule.
+- Merged: #712 (#694, Procedure B rewritten around `wow-publish`, `75f1174`), and the bump PRs
+  #696 to #700 (tofu, npm, python, uv, betterleaks rc.10; `main` at `e088c33`). Lanes 694 and
+  the earlier ones cleaned up.
+- The bump PRs' first reviews ended `no-outbox` on the host; `wow-review --rerun` cleared them.
+  A prompt for a claude-workbench report on that was handed to the owner.
+- Filed #715 (one grouped bump PR per weekly run). Plan sprint: findings #708, #710, #713 and
+  #714 went to #716 (review follow-ups) and #717 (tofu signature check in the bump job) or were
+  declined, and the sources were closed. #716, #717 and #715 are M6 items 57 to 59, written with
+  `milestone-desc.sh` (`live ok`).
+- #711's issue body gained a settled publish shape (lane pushes everything outside `.github/`;
+  the caller alone goes through `wow-publish` onto the lane branch). Its redraft escalated as
+  7134190722 having dropped the byte-rule-plus-whitelist pin check; an amend answer restoring it
+  is drafted.
+- #573 escalated as 7134021112 (the standing of an elevated window outside Procedure B); an
+  amend answer choosing option (a), untrusted outside Procedure B, is drafted.
+- A note on #649: betterleaks rc.9 and rc.10 change the default rules, so the next release
+  notes need the upgrade line.
 
-**Next:** Driver, on **opus** (architect):
-- After #670 merges and start of day upgrades the installed plugin: start the #571 lane
-  (`/way-of-working:lanes start 571 6 docs/ruleset-readback-comment architect,docs-consistency`)
-  and hand over its `wowl` line.
-- Review the #642 spec from `-Spec 642` and the #665 spec once posted, before the maintainer
-  reacts; prep each approved lane. #665 lands after #642 (both edit Procedure B's block).
+**Next:** Driver, on **opus** (architect), from a new session so specs carry its `-Driver` name:
+- Once the amend answers are posted, hand over `-Spec 573` and `-Spec 711`; review each posted
+  or escalated spec before the maintainer reacts.
+- Hand over `-Spec` for #716, #717, #715, #648 and #594 as the maintainer reacts on each issue;
+  prep each approved lane with `/way-of-working:lanes start`.
 
-**HITL Gate: OPEN** — the maintainer approves PR #670 (pin bump, after its architect review);
-runs wowl 603-Identity/devcontainers -Spec 642 under the amend answer 7046906219 and reacts after
-the driver review; reacts on #665 and runs -Spec 665; decides whether to narrow the gh pr merge
-deny rule so agents can arm auto-merge.
+**HITL Gate: OPEN** — the maintainer posts the drafted amend answers on #573 (escalation
+7134021112, option a, .git/wow-answer-573.md) and #711 (escalation 7134190722,
+.git/wow-answer-711.md); reacts on issues #716, #717, #715, #648 and #594 before their spec
+runs; cuts a release containing 26dc53c before the #711 lane can build.
 
 **Open for the owner (non-blocking):**
-- The Trivy exceptions expire 2026-12-17. Renew them per `docs/trivy-renewal.md`.
-- Auto-merge: the repo allows it and `main-approval` requires a code-owner approval with no
-  bypass actor; only `.claude/settings.json`'s `gh pr merge` deny rule stops an agent arming it.
+- The Trivy exceptions expire 2026-12-17. Renew them per `docs/trivy-renewal.md` (M11).
+- File the `wow-review` no-outbox report in claude-workbench from a workbench driver session.
 
 **Pointers:** [docs/roadmap.md](../docs/roadmap.md) · sprint plan:
 https://github.com/603-Identity/devcontainers/milestone/6 · host steps: [docs/host-steps.md](../docs/host-steps.md)
