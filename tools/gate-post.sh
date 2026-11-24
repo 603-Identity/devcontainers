@@ -248,11 +248,17 @@ review_logic() {
   return 0
 }
 
-# The decision table. mode is one of: plain, arm, disarm-review, error.
+# The decision table. mode is one of: plain, arm, disarm-review, error. Every row except arm
+# disarms the target PR before any status is posted, because GitHub does not disarm auto-merge
+# when a writer pushes to an armed PR. A failed disarm fails closed: a `failure` status and
+# exit 1, with no review lookup, since the job's exit code enforces nothing and a `success`
+# posted after a failed disarm would let the armed PR merge.
 mode=error
 case "$CANDIDATE" in
   false)
-    # Not a candidate: decide was skipped, and whatever it said is ignored.
+    # Not a candidate: decide was skipped, and whatever it said is ignored. This row disarms
+    # too: a candidate PR that a writer pushes to stays armed on GitHub, and its new head is
+    # no longer a candidate. A failed disarm fails closed.
     mode=plain
     ;;
   true)
@@ -281,6 +287,13 @@ echo "Gate row: candidate='${CANDIDATE}' decide='${DECIDE_RESULT}' exempt='${EXE
 
 case "$mode" in
   plain)
+    disarm
+    if [ "$disarm_failed" = 1 ]; then
+      post_status failure "Could not disable auto-merge on PR #${TARGET} -- failing closed."
+      echo
+      echo "::error::Could not disable auto-merge on PR #${TARGET}. Failing closed: no review status is posted, because the PR may still merge."
+      exit 1
+    fi
     review_logic 0
     ;;
   arm)
@@ -290,11 +303,23 @@ case "$mode" in
     ;;
   disarm-review)
     disarm
+    if [ "$disarm_failed" = 1 ]; then
+      post_status failure "Could not disable auto-merge on PR #${TARGET} -- failing closed."
+      echo
+      echo "::error::Could not disable auto-merge on PR #${TARGET}. Failing closed: no review status is posted, because the PR may still merge."
+      exit 1
+    fi
     review_logic 0
     ;;
   *)
     echo "::warning::Decision inputs are missing or malformed (or the kill switch could not be read): never arming, sending this PR to review."
     disarm
+    if [ "$disarm_failed" = 1 ]; then
+      post_status failure "Could not disable auto-merge on PR #${TARGET} -- failing closed."
+      echo
+      echo "::error::Could not disable auto-merge on PR #${TARGET}. Failing closed: no review status is posted, because the PR may still merge."
+      exit 1
+    fi
     review_logic 1
     ;;
 esac

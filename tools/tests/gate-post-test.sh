@@ -43,7 +43,7 @@ assert_rc "no review" 0 "$RC"
 assert_states "no review" "pending failure"
 assert_log_has "no review: files read from the PR" "pulls/2/files"
 assert_log_lacks "no review: kill switch untouched" "$KS_PATH"
-assert_log_lacks "no review: nothing armed or disarmed" "gh pr merge"
+assert_log_lacks "no review: nothing armed" "--auto --squash"
 all_statuses_on_head "no review"
 if status_calls | grep -qF -- '-f context=architect-review'; then pass; else fail "status context"; fi
 end_scenario
@@ -341,7 +341,8 @@ post_scenario
 run_post CANDIDATE=false DECIDE_RESULT=success EXEMPT=true
 assert_states "candidate=false ignores exempt=true" "pending failure"
 assert_log_lacks "candidate=false: no kill switch" "$KS_PATH"
-assert_log_lacks "candidate=false: no merge call" "gh pr merge"
+assert_log_lacks "candidate=false: never armed" "--auto --squash"
+assert_log_has "candidate=false: an armed target is disarmed" "$DISARM_CALL"
 end_scenario
 
 # Row 2: candidate, success, exempt=true, kill switch on (200 + right ref): success + arm.
@@ -490,11 +491,101 @@ assert_rc "malformed pr" 1 "$RC"
 assert_eq "malformed pr: nothing posted" "" "$(cat "$FAKE_LOG")"
 end_scenario
 
-# A disarm failure still posts the status, and fails the job loudly.
+# A failed disarm fails closed: only a failure status, exit 1, and no review lookup, in every
+# row that disarms. Each run is tied to its row by the `Gate row:` line.
+fail_closed_fixed_desc='Could not disable auto-merge on PR #2 -- failing closed.'
+assert_fail_closed() { # label row
+  assert_rc "$1" 1 "$RC"
+  assert_states "$1: only a failure status" "failure"
+  assert_log_has "$1: fixed description" "$fail_closed_fixed_desc"
+  assert_log_has "$1: disarm attempted on pull 2" "$DISARM_CALL"
+  assert_log_lacks "$1: reviews never read" "pulls/2/reviews"
+  if grep -q '^::error::Could not disable auto-merge on PR #2' "$SCRATCH/stdout"; then pass; else fail "$1: ::error:: line" "$(cat "$SCRATCH/stdout")"; fi
+  if grep -B1 '^::error::Could not disable auto-merge on PR #2' "$SCRATCH/stdout" | head -n 1 | grep -q '^$'; then pass; else fail "$1: empty line before ::error::" "$(cat "$SCRATCH/stdout")"; fi
+  if grep -qF -- "-> $2 (target PR #2)" "$SCRATCH/stdout"; then pass; else fail "$1: row is $2" "$(grep 'Gate row' "$SCRATCH/stdout")"; fi
+}
 post_scenario
 FAKE_DISARM_RC=1 run_post CANDIDATE=true CANDIDATE_PR=2 DECIDE_RESULT=success EXEMPT=false
-assert_rc "disarm failure" 1 "$RC"
-assert_states "disarm failure still posts the status" "pending failure"
+assert_fail_closed "disarm failure, disarm-review row, no review" disarm-review
+end_scenario
+post_scenario
+FAKE_DISARM_RC=1 run_post CANDIDATE=false
+assert_fail_closed "disarm failure, plain row, no review" plain
+end_scenario
+post_scenario
+add_review
+FAKE_DISARM_RC=1 run_post CANDIDATE=false
+assert_fail_closed "disarm failure, plain row, qualifying review" plain
+end_scenario
+post_scenario
+add_review
+FAKE_DISARM_RC=1 run_post CANDIDATE=true CANDIDATE_PR=2 DECIDE_RESULT=success EXEMPT=false
+assert_fail_closed "disarm failure, disarm-review row, qualifying review" disarm-review
+end_scenario
+post_scenario
+add_review
+FAKE_DISARM_RC=1 run_post CANDIDATE=true CANDIDATE_PR=2 DECIDE_RESULT=failure EXEMPT=true
+assert_fail_closed "disarm failure, error row, qualifying review" error
+end_scenario
+# The failure names the target (PR 2), never the triggering PR (7).
+post_scenario
+FAKE_DISARM_RC=1 run_post PR=7 CANDIDATE=true CANDIDATE_PR=2 DECIDE_RESULT=success EXEMPT=false
+assert_rc "fail closed names the target" 1 "$RC"
+assert_states "fail closed names the target" "failure"
+assert_log_has "fail closed names the target: description" "$fail_closed_fixed_desc"
+assert_log_has "fail closed names the target: disarm on pull 2" "$DISARM_CALL"
+if grep -q '^::error::Could not disable auto-merge on PR #2' "$SCRATCH/stdout"; then pass; else fail "fail closed names the target: ::error:: line"; fi
+if grep -qF 'PR #7' "$SCRATCH/stdout" || log_has 'PR #7'; then fail "fail closed names the target: PR #7 never named"; else pass; fi
+if grep -qF -- '-> disarm-review' "$SCRATCH/stdout"; then pass; else fail "fail closed names the target: row"; fi
+end_scenario
+
+# The plain row (not a candidate) disarms an armed target before any status is posted.
+post_scenario
+run_post CANDIDATE=false
+assert_rc "plain row armed, no review" 0 "$RC"
+assert_states "plain row armed, no review" "pending failure"
+assert_log_has "plain row armed: disarmed pull 2" "$DISARM_CALL"
+assert_log_lacks "plain row armed: kill switch not read" "$KS_PATH"
+assert_log_lacks "plain row armed: never armed" "--auto --squash"
+end_scenario
+post_scenario
+add_review
+run_post CANDIDATE=false
+assert_rc "plain row armed, reviewed" 0 "$RC"
+assert_states "plain row armed, reviewed" "pending success"
+assert_log_has "plain row armed, reviewed: disarmed pull 2" "$DISARM_CALL"
+assert_log_lacks "plain row armed, reviewed: kill switch not read" "$KS_PATH"
+assert_log_lacks "plain row armed, reviewed: never armed" "--auto --squash"
+disarm_line="$(grep -nF -- '--disable-auto' "$FAKE_LOG" | head -n 1 | cut -d: -f1)"
+status_line="$(grep -nF 'statuses/' "$FAKE_LOG" | head -n 1 | cut -d: -f1)"
+if [ -n "$disarm_line" ] && [ -n "$status_line" ] && [ "$disarm_line" -lt "$status_line" ]; then pass; else fail "plain row: disarm comes before the first status" "disarm line '$disarm_line', status line '$status_line'"; fi
+end_scenario
+post_scenario
+put pulls__2__files post-base/pulls__7__files.json
+run_post CANDIDATE=false
+assert_rc "plain row armed, out of scope" 0 "$RC"
+assert_states "plain row armed, out of scope" "pending success"
+assert_log_has "plain row armed, out of scope: disarmed pull 2" "$DISARM_CALL"
+assert_log_lacks "plain row armed, out of scope: kill switch not read" "$KS_PATH"
+assert_log_lacks "plain row armed, out of scope: never armed" "--auto --squash"
+end_scenario
+# Not armed: no disarm call.
+post_scenario
+FAKE_ARMED=0 run_post CANDIDATE=false
+assert_rc "plain row unarmed" 0 "$RC"
+assert_log_lacks "plain row unarmed: no disable-auto call" "--disable-auto"
+assert_states "plain row unarmed" "pending failure"
+end_scenario
+# The armed-or-not lookup fails: disarm anyway.
+post_scenario
+FAKE_VIEW_RC=1 run_post CANDIDATE=false
+assert_log_has "plain row, lookup failed: disarmed anyway" "$DISARM_CALL"
+end_scenario
+# The plain row disarms the triggering PR, not another.
+post_scenario
+run_post PR=7 CANDIDATE=false
+assert_log_has "plain row PR=7: disarm on pull 7" "gh pr merge --disable-auto https://github.com/$REPO_NAME/pull/7"
+assert_log_lacks "plain row PR=7: pull 2 untouched" "pull/2"
 end_scenario
 
 # A PR that was never armed is not disarmed: `--disable-auto` would error on it.
