@@ -54,7 +54,7 @@ dev-App devcontainer of its own ([`.devcontainer/`](.devcontainer/)): the dev-Ap
 shellcheck and Go. All authoring happens in it, git and gh for this checkout included (through
 the dev token, which the host broker serves for this repo). The steps of the local gate
 (`gates.green` in [`.ai/project.yml`](.ai/project.yml)) that need Docker (hadolint, Trivy, zizmor,
-the image builds and smoke tests, the template proof), gpg (the claude-fetch gate suite) or `pwsh` (the reader-search gate suite) cannot
+the image builds and smoke tests, the template proof) or gpg (the claude-fetch gate suite) cannot
 run in the container, and run in CI's required checks, so a change made in the container ships with
 them named as pending in its PR. A change under `.github/workflows/` is pushed from the elevated
 window (`603id-admin[bot]`), because the dev token lacks the Workflows permission, and the owner
@@ -67,7 +67,7 @@ the host login as the pusher; on this repo it is the elevated window instead.
 
 Repos that get no container from these images (glunk-works/loop-orchestrator, org profile,
 archived and demo repos) are listed under [Exceptions](docs/threat_model.md#exceptions) in the
-threat model, which also records this repo's partial exception for the Docker-, gpg- and pwsh-dependent
+threat model, which also records this repo's partial exception for the Docker- and gpg-dependent
 gate steps.
 
 ## Using an image in a repo

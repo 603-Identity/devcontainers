@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Entry point: bash tools/tests/run-gate-tests.sh. Offline; needs bash, jq, yq (mikefarah), git/coreutils, and pwsh (reader-search-test.sh).
+# Entry point: bash tools/tests/run-gate-tests.sh. Offline; needs bash, jq, yq (mikefarah), and git/coreutils.
 # Exits 0 only when every suite passes.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 rc=0
-for t in image-scope-test.sh last-publish-sha-test.sh build-workflow-test.sh render-gate-test.sh gate-resolve-test.sh gate-post-test.sh decide-bump-test.sh check-consumer-workflows-test.sh settings-deny-test.sh secret-scan-lint-test.sh secret-scan-test.sh secret-scan-guard-test.sh bump-betterleaks-test.sh bump-asset-names-test.sh bump-leftover-branch-test.sh bump-npm-swap-test.sh bump-python-test.sh check-self-pins-test.sh zizmor-pin-test.sh claude-fetch-test.sh plugin-install-test.sh release-plan-test.sh release-verify-test.sh release-workflow-test.sh trivy-rescan-test.sh trivy-evidence-test.sh trivy-expiry-test.sh trivy-daily-test.sh trivy-except-test.sh build-and-test-test.sh trivy-diff-test.sh reader-search-test.sh; do
+for t in image-scope-test.sh last-publish-sha-test.sh build-workflow-test.sh render-gate-test.sh gate-resolve-test.sh gate-post-test.sh decide-bump-test.sh check-consumer-workflows-test.sh settings-deny-test.sh secret-scan-lint-test.sh secret-scan-test.sh secret-scan-guard-test.sh bump-betterleaks-test.sh bump-asset-names-test.sh bump-leftover-branch-test.sh bump-npm-swap-test.sh bump-python-test.sh check-self-pins-test.sh zizmor-pin-test.sh claude-fetch-test.sh plugin-install-test.sh release-plan-test.sh release-verify-test.sh release-workflow-test.sh trivy-rescan-test.sh trivy-evidence-test.sh trivy-expiry-test.sh trivy-daily-test.sh trivy-except-test.sh build-and-test-test.sh trivy-diff-test.sh; do
   bash "$here/$t" || rc=1
 done
 if [ "$rc" -eq 0 ]; then echo "ALL GATE TESTS PASSED"; else echo "GATE TESTS FAILED" >&2; fi
