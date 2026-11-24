@@ -111,8 +111,8 @@ COPY --chmod=0644 files/secret-scan/org.toml /usr/local/share/devc/secret-scan/o
 # 3.14); uv downloads one only when neither satisfies the request (another minor, or an
 # exact patch other than the pinned one). uv prefers interpreters it manages, so one
 # already installed in the home volume is used ahead of the image's.
-ARG UV_VERSION=0.13.8
-ARG UV_SHA256=5acfd9177cfecf0bf87578f059728215ccc884388988f55f7a65041b57387d91
+ARG UV_VERSION=0.13.9
+ARG UV_SHA256=a7fbaff2b9a271d85c1bdb540941090fd1ce011797b4abeb48e4dcd39c2471d5
 RUN curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" \
         -o /tmp/uv.tar.gz \
     && echo "${UV_SHA256}  /tmp/uv.tar.gz" | sha256sum -c - \
