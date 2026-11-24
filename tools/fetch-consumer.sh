@@ -11,7 +11,10 @@
 # <dest>/.devcontainer/devcontainer.json. If the commit holds ANY other devcontainer.json, an
 # empty <dest>/_other/devcontainer.json marks that for `devc-verify`, which rejects it; no
 # attacker-chosen path ever reaches this filesystem. A truncated tree, a missing file or a
-# non-regular file is an error, never "nothing found".
+# non-regular file is an error, never "nothing found". One entry is exempt from that marker: the
+# regular file template/.devcontainer/devcontainer.json, and only when <owner/repo> is exactly
+# 603-Identity/devcontainers, so this repo can verify its own root .devcontainer/ beside its
+# consumer template.
 #
 # It also writes every other file under .devcontainer/ (the files a dev-App Dockerfile's extras
 # may COPY, #418): regular files only, at most 64, each at most 1 MiB, with every path segment
@@ -45,6 +48,10 @@ MAX_EXTRAS=64
 MAX_SIZE=1048576
 CANON='[".devcontainer/Dockerfile", ".devcontainer/devcontainer.json"]'
 REGULAR='.type == "blob" and (.mode == "100644" or .mode == "100755")'
+# The one exemption from the _other/devcontainer.json marker (see the header): this repo's own
+# consumer template, and only when the repo argument is exactly this repo.
+SELF_REPO="603-Identity/devcontainers"
+SELF_TEMPLATE_DJ="template/.devcontainer/devcontainer.json"
 
 tree="$(gh api "repos/${repo}/git/trees/${sha}?recursive=1")"
 if [ "$(jq -r '.truncated' <<<"$tree")" != "false" ]; then
@@ -95,9 +102,13 @@ for p in .devcontainer/Dockerfile .devcontainer/devcontainer.json; do
   raw "$p"
 done
 
-if jq -e 'any(.tree[];
+# shellcheck disable=SC2016  # jq variables, not shell ones
+other_filter="def regular: ${REGULAR}; "'any(.tree[];
       .type != "tree" and (.path | test("(^|/)[.]?devcontainer[.]json$"; "i"))
-      and .path != ".devcontainer/devcontainer.json")' <<<"$tree" > /dev/null; then
+      and .path != ".devcontainer/devcontainer.json"
+      and (($repo == $self and .path == $tmpl and regular) | not))'
+if jq -e --arg repo "$repo" --arg self "$SELF_REPO" --arg tmpl "$SELF_TEMPLATE_DJ" \
+    "$other_filter" <<<"$tree" > /dev/null; then
   mkdir -p "${dest}/_other"
   : > "${dest}/_other/devcontainer.json"
 fi
