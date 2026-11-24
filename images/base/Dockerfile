@@ -134,8 +134,8 @@ RUN curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/
 # resolves to this one, unless an entry in ~/.local/bin, which leads PATH, shadows it. apt's scripts keep
 # their absolute /usr/bin/python3 shebangs and stay on 3.14.
 ARG PYTHON_VERSION=3.15.2
-ARG PYTHON_BUILD=20261110
-ARG PYTHON_SHA256=ad23d1b73fac26440b0306ae06911031344c49a90ec19716c8362e7fa40cae43
+ARG PYTHON_BUILD=20261123
+ARG PYTHON_SHA256=18c56e105ba7713602536f49976c69d14d73cea7d32cfe2cb68eb8a79568de47
 RUN curl -fsSL "https://github.com/astral-sh/python-build-standalone/releases/download/${PYTHON_BUILD}/cpython-${PYTHON_VERSION}%2B${PYTHON_BUILD}-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz" \
         -o /tmp/python.tar.gz \
     && echo "${PYTHON_SHA256}  /tmp/python.tar.gz" | sha256sum -c - \
