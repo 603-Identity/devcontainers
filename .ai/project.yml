@@ -68,6 +68,9 @@ code_paths:
   - .devcontainer/       # this repo's own dev-App container: FROM pin, extras, token mount.
   - .mcp.json            # a root MCP config loads into every session started in a checkout.
   - CLAUDE.md            # loaded as instructions by every Claude session here; carries the lane-proceeds rule.
+                         # Matches the root file only: a nested one is gated only where another entry's prefix covers it,
+                         # and the rest is the residual docs/threat_model.md's Known gaps records.
+  - CLAUDE.local.md      # loads as instructions beside CLAUDE.md, and the CLAUDE.md prefix above does not match it.
 
 # ── the local green gate ─────────────────────────────────────────────────────
 # A local pre-check, not the gate of record; CI on the PR is. Mirrors lint.yml's four jobs, verify-selftest.yml
