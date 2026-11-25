@@ -935,21 +935,27 @@ reusable workflows, the gate template, or the org secret-scan rules and scanner 
    from the dispatched commit.
    - **Notes first.** Curated notes go in `docs/releases/vX.Y.md`, through a reviewed docs PR
      merged before the dispatch (no gate requires review for `docs/`, so ask for a fresh
-     session). Lead with the consumer upgrade steps (re-copy, re-pin, re-lint), then the
-     behaviour changes, image changes and known gaps; check each claim against the code at the
-     commit. The workflow builds notes from the commit log only when that file is absent; those
-     neither lead with upgrade steps nor get a docs-consistency pass.
+     session). Dispatch only once that merge commit's push runs on `main` have finished:
+     `verify` refuses a push run still in progress, as it refuses a failed one. Lead with the
+     consumer upgrade steps (re-copy, re-pin, re-lint), then the behaviour changes, image
+     changes and known gaps; check each claim against the code at the commit. The workflow
+     builds notes from the commit log only when that file is absent; those neither lead with
+     upgrade steps nor get a docs-consistency pass.
    - **Dry run first.** Dispatch from `main` with `dry_run` on. The read-only `verify` job refuses
      a dispatch off the default branch, a commit that did not come from exactly one merged PR, a
      required check (the `main-required-checks` list in `.ai/project.yml`) that was not green on
      that PR, and a push run on `main` that did not succeed. It also refuses a range where
      nothing a consumer pins has changed since the last tag; a dry run only warns about that.
-     It then shows the plan and the exact notes in its step summary. Read it, approve the
-     `release` environment's deployment (every run waits for that approval, dry runs included),
-     and check the dry run's result. It creates nothing.
+     It then shows the plan and the exact notes in its step summary. Read it, and check its
+     `mode:` line reads `dry`: a dispatch with `dry_run` unticked is a real release, and its
+     approval creates the tag. Then approve the `release` environment's deployment (every run
+     waits for that approval, dry runs included, for up to 30 days: a run sitting in *Waiting*
+     has not hung, and one dispatched on the wrong commit is cancelled, never approved), and
+     check the dry run's result. It creates nothing.
    - **Then dispatch for real,** and approve only after `verify`'s summary for that run shows the
-     same commit and tag as the dry run. The `release` job repeats the branch assert and every
-     tag refusal, then the release App creates the tag and the published Release at that commit.
+     same commit and tag as the dry run, and `mode: real`. The `release` job repeats the branch
+     assert and every tag refusal, then the release App creates the tag and the published
+     Release at that commit.
    - **A red or cancelled push run blocks the release.** A `lint.yml` or `verify-selftest.yml`
      run may be re-run. A `build.yml` push run is never re-run (a re-run is attempt 2, and an
      image it publishes fails every consumer's `verify / verify`, as above), so release a later
