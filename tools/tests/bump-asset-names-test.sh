@@ -73,6 +73,7 @@ setup() { # setup <dockerfile dir>
 case "$1 $2" in
   "api repos/betterleaks/betterleaks/releases") printf '%s\thttps://example.test/r\n' "$FAKE_TAG" ;;
   "api repos/nodejs/node/releases"*) echo https://example.test/node ;;
+  "api repos/opentofu/opentofu/commits/"*) printf '%040d\n' 0 ;;
   "api repos/"*) printf '%s\thttps://example.test/r\n' "$FAKE_TAG" ;;
   "pr list") echo 0 ;;
   *) ;;
@@ -151,10 +152,10 @@ done <<< "$TOOLS"
 
 
 # A transfer that fails AFTER the wanted line arrived must fail the bump, not be accepted
-# (sha256_line runs inside `$( )`, where `set -e` does not reach). betterleaks downloads with
-# `curl -o` under top-level `set -e`, and cosign verifies the file, so it is left out here.
+# (sha256_line runs inside `$( )`, where `set -e` does not reach). betterleaks and tofu download
+# with `curl -o` under top-level `set -e`, and cosign verifies the file, so both are left out here.
 while IFS='|' read -r tool dir ver_arg sha_arg tag; do
-  [ "$tool" != betterleaks ] || continue
+  [ "$tool" != betterleaks ] && [ "$tool" != tofu ] || continue
   asset="$(dockerfile_asset "$ROOT_DIR/images/$dir/Dockerfile" "$ver_arg")" || asset=""
   if [ -z "$asset" ]; then fail "$tool: found the asset its Dockerfile downloads"; continue; fi
   setup "$dir"

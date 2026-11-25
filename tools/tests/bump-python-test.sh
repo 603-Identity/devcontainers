@@ -163,6 +163,7 @@ if log_has "Release notes: https://example.test/r/20261117"; then pass; else fai
 if log_has "Checksum source: https://github.com/astral-sh/python-build-standalone/releases/download/20261117/SHA256SUMS"; then pass; else fail "the PR body cites the SHA256SUMS URL" "$(cat "$FAKE_LOG")"; fi
 if log_has "consumers running actions/setup-python at the image's version"; then pass; else fail "the PR body names the consumer pin follow-up" "$(cat "$FAKE_LOG")"; fi
 if log_has "#556"; then pass; else fail "the consumer note cites #556"; fi
+if log_has "cosign signature was verified"; then fail "the python PR body carries no signature line" "$(cat "$FAKE_LOG")"; else pass; fi
 # The listing is one cheap call.
 if log_has "gh api repos/astral-sh/python-build-standalone/releases?per_page=5 "; then pass; else fail "the listing call carries per_page=5" "$(cat "$FAKE_LOG")"; fi
 if grep -q -- '--paginate' "$FAKE_LOG"; then fail "the listing is never --paginate"; else pass; fi
