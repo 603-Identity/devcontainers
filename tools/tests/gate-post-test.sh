@@ -502,6 +502,7 @@ assert_fail_closed() { # label row
   assert_log_lacks "$1: reviews never read" "pulls/2/reviews"
   if grep -q '^::error::Could not disable auto-merge on PR #2' "$SCRATCH/stdout"; then pass; else fail "$1: ::error:: line" "$(cat "$SCRATCH/stdout")"; fi
   if grep -B1 '^::error::Could not disable auto-merge on PR #2' "$SCRATCH/stdout" | head -n 1 | grep -q '^$'; then pass; else fail "$1: empty line before ::error::" "$(cat "$SCRATCH/stdout")"; fi
+  if grep '^::error::Could not disable auto-merge on PR #2' "$SCRATCH/stdout" | grep -qF 'by a user in REVIEWER_IDS re-runs the post job'; then pass; else fail "$1: recovery hint" "$(cat "$SCRATCH/stdout")"; fi
   if grep -qF -- "-> $2 (target PR #2)" "$SCRATCH/stdout"; then pass; else fail "$1: row is $2" "$(grep 'Gate row' "$SCRATCH/stdout")"; fi
 }
 post_scenario
@@ -526,6 +527,11 @@ post_scenario
 add_review
 FAKE_DISARM_RC=1 run_post CANDIDATE=true CANDIDATE_PR=2 DECIDE_RESULT=failure EXEMPT=true
 assert_fail_closed "disarm failure, error row, qualifying review" error
+end_scenario
+post_scenario
+add_review
+FAKE_VIEW_RC=1 FAKE_DISARM_RC=1 run_post CANDIDATE=false
+assert_fail_closed "failed lookup and failed disarm, plain row, qualifying review" plain
 end_scenario
 # The failure names the target (PR 2), never the triggering PR (7).
 post_scenario

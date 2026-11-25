@@ -372,9 +372,7 @@ protected by the `release-tags` ruleset here, and its only bypass actor is the r
 (DEVC-D12). `release.yml` never creates a `devc-automerge-*` tag, though its credential could
 (bounded by the `release` environment and its reviewer). The owner sets and clears the kill
 switch through the recorded ruleset edit described under "Cutting a release", so clearing it
-now means disabling the deletion rule first.
-
-A `post` run that holds a write token disables auto-merge on the armed PR it acts on (the
+now means disabling the deletion rule first. A `post` run that holds a write token disables auto-merge on the armed PR it acts on (the
 candidate PR when the head is a candidate, otherwise the PR that triggered the run), whoever
 armed it, except a verified candidate it arms itself. On a fork PR only an allowlisted comment
 run can, since its other runs have a read-only token. So on a legacy-route repo a writer arms
