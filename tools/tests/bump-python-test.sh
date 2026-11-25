@@ -2,11 +2,11 @@
 # Tests the `python` resolver of bump-binaries.sh (#561): it stays on the Dockerfile's pinned
 # major.minor, lists python-build-standalone releases in ONE per_page=5 call, picks the asset by its
 # exact name from the newest eligible release, and rewrites PYTHON_VERSION, PYTHON_BUILD and
-# PYTHON_SHA256 together. An unreadable candidate SHA256SUMS is skipped with a warning; a newer build
-# closes the older open python bump PRs the App opened. Fake `gh`, `curl` and `git` stand in for the
-# network and log every call; the fake gh applies the --jq expression it was given with the real jq,
-# so the draft/prerelease selection and the open-PR filter's listing run as written. Offline; needs
-# bash, awk and jq.
+# PYTHON_SHA256 together. An unreadable candidate SHA256SUMS is skipped with a warning; the bump goes
+# on the weekly branch (the supersede listing is covered by bump-weekly-test.sh). Fake `gh`, `curl` and
+# `git` stand in for the network and log every call; the fake gh applies the --jq expression it was
+# given with the real jq, so the draft/prerelease selection runs as written. Offline; needs bash, awk
+# and jq.
 set -uo pipefail
 # shellcheck disable=SC1091
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
@@ -17,6 +17,7 @@ suite "bump-binaries (python resolver)"
 SHA_GOOD=$(printf 'a%.0s' $(seq 1 64))
 SHA_DECOY=$(printf 'c%.0s' $(seq 1 64))
 SHA_OLD=$(printf 'b%.0s' $(seq 1 64))
+WEEKLY_DATE=20261125
 PIN_VER=3.15.2
 PIN_BUILD=20261110
 TRIPLE=x86_64-unknown-linux-gnu-install_only_stripped.tar.gz
@@ -44,8 +45,7 @@ setup() {
   cp "$R/images/base/Dockerfile" "$SCRATCH/Dockerfile.orig"
   : > "$SCRATCH/calls.log"
   echo '[]' > "$SCRATCH/releases.json"
-  echo '[]' > "$SCRATCH/prs.json"
-  export FAKE_LOG="$SCRATCH/calls.log" FAKE_REL="$SCRATCH/releases.json" FAKE_SUMS="$SCRATCH/sums" FAKE_PRS="$SCRATCH/prs.json"
+  export FAKE_LOG="$SCRATCH/calls.log" FAKE_REL="$SCRATCH/releases.json" FAKE_SUMS="$SCRATCH/sums"
   cat > "$SCRATCH/bin/gh" <<'G'
 #!/usr/bin/env bash
 echo "gh $*" >> "$FAKE_LOG"
@@ -54,17 +54,8 @@ case "$1 $2" in
     jq=""
     while [ $# -gt 0 ]; do [ "$1" = --jq ] && jq="$2"; shift; done
     jq -r "$jq" "$FAKE_REL" ;;
-  "pr list")
-    case "$*" in
-      *--limit*)
-        [ -z "${FAKE_PRLIST_FAIL:-}" ] || exit 1
-        jq=""
-        while [ $# -gt 0 ]; do [ "$1" = --jq ] && jq="$2"; shift; done
-        jq -r "$jq" "$FAKE_PRS" ;;
-      *) echo 0 ;;
-    esac ;;
-  "pr create") [ -z "${FAKE_CREATE_FAIL:-}" ] || exit 1 ;;
-  "pr close") case " ${FAKE_CLOSE_FAIL:-} " in *" $3 "*) exit 1 ;; esac ;;
+  "pr list") ;;
+  "pr create") ;;
   *) ;;
 esac
 G
@@ -73,6 +64,8 @@ G
 echo "git $*" >> "$FAKE_LOG"
 exit 0
 G
+  # The run date is pinned: the script names its branch from `date -u +%Y%m%d`.
+  printf '#!/usr/bin/env bash\necho %s\n' "$WEEKLY_DATE" > "$SCRATCH/bin/date"
   cat > "$SCRATCH/bin/curl" <<'C'
 #!/usr/bin/env bash
 url=""
@@ -109,12 +102,6 @@ sums() {
   : > "$f"
   [ "$2" = "-" ] || printf '%s  cpython-%s+%s-%s\n' "$SHA_GOOD" "$2" "$1" "$TRIPLE" >> "$f"
 }
-# pr <number> <head> <login> <is_bot> <cross-repo>: one open PR in the fake gh's own JSON shape.
-pr() {
-  jq --argjson n "$1" --arg h "$2" --arg l "$3" --argjson b "$4" --argjson c "$5" \
-    '. + [{number:$n, headRefName:$h, author:{login:$l, is_bot:$b}, isCrossRepository:$c}]' \
-    "$FAKE_PRS" > "$FAKE_PRS.tmp" && mv "$FAKE_PRS.tmp" "$FAKE_PRS"
-}
 # sums_add <tag>: append the lines on stdin (decoys) to that release's SHA256SUMS.
 sums_add() { cat >> "$FAKE_SUMS/$1"; }
 
@@ -139,11 +126,6 @@ run_noslug() {
     bash "$R/.github/scripts/bump-binaries.sh" python 2>&1)" || RC=$?
 }
 count_log() { grep -c -- "$1" "$FAKE_LOG" || true; }
-# no_delete: the call log never deletes a branch or ref, and every close names the run's repo.
-no_delete() {
-  if grep -qE -- '--delete-branch|push .*--delete|push .* :|update-ref -d|branch -[dD]' "$FAKE_LOG"; then fail "no branch or ref deletion ($1)" "$(cat "$FAKE_LOG")"; else pass; fi
-  if grep '^gh pr close ' "$FAKE_LOG" | grep -qv -- '--repo o/r'; then fail "every close carries --repo ($1)" "$(cat "$FAKE_LOG")"; else pass; fi
-}
 
 # --- a newer patch and build in the newest release: all three ARGs, branch, title, body -------
 setup "$PIN_VER" "$PIN_BUILD"
@@ -155,12 +137,13 @@ assert_eq "PYTHON_VERSION is rewritten" "3.15.3" "$(arg PYTHON_VERSION)"
 assert_eq "PYTHON_BUILD is rewritten" "20261117" "$(arg PYTHON_BUILD)"
 assert_eq "PYTHON_SHA256 is the real asset's" "$SHA_GOOD" "$(arg PYTHON_SHA256)"
 if log_has "git -C $R ls-remote origin refs/heads/bump/python-3.15.3-20261117"; then pass; else fail "ls-remote asks for the exact branch" "$(cat "$FAKE_LOG")"; fi
-if log_has "git -C $R switch -c bump/python-3.15.3-20261117"; then pass; else fail "switch -c cuts that exact branch" "$(cat "$FAKE_LOG")"; fi
+if log_has "git -C $R switch -c bump/weekly-$WEEKLY_DATE"; then pass; else fail "switch -c cuts the weekly branch" "$(cat "$FAKE_LOG")"; fi
 if log_has "git -C $R commit -m build(images): bump python 3.15.2+20261110 -> 3.15.3+20261117"; then pass; else fail "the commit message carries version and build" "$(cat "$FAKE_LOG")"; fi
-if log_has "--title build(images): bump python 3.15.2+20261110 -> 3.15.3+20261117"; then pass; else fail "the PR title carries version and build" "$(cat "$FAKE_LOG")"; fi
-if log_has "python 3.15.2+20261110 -> 3.15.3+20261117."; then pass; else fail "the PR body's move line carries version and build" "$(cat "$FAKE_LOG")"; fi
+if log_has "--title build(images): bump pinned binaries (weekly $WEEKLY_DATE)"; then pass; else fail "the PR title is the weekly one" "$(cat "$FAKE_LOG")"; fi
+if log_has "### python 3.15.2+20261110 -> 3.15.3+20261117"; then pass; else fail "the PR body's move line carries version and build" "$(cat "$FAKE_LOG")"; fi
 if log_has "Release notes: https://example.test/r/20261117"; then pass; else fail "the PR body cites the release URL" "$(cat "$FAKE_LOG")"; fi
 if log_has "Checksum source: https://github.com/astral-sh/python-build-standalone/releases/download/20261117/SHA256SUMS"; then pass; else fail "the PR body cites the SHA256SUMS URL" "$(cat "$FAKE_LOG")"; fi
+if log_has "PYTHON_VERSION=3.15.3 PYTHON_BUILD=20261117 PYTHON_SHA256=$SHA_GOOD"; then pass; else fail "the PR body carries python's three ARG values" "$(cat "$FAKE_LOG")"; fi
 if log_has "consumers running actions/setup-python at the image's version"; then pass; else fail "the PR body names the consumer pin follow-up" "$(cat "$FAKE_LOG")"; fi
 if log_has "#556"; then pass; else fail "the consumer note cites #556"; fi
 if log_has "cosign signature was verified"; then fail "the python PR body carries no signature line" "$(cat "$FAKE_LOG")"; else pass; fi
@@ -179,8 +162,8 @@ assert_rc "a same-patch newer build is a bump" 0 "$RC"
 assert_eq "PYTHON_VERSION is unchanged" "3.15.2" "$(arg PYTHON_VERSION)"
 assert_eq "PYTHON_BUILD is rewritten" "20261117" "$(arg PYTHON_BUILD)"
 assert_eq "PYTHON_SHA256 is rewritten" "$SHA_GOOD" "$(arg PYTHON_SHA256)"
-if log_has "git -C $R switch -c bump/python-3.15.2-20261117"; then pass; else fail "a new build of the same patch gets its own branch" "$(cat "$FAKE_LOG")"; fi
-if log_has "--title build(images): bump python 3.15.2+20261110 -> 3.15.2+20261117"; then pass; else fail "a build-only bump reads as a move in the title" "$(cat "$FAKE_LOG")"; fi
+if log_has "git -C $R ls-remote origin refs/heads/bump/python-3.15.2-20261117"; then pass; else fail "a new build of the same patch is checked for its own decline branch" "$(cat "$FAKE_LOG")"; fi
+if log_has "### python 3.15.2+20261110 -> 3.15.2+20261117"; then pass; else fail "a build-only bump reads as a move in the record" "$(cat "$FAKE_LOG")"; fi
 done_case
 
 # --- up to date: exit 0, the message, no git call ------------------------------------------------
@@ -366,18 +349,18 @@ cp "$R/images/base/Dockerfile" "$SCRATCH/Dockerfile.orig"
 run
 assert_rc "an empty PYTHON_BUILD fails" 1 "$RC"
 out_has "$R/images/base/Dockerfile" "the error names the Dockerfile"
-assert_eq "no gh, curl or git call (empty build)" "0" "$(wc -l < "$FAKE_LOG" | tr -d ' ')"
+assert_eq "no gh, curl or git call (empty build)" "0" "$(grep -vc '^gh auth setup-git$' "$FAKE_LOG" || true)"
 done_case
 setup "3.15" "$PIN_BUILD"
 run
 assert_rc "a malformed PYTHON_VERSION fails" 1 "$RC"
 out_has "$R/images/base/Dockerfile" "the error names the Dockerfile (version)"
-assert_eq "no gh, curl or git call (bad version)" "0" "$(wc -l < "$FAKE_LOG" | tr -d ' ')"
+assert_eq "no gh, curl or git call (bad version)" "0" "$(grep -vc '^gh auth setup-git$' "$FAKE_LOG" || true)"
 done_case
 setup "$PIN_VER" "2026111"
 run
 assert_rc "a seven-digit PYTHON_BUILD fails" 1 "$RC"
-assert_eq "no gh, curl or git call (short build)" "0" "$(wc -l < "$FAKE_LOG" | tr -d ' ')"
+assert_eq "no gh, curl or git call (short build)" "0" "$(grep -vc '^gh auth setup-git$' "$FAKE_LOG" || true)"
 done_case
 
 # --- a large SHA256SUMS: the wanted line first, then bulk (pipe-closing readers fail) ------------
@@ -489,124 +472,14 @@ out_has "lists 2 assets" "today's two-assets error"
 assert_untouched "duplicate after a failed fetch"
 done_case
 
-# --- supersede: older App-authored python PRs are closed after the new PR is created -------------------
-NEWB=20261117
-older_setup() { # a new 3.15.3+20261117 bump, ready to resolve
-  setup "$PIN_VER" "$PIN_BUILD"
-  release $NEWB false false
-  sums $NEWB 3.15.3
-}
-older_setup
-pr 41 bump/python-3.15.2-20261112 app/app true false
-run
-assert_rc "an older App python PR does not stop the bump" 0 "$RC"
-if log_has "gh pr close 41 --repo o/r --comment Superseded by bump/python-3.15.3-20261117."; then pass; else fail "the older PR is closed with a comment naming the new branch" "$(cat "$FAKE_LOG")"; fi
-assert_eq "exactly one close" "1" "$(count_log '^gh pr close ')"
-create_line="$(grep -n '^gh pr create' "$FAKE_LOG" | head -n 1 | cut -d: -f1)"
-close_line="$(grep -n '^gh pr close' "$FAKE_LOG" | head -n 1 | cut -d: -f1)"
-if [ -n "$create_line" ] && [ -n "$close_line" ] && [ "$create_line" -lt "$close_line" ]; then pass; else fail "the create call comes before the close" "$(cat "$FAKE_LOG")"; fi
-if log_has "gh pr list --repo o/r --state open --limit 500 --json number,headRefName,author,isCrossRepository"; then pass; else fail "the listing carries the run's repo and the limit" "$(cat "$FAKE_LOG")"; fi
-no_delete "one older PR"
-done_case
-older_setup
-pr 41 bump/python-3.15.2-20261112 app/app true false
-pr 42 bump/python-3.15.2-20261103 app/app true false
-run
-assert_rc "two older PRs: the bump succeeds" 0 "$RC"
-assert_eq "both older PRs are closed" "2" "$(count_log '^gh pr close ')"
-if log_has "gh pr close 41 --repo o/r" && log_has "gh pr close 42 --repo o/r"; then pass; else fail "each number is closed" "$(cat "$FAKE_LOG")"; fi
-no_delete "two older PRs"
-done_case
-
-# A not-older PR blocks: nothing is cut, created or closed.
-for case_ in "3.15.2-20261124" "3.15.4-20261112" "3.15.2-20261117" "3.15.3-20261117" "3.15.4-20261124"; do
-  older_setup
-  pr 41 bump/python-3.15.2-20261103 app/app true false
-  pr 50 "bump/python-$case_" app/app true false
-  run
-  assert_rc "a not-older PR ($case_) exits 0" 0 "$RC"
-  assert_eq "the not-older message names the PR ($case_)" "python: open PR #50 (bump/python-$case_) is not older than 3.15.3+20261117, nothing to do" "$OUT"
-  if grep -qE '^git |^gh pr (create|close)' "$FAKE_LOG"; then fail "no git, create or close call ($case_)" "$(cat "$FAKE_LOG")"; else pass; fi
-  assert_untouched "not older ($case_)"
-  done_case
-done
-
-# Records that fail the filter are neither closed nor blocking, and never appear in the output.
-older_setup
-pr 61 bump/python-3.15.2-20261124 app true false
-pr 62 bump/python-3.15.2-20261124 other/app true false
-pr 63 bump/python-3.15.2-20261124 app/app false false
-pr 64 bump/python-3.15.2-20261124 app/app true true
-pr 65 bump/python-3.15.2-20261124 app/app true false
-pr 66 bump/python-3.16.2-20261124 app/app true false
-pr 67 bump/python-3x15.2-20261124 app/app true false
-pr 68 bump/python-3.15.x-20261124 app/app true false
-pr 69 bump/python-3.15.2-2026112 app/app true false
-pr 70 xbump/python-3.15.2-20261124 app/app true false
-pr 71 bump/python-3.15.2-20261124x app/app true false
-pr 72 bump/python-3.15.2-20261124-1 app/app true false
-pr 73 bump/python-3.15.2-202611240 app/app true false
-jq '(.[] | select(.number == 65) | .number) = 0' "$FAKE_PRS" > "$FAKE_PRS.tmp" && mv "$FAKE_PRS.tmp" "$FAKE_PRS"
-pr 80 bump/python-3.15.2-20261112 app/app true false
-run
-assert_rc "look-alike and foreign records never block" 0 "$RC"
-assert_eq "only the real older PR is closed" "1" "$(count_log '^gh pr close ')"
-if log_has "gh pr close 80 --repo o/r"; then pass; else fail "the real older PR is closed" "$(cat "$FAKE_LOG")"; fi
-for n in 61 62 63 64 66 67 68 69 70 71 72 73; do out_lacks "#$n" "PR $n is not named in the output"; done
-out_lacks "20261124" "no filtered head appears in the output"
-no_delete "filter"
-done_case
-
-# --- the listing -----------------------------------------------------------------------------------------
-older_setup
-pr 41 bump/python-3.15.2-20261112 app/app true false
-FAKE_PRLIST_FAIL=1 run
-assert_rc "a failing listing fails the bump" 1 "$RC"
-out_has "::error::python: could not list the open pull requests" "the listing error"
-if grep -q '^git ' "$FAKE_LOG"; then fail "no git call after a failed listing" "$(cat "$FAKE_LOG")"; else pass; fi
-done_case
-older_setup
-jq -n '[range(1; 501) | {number: ., headRefName: "feature/x", author: {login: "someone", is_bot: false}, isCrossRepository: true}]' > "$FAKE_PRS"
-run
-assert_rc "a listing at the limit fails the bump" 1 "$RC"
-out_has "::error::python: the open pull request listing may be truncated" "the truncation error"
-if grep -q '^git ' "$FAKE_LOG"; then fail "no git call after a truncated listing" "$(cat "$FAKE_LOG")"; else pass; fi
-done_case
-older_setup
-jq -n '[range(1; 500) | {number: ., headRefName: "feature/x", author: {login: "someone", is_bot: false}, isCrossRepository: true}]' > "$FAKE_PRS"
-run
-assert_rc "a listing just under the limit is used" 0 "$RC"
-done_case
-older_setup
-pr 41 bump/python-3.15.2-20261112 app/app true false
+# --- the run's inputs are checked before any call: APP_SLUG unset ----------------------------------------
+setup "$PIN_VER" "$PIN_BUILD"
+release 20261117 false false
+sums 20261117 3.15.3
 run_noslug
-assert_rc "APP_SLUG unset fails a python run that reaches the listing" 1 "$RC"
+assert_rc "APP_SLUG unset fails the run" 1 "$RC"
 out_has "APP_SLUG must be set" "the unset APP_SLUG is named"
-if log_has "gh pr list --repo o/r --head"; then pass; else fail "the run reached the open-PR check before stopping" "$(cat "$FAKE_LOG")"; fi
-assert_eq "no supersede listing call without APP_SLUG" "0" "$(count_log '^gh pr list .*--limit')"
-if grep -q '^git ' "$FAKE_LOG"; then fail "no git call without APP_SLUG" "$(cat "$FAKE_LOG")"; else pass; fi
-done_case
-
-# --- the create and the closes ---------------------------------------------------------------------------
-older_setup
-pr 41 bump/python-3.15.2-20261112 app/app true false
-FAKE_CREATE_FAIL=1 run
-if [ "$RC" -ne 0 ]; then pass; else fail "a failed create fails the run" "$OUT"; fi
-if log_has "gh pr create"; then pass; else fail "the create was attempted" "$(cat "$FAKE_LOG")"; fi
-assert_eq "no close after a failed create" "0" "$(count_log '^gh pr close ')"
-done_case
-older_setup
-pr 41 bump/python-3.15.2-20261112 app/app true false
-pr 42 bump/python-3.15.2-20261103 app/app true false
-FAKE_CLOSE_FAIL=41 run
-assert_rc "a failed close fails the run after the loop" 1 "$RC"
-assert_eq "both closes are attempted" "2" "$(count_log '^gh pr close ')"
-out_has "::error::python: could not close superseded PR #41" "the error names the failed number"
-out_lacks "superseded PR #42" "the second close's number is not reported as failed"
-create_line="$(grep -n '^gh pr create' "$FAKE_LOG" | head -n 1 | cut -d: -f1)"
-first_close="$(grep -n '^gh pr close' "$FAKE_LOG" | head -n 1 | cut -d: -f1)"
-if [ -n "$create_line" ] && [ -n "$first_close" ] && [ "$create_line" -lt "$first_close" ]; then pass; else fail "the create call comes before both closes" "$(cat "$FAKE_LOG")"; fi
-no_delete "failed first close"
+assert_eq "no gh, curl or git call without APP_SLUG" "0" "$(wc -l < "$FAKE_LOG" | tr -d ' ')"
 done_case
 
 summary
