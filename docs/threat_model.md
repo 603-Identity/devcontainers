@@ -475,17 +475,22 @@ Every repo in both orgs gets a container from these images unless one of these a
   jobs, the `gate-tests` job of `verify-selftest.yml` (aggregated by `selftest`), and `build.yml`'s
   `Build and smoke-test (no push)`, which builds the images and runs the template proof when the PR
   changes an image, the template or another path `.github/scripts/image-scope.sh` scopes in; a change made in the container ships with those steps named as
-  pending in its PR. `lint.yml`'s hadolint and Trivy config scans now read this repo's own
-  `.devcontainer/Dockerfile`, and `verify-selftest.yml` ties its `ARG GO_VERSION` to go.mod's `go`
-  line; beyond those only review holds the directory: `.github/dependabot.yml` has no `docker`
-  entry for it and no workflow here calls `verify-devcontainer-image.yml` on this repo's own pull
-  requests, so its `FROM` line and its Go download change only by a hand-made PR under the
+  pending in its PR. `lint.yml`'s hadolint and Trivy config scans read this repo's own
+  `.devcontainer/Dockerfile`, `verify-selftest.yml` ties its `ARG GO_VERSION` to go.mod's `go`
+  line, and `verify / verify` (from `.github/workflows/devcontainer-image.yml`, on every pull
+  request) checks the directory; `verify / verify` is not in the `main-required-checks` list
+  `.ai/project.yml` records. Because `.github/dependabot.yml` has no `docker` entry for the
+  directory, its `FROM` line and its Go download still change only by a hand-made PR under the
   `code_paths` review and `main-approval`. The verifier exempts exactly one path for this repo,
   `template/.devcontainer/devcontainer.json` (the consumer template), from its "no other
   `devcontainer.json`" rule, in both `tools/fetch-consumer.sh` and `devc-verify`; it is keyed on
   `github.repository`, which the reusable workflow passes as the repo argument and no caller input
   can set, and it holds only for a regular file at that exact path and case. That lets this repo's
-  root `.devcontainer/` be checked by `verify / verify` once its caller exists. **Residual:** an ad hoc host run of one of those steps
+  root `.devcontainer/` be checked by `verify / verify`. The reusable workflow checks only the
+  form of the caller's pin (40 hex), so `tools/check-self-pins.sh` holds the caller to its fixed
+  shape, checks that its pin is on `main`'s first-parent line and that its tag peels to it, and
+  only warns when it differs from the template pins or is behind the newest tag (the grouped
+  Dependabot `github-actions` PR may move it). **Residual:** an ad hoc host run of one of those steps
   (for example a host Trivy scan) must use a checkout no container mounts, since code in the
   container can plant hooks or `.git/config` entries in the checkout it mounts; and because such a
   run executes the branch's own tracked scripts (for example `.github/scripts/build-and-test.sh` or

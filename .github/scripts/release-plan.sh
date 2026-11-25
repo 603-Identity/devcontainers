@@ -38,7 +38,7 @@ CONSUMER_PATHS=(
   tools/secret-scan-lint.sh
   images/base/files/secret-scan/org.toml
 )
-# The four files tools/check-self-pins.sh checks: the pin-bump PR edits their self-pins every release.
+# The four files whose pins tools/check-self-pins.sh holds equal: the pin-bump PR edits their self-pins every release.
 SELF_PIN_FILES=(
   tools/gate-template.yml.in
   template/.github/workflows/architect-review-gate.yml
