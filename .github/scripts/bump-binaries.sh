@@ -6,7 +6,7 @@
 # is satisfied by the Dockerfile's CURRENT node pin. The checksum always comes from
 # that release's own published file or the registry's `integrity` field -- never from
 # hashing the download -- so the Dockerfiles' "no trust-on-first-use" rule holds here
-# too. On a version bump it rewrites the Dockerfile's ARG lines, opens a
+# too (tofu's and betterleaks's only after a cosign check, see below). On a version bump it rewrites the Dockerfile's ARG lines, opens a
 # bump/<tool>-<version> branch and PR (skipped if that PR is already open, or if the branch
 # already exists on origin, e.g. after a human closed its PR unmerged), and leaves
 # everything else -- the surrounding comments, consumer CI pins, .trivyignore.yaml --
@@ -22,6 +22,11 @@
 # line's rcs past it, #304). Once the pin is on a GA release it takes stable releases only, like every
 # other tool (#208). Either way it takes the checksum only after cosign verifies the release's
 # sigstore bundle for its checksums.txt against the pinned signer identity.
+#
+# tofu (#717) takes its checksum only after cosign verifies the keyless signature on the release's
+# tofu_X.Y.Z_SHA256SUMS (its .sig and .pem) against the pinned signer identity and the release tag's
+# commit, and reads the sha256 only from the copy that verified. A failed or missing verification is an
+# error, never a fallback. The verification runs on every tofu run, an "up to date" one included.
 #
 # python (#561) stays on the pinned major.minor of images/base/Dockerfile (DEVC-D11): it lists the
 # five most recent astral-sh/python-build-standalone releases in ONE call (the default page size
@@ -61,12 +66,14 @@ NEW_VERSION=""
 NEW_CHECKSUM=""
 RELEASE_URL=""
 CHECKSUM_URL=""
+SIGNATURE_NOTE=""   # betterleaks and tofu: the PR body's line saying the checksum file's signature was verified
 NEW_BUILD=""   # python only: the python-build-standalone release tag
 PIN_BUILD=""   # python only: the Dockerfile's current PYTHON_BUILD
 
 # sha256_line <url> <asset-filename> -> the sha256 field of a "sha256  filename" line.
 # gh, tflint, tofu and uv all publish this exact format (verified against gh, tflint,
-# tofu and uv's own checksum files; a format change elsewhere fails closed below).
+# tofu and uv's own checksum files; a format change elsewhere fails closed below). tofu no longer
+# calls this: it reads its sha256 from the SHA256SUMS copy cosign verified (#717).
 #
 # The file is read into a variable first, never piped into an awk that `exit`s on the first
 # match: awk closing the pipe while curl is still writing makes curl fail with exit 23 under
@@ -131,12 +138,41 @@ resolve_uv() {
   NEW_CHECKSUM="$(sha256_line "$CHECKSUM_URL" "uv-x86_64-unknown-linux-gnu.tar.gz")"
 }
 
+# tofu (#717): the SHA256SUMS file is taken ONLY after cosign verifies its keyless signature (the
+# .sig and .pem beside it) against the signer identity of the release workflow on the tag's
+# vMAJOR.MINOR branch, the GitHub Actions issuer, the repository, and the tag's own commit. The tag
+# and the commit are shape-checked before any URL or cosign flag is built from them (cosign treats an
+# empty --certificate-github-workflow-sha as unset). A failed or missing verification is an error,
+# never a fallback to the unsigned file, and the sha256 is read from the verified copy, never from a
+# second fetch. Needs `cosign` on PATH. The errors name no upstream value but the shape-checked version.
 resolve_tofu() {
-  local tag
+  local tag ver sha dir base identity branch
   IFS=$'\t' read -r tag RELEASE_URL <<< "$(latest_release opentofu/opentofu)"
-  NEW_VERSION="${tag#v}"
-  CHECKSUM_URL="https://github.com/opentofu/opentofu/releases/download/${tag}/tofu_${NEW_VERSION}_SHA256SUMS"
-  NEW_CHECKSUM="$(sha256_line "$CHECKSUM_URL" "tofu_${NEW_VERSION}_linux_amd64.zip")"
+  [[ "$tag" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || { echo "::error::tofu: the latest release tag is not exactly vX.Y.Z: rejecting" >&2; exit 1; }
+  ver="${tag#v}"
+  branch="v${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+  command -v cosign > /dev/null || { echo "::error::tofu: cosign is required to verify the release signature" >&2; exit 1; }
+  sha="$(gh api "repos/opentofu/opentofu/commits/${tag}" --jq .sha)" || { echo "::error::tofu: could not resolve the release tag's commit" >&2; exit 1; }
+  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::tofu: the release tag's commit is not a 40-char lowercase hex sha: rejecting" >&2; exit 1; }
+
+  NEW_VERSION="$ver"
+  dir="$(mktemp -d)"
+  base="https://github.com/opentofu/opentofu/releases/download/${tag}/tofu_${ver}_SHA256SUMS"
+  CHECKSUM_URL="$base"
+  curl -fsSL "$base" -o "$dir/SHA256SUMS"
+  curl -fsSL "${base}.sig" -o "$dir/SHA256SUMS.sig"
+  curl -fsSL "${base}.pem" -o "$dir/SHA256SUMS.pem"
+  identity="https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/heads/${branch}"
+  if ! cosign verify-blob --certificate "$dir/SHA256SUMS.pem" --signature "$dir/SHA256SUMS.sig" \
+      --certificate-identity "$identity" --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+      --certificate-github-workflow-repository opentofu/opentofu \
+      --certificate-github-workflow-sha "$sha" \
+      "$dir/SHA256SUMS" >&2; then
+    echo "::error::tofu: the signature on v${ver}'s SHA256SUMS did not verify: refusing to take its checksum" >&2
+    exit 1
+  fi
+  SIGNATURE_NOTE="The checksum file's cosign signature was verified at resolution time against the signer identity \`${identity}\` and the tag's commit \`${sha}\`."
+  NEW_CHECKSUM="$(awk -v f="tofu_${ver}_linux_amd64.zip" '$2 == f { print $1; exit }' "$dir/SHA256SUMS")"
 }
 
 resolve_tflint() {
@@ -232,6 +268,7 @@ resolve_betterleaks() {
     echo "::error::betterleaks: the signature on ${best}'s checksums.txt did not verify against ${identity}: refusing to take its checksum" >&2
     exit 1
   fi
+  SIGNATURE_NOTE="The checksum file's cosign signature was verified at resolution time against the signer identity \`${identity}\`."
   NEW_CHECKSUM="$(awk -v f="betterleaks_${NEW_VERSION}_linux_x64.tar.gz" '$2 == f { print $1; exit }' "$dir/checksums.txt")"
 }
 
@@ -584,6 +621,7 @@ ordinary gates (hadolint, Trivy, the smoke test, the template test, and
 architect-review because \`images/\` is a code_path) run on this PR like any other.
 $consumer_note
 $swap_note
+$SIGNATURE_NOTE
 EOF
 )"
 gh pr create --repo "$repo" --head "$branch" --base main \

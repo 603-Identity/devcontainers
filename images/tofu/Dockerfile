@@ -21,6 +21,9 @@ USER 0
 # that takes this image's digest, so the two never differ for long. A container that
 # validates with a different tofu than CI reports a verdict CI does not share.
 #
+# New bumps add no history entry below: the bump PR body (release notes link, checksum source,
+# signature line) and `git log` are the record. The history paragraphs stop at 1.13.9.
+#
 # 1.11.14 (from 1.11.6, 2026-09-28): 1.11.6 carries GHSA-q7j3-v8qv-22vq (HIGH,
 # arbitrary file read during git operations via a crafted URL, fixed in 1.11.10).
 # That is directly relevant wherever `tofu init` runs on PR-controlled module sources.
@@ -45,7 +48,7 @@ USER 0
 # (CVE-2026-56864, CVE-2026-56865, CVE-2026-84445), so the bump cleared no exception; a
 # later scan found a crypto/x509 finding in 1.13.1, which 1.13.2 cleared (#419). Release
 # notes: two bug fixes for ephemeral resources, nothing breaking. This version's checksum
-# file was not signature-checked (the record below covers 1.13.0, 1.13.2 and 1.13.9 only).
+# file was not signature-checked (see the hand-check line below).
 #
 # 1.13.2 (from 1.13.1, 2026-11-02): the newest release (2026-10-21), a patch bump. Trivy:
 # 5 HIGH findings, all allowlisted in .trivyignore.yaml (CVE-2026-56864, CVE-2026-56865,
@@ -58,20 +61,26 @@ USER 0
 # first apply. Nothing breaking. go.mod is unchanged since 1.13.2, so Trivy reports the
 # same findings (see .trivyignore.yaml).
 #
-# The checksum file itself was verified for 1.13.9 (2026-11-09, #511), by hand, with
-# cosign v3.1.3 against the release's keyless signature (the .sig and .pem beside
-# tofu_1.13.9_SHA256SUMS), checked against the Rekor transparency log; 1.13.2 (2026-11-02)
-# and 1.13.0 (2026-10-02, #58) were verified the same way:
-#   signer identity: https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/heads/v1.13
+# How the checksum file is verified. Every automated bump (bump-binaries.sh, #717) verifies the
+# keyless signature on tofu_<v>_SHA256SUMS (the .sig and .pem beside it) at resolution time, with
+# cosign against the identity below and the release tag's commit, and reads the sha256 only from
+# the copy that verified; a failure stops the job with no branch and no PR. The evidence is
+# cosign's verify output in that bump-binaries.yml run's job log. The image build itself still
+# checks no signature (see docs/threat_model.md, Known gaps).
+#
+# Hand checks before the bump verified it: 1.13.0 (2026-10-02, #58), 1.13.2 (2026-11-02) and
+# 1.13.9 (2026-11-09, #511, source commit c83e7e50daff10ac704cb0811e9ffd0ad2523759, the v1.13.9
+# tag) were verified by hand with cosign v3.1.3; 1.13.1 was never checked; 1.13.10, pinned
+# before this change, was verified once by the maintainer, recorded in the maintainer's own
+# comment on the PR that closes #717.
+#
+#   signer identity: https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/heads/vMAJOR.MINOR
 #   OIDC issuer:     https://token.actions.githubusercontent.com
-#   source commit:   c83e7e50daff10ac704cb0811e9ffd0ad2523759 (the v1.13.9 tag)
-# The image does not check this, and bump-binaries.sh does not either: it rewrites the
-# two ARGs below and leaves this comment alone. A pin at any other version is
-# unverified until someone repeats the check and updates this record (see
-# docs/threat_model.md, Known gaps). To repeat it, download tofu_<v>_SHA256SUMS and its
-# .sig and .pem from the v<v> release and run this on those files (cosign needs network
-# access to Sigstore, Rekor and its TUF root: the certificate expired minutes after
-# signing):
+#
+# To repeat the check out of band, or for a hand bump (which the bump does not cover): download
+# tofu_<v>_SHA256SUMS and its .sig and .pem from the v<v> release and run this on those files
+# (cosign needs network access to Sigstore, Rekor and its TUF root: the certificate expired
+# minutes after signing). Put the result and the resolved sha in the PR that makes the check.
 #   sha=$(gh api repos/opentofu/opentofu/commits/v<v> --jq .sha) &&
 #   printf '%s' "$sha" | grep -qxE '[0-9a-f]{40}' &&
 #   cosign verify-blob --certificate tofu_<v>_SHA256SUMS.pem --signature tofu_<v>_SHA256SUMS.sig \
@@ -85,8 +94,7 @@ USER 0
 # commit. cosign treats an empty value as "not set" and skips that check, which is why
 # the sha is resolved and shape-checked first rather than substituted inline. The final
 # grep is what ties the verified file to the pin: a valid signature on one copy of
-# SHA256SUMS says nothing about a sha taken from another. Record the resolved sha as the
-# source commit above.
+# SHA256SUMS says nothing about a sha taken from another.
 ARG TOFU_VERSION=1.13.10
 ARG TOFU_SHA256=c1f0d6b34d8328f963d3b1ad10896fae30a6c6890596190ffef477dab991090f
 RUN curl -fsSL "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_amd64.zip" \

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Tests for .github/scripts/bump-binaries.sh, the betterleaks branch (#190) and the version
 # ordering all tools now share. A scratch tree holds a copy of the script and a Dockerfile;
-# fake `gh`, `curl` and `cosign` stand in for the network. Every case stops before any git
-# operation: the fake `gh pr list` reports an open PR, so a bump that would go ahead ends at
-# "PR already open". Offline; needs bash and awk.
+# fake `gh`, `curl` and `cosign` stand in for the network. Every case but the PR-body one
+# stops before any git operation: the fake `gh pr list` reports an open PR, so a bump that would
+# go ahead ends at "PR already open"; that one case sets FAKE_OPEN=0 and a logging fake `git`
+# (as bump-python-test.sh does) to reach `gh pr create`. Offline; needs bash and awk.
 set -uo pipefail
 # shellcheck disable=SC1091
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
@@ -32,6 +33,8 @@ case "$1 $2" in
   "api repos/betterleaks/betterleaks/releases") printf '%b' "${FAKE_RELEASES:-}" ;;
   "api repos/cli/cli/releases/latest") printf 'v%s\thttps://example.test/gh\n' "${FAKE_GH_LATEST:-2.103.0}" ;;
   "pr list") echo "$FAKE_OPEN" ;;
+  "pr create") ;;
+  "auth setup-git") ;;
   *) echo "unexpected gh $*" >&2; exit 9 ;;
 esac
 G
@@ -52,6 +55,11 @@ C
 echo "cosign $*" >> "$FAKE_LOG"
 exit "${FAKE_COSIGN_RC:-0}"
 S
+  cat > "$SCRATCH/bin/git" <<'GIT'
+#!/usr/bin/env bash
+echo "git $*" >> "$FAKE_LOG"
+exit 0
+GIT
   chmod +x "$SCRATCH/bin/"*
 }
 
@@ -79,6 +87,15 @@ out_has "PR already open" "newer rc reaches the PR step"
 want="--certificate-identity https://github.com/betterleaks/betterleaks/.github/workflows/release.yml@refs/tags/v2.0.0-rc.2 --certificate-oidc-issuer https://token.actions.githubusercontent.com"
 if grep -F 'cosign verify-blob --bundle ' "$FAKE_LOG" | grep -qF -- "$want"; then pass; else fail "cosign gets the exact tag identity and the Actions issuer" "$(cat "$FAKE_LOG")"; fi
 if log_has "curl https://github.com/betterleaks/betterleaks/releases/download/v2.0.0-rc.2/checksums.txt.sigstore.json"; then pass; else fail "the bundle is fetched for the chosen tag"; fi
+rm -rf "$SCRATCH"
+
+# --- a bump that reaches `gh pr create` carries the signature line ----------------------
+setup 2.0.0-rc.1
+releases 'v2.0.0-rc.2\thttps://example.test/rc2\n'
+checksums 2.0.0-rc.2 "$SHA_OK"
+FAKE_OPEN=0 run betterleaks
+assert_rc "a verified newer rc opens its PR" 0 "$RC"
+if log_has "verified at resolution time against the signer identity \`https://github.com/betterleaks/betterleaks/.github/workflows/release.yml@refs/tags/v2.0.0-rc.2\`"; then pass; else fail "the PR body's signature line names the tag identity" "$(cat "$FAKE_LOG")"; fi
 rm -rf "$SCRATCH"
 
 # --- verification failure refuses, and goes no further -----------------------------------

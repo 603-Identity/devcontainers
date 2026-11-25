@@ -839,14 +839,14 @@ the newest release the current node pin supports; python: the newest python-buil
 own published checksum file (npm: the registry's `integrity` field) -- never from
 hashing the download -- and opens one PR per tool that is behind, with the release page
 and the URL the checksum was read from linked in the body (not a diff -- see step 1 below). To decline a version, close its PR and leave the `bump/<tool>-<version>` branch (python's is `bump/python-<version>-<build>`, so closing its PR declines that build only and a later build of the same patch is proposed again): the
-next run skips that tool with a warning (#86), and deleting the branch proposes the version again. When the job proposes a newer python build it closes the older open python bump PRs its App opened, even one a human pushed to or approved, with a comment naming the new branch, and leaves their branches, so a later run treats such a build like a declined one; and it opens nothing while a python bump PR that is not older is open. **betterleaks is the exception** (#190): while its pin is a release candidate (`X.Y.Z-rc.N`, today 2.0.0-rc.7) it
+next run skips that tool with a warning (#86), and deleting the branch proposes the version again. When the job proposes a newer python build it closes the older open python bump PRs its App opened, even one a human pushed to or approved, with a comment naming the new branch, and leaves their branches, so a later run treats such a build like a declined one; and it opens nothing while a python bump PR that is not older is open. **betterleaks is the exception** (#190): while its pin is a release candidate (`X.Y.Z-rc.N`) it
 takes the highest-versioned release among any GA release and the release candidates of its own `X.Y.Z` (never a later line's rc, #304), and once the pin is on a GA
 release it takes stable releases only, like every other tool (#208). It takes the sha256 only after `cosign verify-blob` accepts the
 release's sigstore bundle for `checksums.txt` against the signer identity for that exact tag
 (`betterleaks/betterleaks` `release.yml` at `refs/tags/v<version>`, issuer GitHub Actions). A
 failed or missing verification fails the job, never falls back. The cosign binary is pinned
 by version and sha256 in `bump-binaries.yml`; nothing bumps it, so re-pin it by hand from
-its own `cosign_checksums.txt` when you move it. `tests/smoke.sh` reads the expected
+its own `cosign_checksums.txt` when you move it. Tofu's checksum file is verified the same way, with the same pinned cosign: `tofu_<version>_SHA256SUMS` against its `.sig` and `.pem`, the release workflow's identity on the version's `vMAJOR.MINOR` branch and the tag's commit (#717). `tests/smoke.sh` reads the expected
 version from the same `ARG` lines the workflow rewrites, so there is nothing else to
 edit there. (The Python tools are not `ARG`s: they live in
 `images/base/tools/pyproject.toml` and `uv.lock`, and Dependabot bumps those on its own
@@ -864,10 +864,10 @@ A human still has to:
    block, absent since #510; when the image carries one, the npm bump PR body names the
    swapped packages and the removal to push if the build fails) and the npm block's comment
    (the npm major it installs and its drop condition's npm and undici versions, which a
-   node or npm bump can make stale), the tofu image's per-bump CVE/Trivy-count notes and its
-   `SHA256SUMS` signature record (repeat the whole check it describes, cosign and the
-   grep against the pin, or leave the record naming the version it covers) -- and update or remove what the new version
-   makes stale. The workflow only ever touches the `ARG`
+   node or npm bump can make stale) -- and update or remove what the new version
+   makes stale. The tofu block's history paragraphs are not updated: a bump adds none. The
+   tofu bump's signature evidence is cosign's verify output in the `bump-binaries.yml` run's
+   job log. The workflow only ever touches the `ARG`
    lines themselves.
 3. For Node, open the matching CI-pin PRs in every consuming repo. For OpenTofu there is
    nothing to open here: each consumer moves `tofu_version` in the PR that takes the new
@@ -907,7 +907,9 @@ generated from `CLAUDE_VERSION`.
 
 To bump a tool the workflow doesn't cover, or while it's down, do the same by hand: read
 the release notes, take the sha256 from the release's own checksum file (never
-`sha256sum` a download and paste the result), and change the Dockerfile's `ARG`s.
+`sha256sum` a download and paste the result), and change the Dockerfile's `ARG`s. For tofu, a hand bump also runs the repeat command in
+`images/tofu/Dockerfile` and records its result and the resolved sha in its PR, because only
+the automated bump verifies the signature.
 
 The `# syntax=docker/dockerfile:...@sha256:...` line on line 1 of all five Dockerfiles is
 pinned by digest but no bot bumps it (Dependabot's docker updater reads only `FROM`
