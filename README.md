@@ -917,7 +917,10 @@ move it together with devc-verify's `CurrentSyntax` and vendored BuildKit
 copy can move in that PR too, but `template self-pins match their release` then fails until
 the template pins a release whose verifier allows the new value, so the usual order is: the
 images and devc-verify first, then a release, then the template's line with the pin bump
-(see "Cutting a release").
+(see "Cutting a release"). This repo's own `.devcontainer/Dockerfile` line 1 is now checked by
+this repo's own `verify / verify` too, so it must stay one of the two values the verifier at the
+caller's pinned release allows, and moves no later than a caller bump to a release whose allowed
+pair drops its value.
 
 Dependabot handles the base image digest, the GitHub Actions pins, and the Python tool lock (`uv` ecosystem on `images/base/tools`).
 The Python interpreter's three ARGs in `images/base/Dockerfile` (`PYTHON_VERSION`, `PYTHON_BUILD`, `PYTHON_SHA256`) are not moved by Dependabot. `bump-binaries.yml` re-pins all three within the pinned major.minor (a new build tag alone counts as a bump, #561). A change of minor is still a hand re-pin from the release's `SHA256SUMS`, together with the smoke test's major.minor check (DEVC-D11).
@@ -973,8 +976,9 @@ reusable workflows, the gate template, or the org secret-scan rules and scanner 
    the dev App, `603id-admin[bot]` while an elevated window is open, and any
    workflow's `GITHUB_TOKEN` with `contents: write`. Keep the window as short as the operation.
    It is never a standing bypass.
-2. **Bump this repo's own pins to it, in one PR.** Dependabot never bumps these, because they
-   point at this repo's own releases (#125). There are four copies of one pin:
+2. **Bump this repo's own pins to it, in one PR.** Dependabot never bumps these, because the four
+   pins sit outside the repository root's `.github/workflows/`, which the `github-actions` entry of
+   `.github/dependabot.yml` reads (#125). There are four copies of one pin:
    `tools/gate-template.yml.in` (the gate skeleton's `decide`), the gate rendered from it
    (`template/.github/workflows/architect-review-gate.yml`, regenerate it with
    `tools/render-gate.sh`; `render-gate-test.sh` checks it against the skeleton), and
@@ -988,8 +992,14 @@ reusable workflows, the gate template, or the org secret-scan rules and scanner 
    accepts N and N-1). **Who may skip it:** the release maintainer, for a security release
    whose point is that the previous template must stop verifying. Then delete the snapshot
    instead of rotating it, and say so in the PR; the next release accepts only its own template.
+   This repo's own caller, `.github/workflows/devcontainer-image.yml`, also pins
+   `verify-devcontainer-image.yml`. It is not one of the pins this PR moves, because it is a
+   workflow file: it sits in `.github/workflows/`, so Dependabot's `github-actions` entry may
+   propose its bump (in the grouped weekly `actions` PR, which draws the caller-differs warning
+   until this PR lands), and otherwise it moves by its own PR through the elevated push of
+   `docs/host-steps.md`.
 3. **CI checks it.** `template self-pins match their release` (in `verify-selftest.yml`,
-   `tools/check-self-pins.sh`) fails when the five pins disagree, when a pin is not on
+   `tools/check-self-pins.sh`) fails when the four pins step 2 lists disagree, when a pin is not on
    `main`'s first-parent line or its tag does not peel to it, when the template's
    `# syntax=` line is not allowed by the verifier at the pinned release, or when the snapshot
    is there but is not, byte for byte, the template at the pinned release. A newer tag than the
@@ -997,7 +1007,9 @@ reusable workflows, the gate template, or the org secret-scan rules and scanner 
    bump PR every branch pins the previous one. It also only warns when the snapshot is missing
    (expected through v1.6, and after a skipped rotation), and while the checked-out template
    (`main`'s, on a push to `main`) differs from the pinned release's: an adopter copying it now
-   may get a template the pinned verifier rejects.
+   may get a template the pinned verifier rejects. The same script holds the caller to its fixed
+   shape, checks that the caller's pin is on `main`'s first-parent line and that its tag peels to
+   it, and only warns when the caller's pin differs from those four or a newer tag exists.
 4. **Tell the adopters.** Adopters copy `template/` from `main`, so they get the new pins from
    the next copy. Existing consumers move by their own Dependabot `github-actions` bump. A dev-App
    consumer's `devcontainer.json` must equal the template of the verifier it pins, or of the

@@ -25,8 +25,9 @@
 #     set GIT_*, HTTP_PROXY, HTTPS_PROXY, ALL_PROXY or ANTHROPIC_BASE_URL, or run
 #     `git config --system`.
 #     That list catches accidents, not attacks: a human reviews the extras.
-# devcontainer.json is held to the same template exactly (see its header), no other
-# devcontainer.json may exist anywhere in the repo, and the default branch must require an
+# devcontainer.json is held to the same template exactly (see its header), the verifier allows
+# no other devcontainer.json except, in this repository only, the consumer template at
+# template/.devcontainer/devcontainer.json, and the default branch must require an
 # approval and a code-owner review. Do not bypass any of it: it is what makes a new digest safe
 # to take. It also accepts only an image from a first-attempt `build.yml` run (a re-run's
 # digest fails), which the command below does not check, so a digest that passes it can still

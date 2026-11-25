@@ -2,9 +2,18 @@
 # Checks this repo's own pins of its reusable workflows (#125): the `decide` pin in the gate
 # skeleton and the template gate rendered from it, and the verify and secret-scan pins in the
 # template's callers.
-# Dependabot never bumps these here (they point at this repo's own releases), so a release can
-# leave the template shipping a stale or inconsistent verifier to new adopters, who copy
-# template/ from `main`.
+# Dependabot never reads these four pins: they sit outside the repository root's
+# `.github/workflows/`, which the `github-actions` entry of .github/dependabot.yml scans. So a
+# release can leave the template shipping a stale or inconsistent verifier to new adopters, who
+# copy template/ from `main`.
+#
+# This repo's own caller of the verifier, .github/workflows/devcontainer-image.yml, is a separate
+# case. It is a workflow file outside the equal-pin set above, and, unlike those four, it sits in
+# `.github/workflows/`, which that `github-actions` entry reads, so a Dependabot PR may move its
+# pin. It is therefore held to a fixed shape and to provenance, not to equality with the other
+# pins: the verifier workflow's own guard checks only that the ref is 40 hex, which would accept
+# any commit in this repo (an unmerged one included), and a fork's. Holding it equal would make
+# every release's pin-bump PR touch a workflow file and so need the elevated push.
 #
 #   check-self-pins.sh            run from the repo root (CI's `gate scripts and rendered template`)
 #
@@ -24,6 +33,18 @@
 #     template/.devcontainer/devcontainer.json at the pinned release. That snapshot is what the
 #     next release's verifier accepts besides its own template (#418 owner decision 5), so it must
 #     be the template of the release `main` pins.
+# The caller fails when (each finding names the path, quoted):
+#   * it is missing;
+#   * its raw bytes are not a non-empty file ending in LF with only LF and printable ASCII;
+#   * with blank and full-line comment lines dropped, what remains is not the template caller's
+#     eight non-comment lines (fixed below, never read from the template) and then exactly one
+#     anchored pin line `    uses: 603-Identity/devcontainers/.github/workflows/
+#     verify-devcontainer-image.yml@<40 lowercase hex> # vX.Y`, from which alone its SHA and tag
+#     are read;
+#   * (the two checks above passed) its SHA is not on `main`'s first-parent line, or its tag does
+#     not exist or does not peel to its SHA. These read nothing at the caller's SHA.
+# It only warns when the caller's pin differs from the four pins above, or when its tag is older
+# than the newest `v*` tag.
 # It only WARNS when a newer `v*` tag exists than the one pinned: a commit cannot pin its own
 # release, so right after a tag is cut every branch pins the previous one until the bump PR lands
 # (README.md, "Cutting a release"). Failing there would turn every open PR red at once. It also
@@ -46,6 +67,18 @@ FILES=(
   template/.github/workflows/devcontainer-image.yml
   template/.github/workflows/secret-scan.yml
 )
+CALLER=.github/workflows/devcontainer-image.yml
+CALLER_FIXED=(
+  'name: Devcontainer image'
+  'on:'
+  '  pull_request:'
+  'permissions: {}'
+  'jobs:'
+  '  verify:'
+  '    permissions:'
+  '      contents: read'
+)
+caller_re='^    uses: 603-Identity/devcontainers/\.github/workflows/verify-devcontainer-image\.yml@([0-9a-f]{40}) # (v[0-9]+\.[0-9]+)$'
 TEMPLATE_DOCKERFILE=template/.devcontainer/Dockerfile
 TEMPLATE_JSON=template/.devcontainer/devcontainer.json
 SNAPSHOT=tools/devc-verify/templates/previous.devcontainer.json
@@ -85,6 +118,42 @@ for f in "${FILES[@]}"; do
     finding "$f has a reference to this repo's workflows that is not '@<40-hex sha> # vX.Y' at the end of the line."
   fi
 done
+
+# --- offline: this repo's own caller (a fixed shape, not equality) ----------------------------
+csha="" ctag=""
+caller_ok=false
+if [ ! -f "$CALLER" ]; then
+  finding "caller '$CALLER' is missing."
+else
+  # The byte rule reads the file itself: a shell variable or a line loop would drop or stop at a
+  # NUL, and a command substitution strips the LF the last-byte test needs.
+  bad_bytes="$(tr -d '\n\040-\176' < "$CALLER" | wc -c)"
+  last_lf="$(tail -c 1 "$CALLER" | wc -l)"
+  if [ ! -s "$CALLER" ] || [ "${last_lf//[[:space:]]/}" != 1 ] || [ "${bad_bytes//[[:space:]]/}" != 0 ]; then
+    finding "caller '$CALLER' must be non-empty, end in a line feed and hold only line feeds and printable ASCII (no CR, tab, NUL, DEL, byte-order mark or byte of 0x80 or above)."
+  else
+    kept="$(grep -vE '^ *$|^ *#' "$CALLER" || true)"
+    mapfile -t kept_lines <<< "$kept"
+    shape_ok=true
+    if [ "${#kept_lines[@]}" -ne $((${#CALLER_FIXED[@]} + 1)) ]; then
+      shape_ok=false
+    else
+      for i in "${!CALLER_FIXED[@]}"; do
+        [ "${kept_lines[$i]}" = "${CALLER_FIXED[$i]}" ] || shape_ok=false
+      done
+      if [[ "${kept_lines[${#CALLER_FIXED[@]}]}" =~ $caller_re ]]; then
+        csha="${BASH_REMATCH[1]}" ctag="${BASH_REMATCH[2]}"
+      else
+        shape_ok=false
+      fi
+    fi
+    if [ "$shape_ok" = true ]; then
+      caller_ok=true
+    else
+      finding "caller '$CALLER' is not the template caller's fixed lines (comments and blank lines aside) followed by exactly one '    uses: 603-Identity/devcontainers/.github/workflows/verify-devcontainer-image.yml@<40-hex sha> # vX.Y' line."
+    fi
+  fi
+fi
 
 syntax_line="$(head -n 1 "$TEMPLATE_DOCKERFILE" 2> /dev/null || true)"
 if [[ "$syntax_line" != "# syntax="* ]]; then
@@ -148,6 +217,19 @@ elif [ "$peeled" != "$sha" ]; then
   finding "tag $tag points at $peeled, not the pinned $sha."
 fi
 
+# The caller: the same two release rules, run only when both offline rules passed.
+if [ "$caller_ok" = true ]; then
+  if ! grep -Fxq "$csha" "$scratch/first-parent"; then
+    finding "caller '$CALLER' pins $csha, which is not on 603-Identity/devcontainers main's first-parent line."
+  fi
+  cpeeled="$(peel "$ctag")"
+  if [ -z "$cpeeled" ]; then
+    finding "caller '$CALLER' is labeled $ctag, but 603-Identity/devcontainers has no tag $ctag."
+  elif [ "$cpeeled" != "$csha" ]; then
+    finding "caller '$CALLER': tag $ctag points at $cpeeled, not its pinned $csha."
+  fi
+fi
+
 # The verifier at the pinned commit: the two Go string constants, where PreviousSyntax may be
 # `= CurrentSyntax`. Read only for a SHA already on main's first-parent line: the clone is
 # filtered (`tree:0`), so `git show` lazily fetches the commit's trees and blob from origin by
@@ -191,6 +273,16 @@ fi
 newest="$(printf '%s\n' "$tags" | awk '{ print $2 }' | sed -n 's|^refs/tags/\(v[0-9][0-9]*\.[0-9][0-9]*\)$|\1|p' | sort -V | tail -n 1)"
 if [ -n "$newest" ] && [ "$newest" != "$tag" ] && [ "$(printf '%s\n%s\n' "$tag" "$newest" | sort -V | tail -n 1)" = "$newest" ]; then
   warn "the self-pins name $tag, but $newest is the newest release: bump all of them to $newest (README.md, \"Cutting a release\")."
+fi
+
+# The caller's warnings, each independent of the other.
+if [ "$caller_ok" = true ]; then
+  if [ "$csha" != "$sha" ] || [ "$ctag" != "$tag" ]; then
+    warn "caller '$CALLER' differs from the template pins: it pins $csha # $ctag, they pin $sha # $tag. A Dependabot bump of the caller draws this until the template pin-bump PR lands."
+  fi
+  if [ -n "$newest" ] && [ "$newest" != "$ctag" ] && [ "$(printf '%s\n%s\n' "$ctag" "$newest" | sort -V | tail -n 1)" = "$newest" ]; then
+    warn "caller '$CALLER' is behind: it names $ctag and the newer tag $newest exists."
+  fi
 fi
 
 if [ "$findings" -gt 0 ]; then
