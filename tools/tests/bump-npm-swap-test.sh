@@ -165,13 +165,16 @@ body_has "$LAST_PROSE" "the gh body is the usual one"
 no_tgz "gh"
 done_case
 
-# --- a bad package name: refused before any branch is cut -----------------------------------
+# --- a bad package name: the npm leg changes nothing (a single-tool run cuts no branch) ---------
 for c in 'bad-___x:../x' 'bad-Undici:Undici' 'bad-_scope_x:@scope/x' 'bad-empty:'; do
   file="${c%%:*}"; name="${c#*:}"
   setup npm "$VAR/$file"
   run
   assert_rc "a swap call named '${name:-<empty>}' is refused" 1 "$RC"
   case "$OUT" in *"::error::npm: a swap call in images/node/Dockerfile has no valid package name"*) pass ;; *) fail "the fixed error line for '${name:-<empty>}'" "$OUT" ;; esac
+  case "$OUT" in *"the npm leg changes nothing"*) pass ;; *) fail "the refusal says the npm leg changes nothing ('${name:-<empty>}')" "$OUT" ;; esac
+  case "$OUT" in *"before any branch is cut"*) fail "the refusal no longer promises that no branch is cut ('${name:-<empty>}')" "$OUT" ;; *) pass ;; esac
+  case "$OUT" in *"failed at step: swap names"*) pass ;; *) fail "the failed leg names the swap names step ('${name:-<empty>}')" "$OUT" ;; esac
   if [ -n "$name" ]; then
     case "$OUT" in *"$name"*) fail "the rejected name '$name' is not echoed" "$OUT" ;; *) pass ;; esac
   fi

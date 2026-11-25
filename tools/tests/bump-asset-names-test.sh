@@ -9,7 +9,8 @@
 # scratch copy of images/ with `git` and `gh` faked, and the test asserts the Dockerfile's
 # SHA256 ARG ended up as the real asset's hash. A resolver that names any other asset fails.
 # npm is left out on purpose: it takes the registry's `integrity` field, not a named asset.
-# Offline; needs bash, awk and jq (the node resolver).
+# betterleaks and tofu run the fake cosign only by COSIGN_BIN, with COSIGN_OUTCOME=success, as the workflow
+# does. Offline; needs bash, awk and jq (the node resolver).
 set -uo pipefail
 # shellcheck disable=SC1091
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
@@ -122,7 +123,7 @@ while IFS='|' read -r tool dir ver_arg sha_arg tag; do
   if [ -z "$asset" ]; then fail "$tool: found the asset its Dockerfile downloads"; continue; fi
   setup "$dir"
   FAKE_BODY="$(checksum_body "$tool" "$asset")" FAKE_TAG="$tag" FAKE_VER="$NEW_VER" \
-    PATH="$SCRATCH/bin:/usr/bin:/bin" REPO=o/r APP_SLUG=app BOT_USER_ID=1 GH_TOKEN=t \
+    PATH="$SCRATCH/bin:/usr/bin:/bin" REPO=o/r COSIGN_OUTCOME=success COSIGN_BIN="$SCRATCH/bin/cosign" APP_SLUG=app BOT_USER_ID=1 GH_TOKEN=t \
     bash "$R/.github/scripts/bump-binaries.sh" "$tool" > "$SCRATCH/out" 2>&1
   rc=$?
   got="$(sed -n "s/^ARG ${sha_arg}=//p" "$R/images/$dir/Dockerfile")"
@@ -140,7 +141,7 @@ while IFS='|' read -r tool dir ver_arg sha_arg tag; do
   if [ -z "$asset" ]; then fail "$tool: found the asset its Dockerfile downloads"; continue; fi
   setup "$dir"
   FAKE_PAD=40000 FAKE_BODY="$(checksum_body "$tool" "$asset")" FAKE_TAG="$tag" FAKE_VER="$NEW_VER" \
-    PATH="$SCRATCH/bin:/usr/bin:/bin" REPO=o/r APP_SLUG=app BOT_USER_ID=1 GH_TOKEN=t \
+    PATH="$SCRATCH/bin:/usr/bin:/bin" REPO=o/r COSIGN_OUTCOME=success COSIGN_BIN="$SCRATCH/bin/cosign" APP_SLUG=app BOT_USER_ID=1 GH_TOKEN=t \
     bash "$R/.github/scripts/bump-binaries.sh" "$tool" > "$SCRATCH/out" 2>&1
   rc=$?
   got="$(sed -n "s/^ARG ${sha_arg}=//p" "$R/images/$dir/Dockerfile")"
@@ -160,7 +161,7 @@ while IFS='|' read -r tool dir ver_arg sha_arg tag; do
   if [ -z "$asset" ]; then fail "$tool: found the asset its Dockerfile downloads"; continue; fi
   setup "$dir"
   FAKE_CURL_RC=18 FAKE_BODY="$(checksum_body "$tool" "$asset")" FAKE_TAG="$tag" FAKE_VER="$NEW_VER" \
-    PATH="$SCRATCH/bin:/usr/bin:/bin" REPO=o/r APP_SLUG=app BOT_USER_ID=1 GH_TOKEN=t \
+    PATH="$SCRATCH/bin:/usr/bin:/bin" REPO=o/r COSIGN_OUTCOME=success COSIGN_BIN="$SCRATCH/bin/cosign" APP_SLUG=app BOT_USER_ID=1 GH_TOKEN=t \
     bash "$R/.github/scripts/bump-binaries.sh" "$tool" > "$SCRATCH/out" 2>&1
   rc=$?
   got="$(sed -n "s/^ARG ${sha_arg}=//p" "$R/images/$dir/Dockerfile")"
@@ -173,7 +174,7 @@ done <<< "$TOOLS"
 # pipefail (#325).
 setup base
 FAKE_ORDER='MD5\nSHA-1\n' FAKE_BODY="" FAKE_TAG=v99.88.77 FAKE_VER="$NEW_VER" \
-  PATH="$SCRATCH/bin:/usr/bin:/bin" REPO=o/r APP_SLUG=app BOT_USER_ID=1 GH_TOKEN=t \
+  PATH="$SCRATCH/bin:/usr/bin:/bin" REPO=o/r COSIGN_OUTCOME=success COSIGN_BIN="$SCRATCH/bin/cosign" APP_SLUG=app BOT_USER_ID=1 GH_TOKEN=t \
   bash "$R/.github/scripts/bump-binaries.sh" yq > "$SCRATCH/out" 2>&1
 rc=$?
 assert_rc "yq without a SHA-256 line in the order file fails" 1 "$rc"
@@ -187,7 +188,7 @@ yq_asset="$(dockerfile_asset "$ROOT_DIR/images/base/Dockerfile" YQ_VERSION)" || 
 if [ -z "$yq_asset" ]; then fail "yq: found the asset its Dockerfile downloads"; else
 setup base
 FAKE_ORDER_RC=22 FAKE_BODY="$(checksum_body yq "$yq_asset")" FAKE_TAG=v99.88.77 FAKE_VER="$NEW_VER" \
-  PATH="$SCRATCH/bin:/usr/bin:/bin" REPO=o/r APP_SLUG=app BOT_USER_ID=1 GH_TOKEN=t \
+  PATH="$SCRATCH/bin:/usr/bin:/bin" REPO=o/r COSIGN_OUTCOME=success COSIGN_BIN="$SCRATCH/bin/cosign" APP_SLUG=app BOT_USER_ID=1 GH_TOKEN=t \
   bash "$R/.github/scripts/bump-binaries.sh" yq > "$SCRATCH/out" 2>&1
 rc=$?
 got="$(sed -n "s/^ARG YQ_SHA256=//p" "$R/images/base/Dockerfile")"
@@ -200,7 +201,7 @@ rm -rf "$SCRATCH"
 # bash arithmetic error and the generic fallback (#379).
 setup base
 FAKE_ORDER='MD5\nSHA-256\nSHA-256\n' FAKE_BODY="$(checksum_body yq "$yq_asset")" FAKE_TAG=v99.88.77 FAKE_VER="$NEW_VER" \
-  PATH="$SCRATCH/bin:/usr/bin:/bin" REPO=o/r APP_SLUG=app BOT_USER_ID=1 GH_TOKEN=t \
+  PATH="$SCRATCH/bin:/usr/bin:/bin" REPO=o/r COSIGN_OUTCOME=success COSIGN_BIN="$SCRATCH/bin/cosign" APP_SLUG=app BOT_USER_ID=1 GH_TOKEN=t \
   bash "$R/.github/scripts/bump-binaries.sh" yq > "$SCRATCH/out" 2>&1
 rc=$?
 got="$(sed -n "s/^ARG YQ_SHA256=//p" "$R/images/base/Dockerfile")"

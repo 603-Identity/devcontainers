@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Tests for .github/scripts/bump-binaries.sh, the betterleaks branch (#190) and the version
 # ordering all tools now share. A scratch tree holds a copy of the script and a Dockerfile;
-# fake `gh`, `curl` and `cosign` stand in for the network. Every case but the PR-body one
-# stops before any git operation: the fake `gh pr list` reports an open PR, so a bump that would
-# go ahead ends at "PR already open"; that one case sets FAKE_OPEN=0 and a logging fake `git`
-# (as bump-python-test.sh does) to reach `gh pr create`. Offline; needs bash and awk.
+# fake `gh`, `curl` and `cosign` stand in for the network; cosign is reached only through COSIGN_BIN
+# and COSIGN_OUTCOME, as in the workflow. Every case but the PR-body one stops before any commit:
+# the fake `git` answers ls-remote with the branch's own ref (FAKE_DECLINE=1), so a bump that would
+# go ahead ends declined ("already exists on origin"); that one case sets FAKE_DECLINE= to reach
+# `gh pr create` through the logging fake `git` (as bump-python-test.sh does). Offline; needs bash and awk.
 set -uo pipefail
 # shellcheck disable=SC1091
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
@@ -24,7 +25,7 @@ setup() { # setup <betterleaks version in the Dockerfile>
     "$SHA_OLD" "$1" "$SHA_OLD" > "$R/images/base/Dockerfile"
   : > "$SCRATCH/calls.log"
   export FAKE_LOG="$SCRATCH/calls.log"
-  export FAKE_OPEN=1 FAKE_COSIGN_RC=0
+  export FAKE_DECLINE=1 FAKE_COSIGN_RC=0
   unset FAKE_RELEASES FAKE_CHECKSUMS
   cat > "$SCRATCH/bin/gh" <<'G'
 #!/usr/bin/env bash
@@ -32,7 +33,7 @@ echo "gh $*" >> "$FAKE_LOG"
 case "$1 $2" in
   "api repos/betterleaks/betterleaks/releases") printf '%b' "${FAKE_RELEASES:-}" ;;
   "api repos/cli/cli/releases/latest") printf 'v%s\thttps://example.test/gh\n' "${FAKE_GH_LATEST:-2.103.0}" ;;
-  "pr list") echo "$FAKE_OPEN" ;;
+  "pr list") ;;
   "pr create") ;;
   "auth setup-git") ;;
   *) echo "unexpected gh $*" >&2; exit 9 ;;
@@ -58,6 +59,7 @@ S
   cat > "$SCRATCH/bin/git" <<'GIT'
 #!/usr/bin/env bash
 echo "git $*" >> "$FAKE_LOG"
+case "$*" in *ls-remote*) [ -z "${FAKE_DECLINE:-}" ] || printf '%040d\t%s\n' 1 "${!#}" ;; esac
 exit 0
 GIT
   chmod +x "$SCRATCH/bin/"*
@@ -66,6 +68,7 @@ GIT
 run() { # run <tool> -> RC, OUT (stdout+stderr)
   RC=0
   OUT="$(env PATH="$SCRATCH/bin:/usr/bin:/bin" REPO=o/r APP_SLUG=app BOT_USER_ID=1 GH_TOKEN=t \
+    COSIGN_OUTCOME="${FAKE_COSIGN_OUTCOME-success}" COSIGN_BIN="${FAKE_COSIGN_BIN:-$SCRATCH/bin/cosign}" \
     bash "$R/.github/scripts/bump-binaries.sh" "$1" 2>&1)" || RC=$?
 }
 log_has() { grep -qF -- "$1" "$FAKE_LOG"; }
@@ -82,7 +85,7 @@ releases 'v2.0.0-rc.2\thttps://example.test/rc2\nv2.0.0-rc.1\thttps://example.te
 checksums 2.0.0-rc.2 "$SHA_OK"
 run betterleaks
 assert_rc "newer rc is accepted" 0 "$RC"
-out_has "PR already open" "newer rc reaches the PR step"
+out_has "already exists on origin" "newer rc reaches the PR step"
 # The bundle lives in a mktemp dir, so match the stable parts of the cosign call.
 want="--certificate-identity https://github.com/betterleaks/betterleaks/.github/workflows/release.yml@refs/tags/v2.0.0-rc.2 --certificate-oidc-issuer https://token.actions.githubusercontent.com"
 if grep -F 'cosign verify-blob --bundle ' "$FAKE_LOG" | grep -qF -- "$want"; then pass; else fail "cosign gets the exact tag identity and the Actions issuer" "$(cat "$FAKE_LOG")"; fi
@@ -93,7 +96,7 @@ rm -rf "$SCRATCH"
 setup 2.0.0-rc.1
 releases 'v2.0.0-rc.2\thttps://example.test/rc2\n'
 checksums 2.0.0-rc.2 "$SHA_OK"
-FAKE_OPEN=0 run betterleaks
+FAKE_DECLINE='' run betterleaks
 assert_rc "a verified newer rc opens its PR" 0 "$RC"
 if log_has "verified at resolution time against the signer identity \`https://github.com/betterleaks/betterleaks/.github/workflows/release.yml@refs/tags/v2.0.0-rc.2\`"; then pass; else fail "the PR body's signature line names the tag identity" "$(cat "$FAKE_LOG")"; fi
 rm -rf "$SCRATCH"
@@ -106,17 +109,38 @@ FAKE_COSIGN_RC=1 run betterleaks
 assert_rc "a failed signature check fails the bump" 1 "$RC"
 out_has "did not verify" "says the signature did not verify"
 if log_has "gh pr list"; then fail "no PR step after a failed signature check"; else pass; fi
+if log_has "git -C $R commit"; then fail "no commit after a failed signature check"; else pass; fi
 rm -rf "$SCRATCH"
 
-# --- no cosign on PATH is an error, never a skip -----------------------------------------
+# --- no usable COSIGN_BIN or a non-success install is an error, never a skip, and a cosign on PATH is not used
 setup 2.0.0-rc.1
 releases 'v2.0.0-rc.2\thttps://example.test/rc2\n'
 checksums 2.0.0-rc.2 "$SHA_OK"
-rm "$SCRATCH/bin/cosign"
-run betterleaks
-assert_rc "cosign missing fails" 1 "$RC"
+FAKE_COSIGN_BIN="$SCRATCH/bin/missing-cosign" run betterleaks
+assert_rc "a COSIGN_BIN that is not a file fails" 1 "$RC"
 out_has "cosign is required" "says cosign is required"
+if log_has "cosign "; then fail "a cosign on PATH is not called when COSIGN_BIN is unusable" "$(cat "$FAKE_LOG")"; else pass; fi
 rm -rf "$SCRATCH"
+
+setup 2.0.0-rc.1
+releases 'v2.0.0-rc.2\thttps://example.test/rc2\n'
+checksums 2.0.0-rc.2 "$SHA_OK"
+chmod 0644 "$SCRATCH/bin/cosign"
+run betterleaks
+assert_rc "a COSIGN_BIN that is not executable fails" 1 "$RC"
+out_has "cosign is required" "says cosign is required for a non-executable COSIGN_BIN"
+rm -rf "$SCRATCH"
+
+for outcome in failure skipped cancelled ""; do
+  setup 2.0.0-rc.1
+  releases 'v2.0.0-rc.2\thttps://example.test/rc2\n'
+  checksums 2.0.0-rc.2 "$SHA_OK"
+  FAKE_COSIGN_OUTCOME="$outcome" run betterleaks
+  assert_rc "COSIGN_OUTCOME '$outcome' fails" 1 "$RC"
+  out_has "failed at step: cosign" "the failed leg names the cosign step ('$outcome')"
+  if log_has "cosign "; then fail "no cosign call for COSIGN_OUTCOME '$outcome'" "$(cat "$FAKE_LOG")"; else pass; fi
+  rm -rf "$SCRATCH"
+done
 
 # --- ordering ----------------------------------------------------------------------------
 setup 2.0.0-rc.1
@@ -166,7 +190,7 @@ releases 'v2.0.0\thttps://example.test/ga\nv2.0.0-rc.9\thttps://example.test/rc9
 checksums 2.0.0 "$SHA_OK"
 run betterleaks
 assert_rc "GA 2.0.0 outranks rc.9" 0 "$RC"
-out_has "PR already open" "rc to GA reaches the PR step"
+out_has "already exists on origin" "rc to GA reaches the PR step"
 rm -rf "$SCRATCH"
 
 setup 2.0.0-rc.9
@@ -174,7 +198,7 @@ releases 'v2.0.0-rc.10\thttps://example.test/rc10\nv2.0.0-rc.9\thttps://example.
 checksums 2.0.0-rc.10 "$SHA_OK"
 run betterleaks
 assert_rc "rc.10 outranks rc.9 numerically" 0 "$RC"
-out_has "PR already open" "rc.10 is newer than rc.9"
+out_has "already exists on origin" "rc.10 is newer than rc.9"
 rm -rf "$SCRATCH"
 
 # --- prereleases only while the pin is itself an rc (#208) --------------------------------
@@ -191,7 +215,7 @@ releases 'v2.1.0-rc.1\thttps://example.test/rc21\nv2.0.0\thttps://example.test/g
 checksums 2.0.0 "$SHA_OK"
 run betterleaks
 assert_rc "an rc pin reaches GA past a later line's rc (#304)" 0 "$RC"
-out_has "PR already open" "the bump goes ahead"
+out_has "already exists on origin" "the bump goes ahead"
 if log_has "curl https://github.com/betterleaks/betterleaks/releases/download/v2.0.0/checksums.txt"; then pass; else fail "the checksum is taken from v2.0.0, not v2.1.0-rc.1" "$(cat "$FAKE_LOG")"; fi
 rm -rf "$SCRATCH"
 
@@ -208,7 +232,7 @@ releases 'v2.1.0\thttps://example.test/210\nv2.1.0-rc.1\thttps://example.test/rc
 checksums 2.1.0 "$SHA_OK"
 run betterleaks
 assert_rc "a GA pin still takes a newer GA release" 0 "$RC"
-out_has "PR already open" "pin 2.0.0 reaches the PR step for v2.1.0"
+out_has "already exists on origin" "pin 2.0.0 reaches the PR step for v2.1.0"
 rm -rf "$SCRATCH"
 
 # --- hostile or malformed upstream data --------------------------------------------------
@@ -250,7 +274,7 @@ export FAKE_GH_LATEST=2.103.0
 FAKE_CHECKSUMS="$SHA_OK  gh_2.103.0_linux_amd64.tar.gz\n"; export FAKE_CHECKSUMS
 run gh
 assert_rc "gh 2.102.0 -> 2.103.0" 0 "$RC"
-out_has "PR already open" "a plain bump still reaches the PR step"
+out_has "already exists on origin" "a plain bump still reaches the PR step"
 rm -rf "$SCRATCH"
 
 setup 2.0.0-rc.1

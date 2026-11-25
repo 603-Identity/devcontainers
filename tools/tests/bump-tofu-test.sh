@@ -2,9 +2,10 @@
 # Tests for .github/scripts/bump-binaries.sh, the tofu branch (#717): the SHA256SUMS file is taken
 # only after cosign verifies its keyless signature against the pinned identity and the tag's commit.
 # A scratch tree holds a copy of the script and a tofu Dockerfile; fake `gh`, `curl`, `cosign` and
-# `git` log their calls. Most cases stop at "PR already open" (the fake `gh pr list` reports an
-# open PR); the body case sets FAKE_OPEN=0 and reaches `gh pr create` through the logging fake
-# `git`, as bump-python-test.sh does. Offline; needs bash and awk.
+# `git` log their calls, and cosign is reached only through COSIGN_BIN and COSIGN_OUTCOME, as in the
+# workflow. Most cases stop at the decline (the fake `git` answers ls-remote with the branch's own ref,
+# FAKE_DECLINE=1); the body case sets FAKE_DECLINE= and reaches `gh pr create` through the logging
+# fake `git`, as bump-python-test.sh does. Offline; needs bash and awk.
 # shellcheck disable=SC2016  # the mutant-script sed patterns and greps hold literal $ signs
 set -uo pipefail
 # shellcheck disable=SC1091
@@ -29,7 +30,7 @@ setup() { # setup <tofu version in the Dockerfile>
   cp "$R/images/tofu/Dockerfile" "$SCRATCH/Dockerfile.orig"
   : > "$SCRATCH/calls.log"
   export FAKE_LOG="$SCRATCH/calls.log"
-  export FAKE_OPEN=1 FAKE_COSIGN_RC=0 FAKE_TAG="v1.14.0" FAKE_COMMIT="$COMMIT"
+  export FAKE_DECLINE=1 FAKE_COSIGN_RC=0 FAKE_TAG="v1.14.0" FAKE_COMMIT="$COMMIT"
   unset FAKE_COMMIT_RC FAKE_CURL_FAIL
   cat > "$SCRATCH/bin/gh" <<'G'
 #!/usr/bin/env bash
@@ -37,7 +38,7 @@ echo "gh $*" >> "$FAKE_LOG"
 case "$1 $2" in
   "api repos/opentofu/opentofu/releases/latest") printf '%s\thttps://example.test/tofu\n' "$FAKE_TAG" ;;
   "api repos/opentofu/opentofu/commits/"*) [ -z "${FAKE_COMMIT_RC:-}" ] || exit "$FAKE_COMMIT_RC"; printf '%s\n' "$FAKE_COMMIT" ;;
-  "pr list") echo "$FAKE_OPEN" ;;
+  "pr list") ;;
   "pr create") ;;
   "auth setup-git") ;;
   *) echo "unexpected gh $*" >&2; exit 9 ;;
@@ -46,6 +47,7 @@ G
   cat > "$SCRATCH/bin/git" <<'G'
 #!/usr/bin/env bash
 echo "git $*" >> "$FAKE_LOG"
+case "$*" in *ls-remote*) [ -z "${FAKE_DECLINE:-}" ] || printf '%040d\t%s\n' 1 "${!#}" ;; esac
 exit 0
 G
   # The SHA256SUMS body lists decoys around the real line; a fetch without -o gets a different hash.
@@ -83,6 +85,7 @@ S
 run() { # run -> RC, OUT (stdout+stderr)
   RC=0
   OUT="$(env PATH="$SCRATCH/bin:/usr/bin:/bin" REPO=o/r APP_SLUG=app BOT_USER_ID=1 GH_TOKEN=t \
+    COSIGN_OUTCOME="${FAKE_COSIGN_OUTCOME-success}" COSIGN_BIN="${FAKE_COSIGN_BIN:-$SCRATCH/bin/cosign}" \
     bash "$R/.github/scripts/bump-binaries.sh" tofu 2>&1)" || RC=$?
 }
 # sums_written: every path curl wrote the chosen tag's SHA256SUMS to (one line per download).
@@ -101,7 +104,7 @@ refused() {
 setup 1.13.10
 run
 assert_rc "a verified newer release is accepted" 0 "$RC"
-out_has "PR already open" "a verified release reaches the PR step"
+out_has "already exists on origin" "a verified release reaches the decline step"
 want="--certificate-identity https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/heads/v1.14 --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-repository opentofu/opentofu --certificate-github-workflow-sha $COMMIT"
 if grep -F 'cosign verify-blob ' "$FAKE_LOG" | grep -qF -- "$want"; then pass; else fail "cosign gets the major.minor identity, issuer, repository and commit" "$(cat "$FAKE_LOG")"; fi
 for ext in "" .sig .pem; do
@@ -113,7 +116,7 @@ rm -rf "$SCRATCH"
 
 # --- the checksum comes from the verified file -------------------------------------------------
 setup 1.13.10
-FAKE_OPEN=0 run
+FAKE_DECLINE='' run
 assert_rc "the bump goes ahead" 0 "$RC"
 assert_eq "TOFU_SHA256 is the line of the verified, downloaded file" "$SHA_OK" "$(arg TOFU_SHA256)"
 assert_eq "TOFU_VERSION is rewritten" "1.14.0" "$(arg TOFU_VERSION)"
@@ -131,7 +134,7 @@ M="$R/.github/scripts/bump-binaries.sh"
 sed -i '/curl -fsSL "\$base" -o "\$dir\/SHA256SUMS"$/a\  curl -fsSL "$base" -o "$dir/parsed"' "$M"
 sed -i 's|\(awk -v f="tofu_\${ver}_linux_amd64.zip" .*\) "\$dir/SHA256SUMS")"|\1 "$dir/parsed")"|' "$M"
 if grep -qF '"$dir/parsed")"' "$M" && grep -qF -- '-o "$dir/parsed"' "$M"; then pass; else fail "the mutant script was built" "$(grep -n 'dir/' "$M")"; fi
-FAKE_OPEN=0 run
+FAKE_DECLINE='' run
 mut_cos="$(grep -F 'cosign verify-blob ' "$FAKE_LOG" | awk '{print $NF}')"
 if [ "$(sums_written)" = "$mut_cos" ]; then fail "the same-path check flags a script that parses a second copy" "$(cat "$FAKE_LOG")"; else pass; fi
 rm -rf "$SCRATCH"
@@ -144,14 +147,33 @@ out_has "did not verify" "says the signature did not verify"
 refused "cosign failure"
 rm -rf "$SCRATCH"
 
-# --- no cosign on PATH ------------------------------------------------------------------------
+# --- COSIGN_BIN unusable, or the install did not succeed: no PATH lookup rescues it -----------------
 setup 1.13.10
-rm "$SCRATCH/bin/cosign"
-run
-assert_rc "cosign missing fails" 1 "$RC"
+FAKE_COSIGN_BIN="$SCRATCH/bin/missing-cosign" run
+assert_rc "a COSIGN_BIN that is not a file fails" 1 "$RC"
 out_has "cosign is required" "says cosign is required"
-refused "cosign missing"
+out_has "failed at step: cosign" "the failed leg names the cosign step"
+if log_has "cosign "; then fail "a cosign on PATH is not called when COSIGN_BIN is unusable" "$(cat "$FAKE_LOG")"; else pass; fi
+refused "COSIGN_BIN missing"
 rm -rf "$SCRATCH"
+
+setup 1.13.10
+chmod 0644 "$SCRATCH/bin/cosign"
+run
+assert_rc "a COSIGN_BIN that is not executable fails" 1 "$RC"
+out_has "cosign is required" "says cosign is required for a non-executable COSIGN_BIN"
+refused "COSIGN_BIN not executable"
+rm -rf "$SCRATCH"
+
+for outcome in failure skipped cancelled ""; do
+  setup 1.13.10
+  FAKE_COSIGN_OUTCOME="$outcome" run
+  assert_rc "COSIGN_OUTCOME '$outcome' fails" 1 "$RC"
+  out_has "failed at step: cosign" "the failed leg names the cosign step ('$outcome')"
+  if log_has "cosign "; then fail "no cosign call for COSIGN_OUTCOME '$outcome'" "$(cat "$FAKE_LOG")"; else pass; fi
+  refused "COSIGN_OUTCOME $outcome"
+  rm -rf "$SCRATCH"
+done
 
 # --- a malformed commit lookup ----------------------------------------------------------------
 for bad in "" "0123456789ABCDEF0123456789ABCDEF01234567" "0123456789abcdef" "$COMMIT; touch pwned"; do
