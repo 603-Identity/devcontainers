@@ -5,6 +5,7 @@
 # `git` log their calls. Most cases stop at "PR already open" (the fake `gh pr list` reports an
 # open PR); the body case sets FAKE_OPEN=0 and reaches `gh pr create` through the logging fake
 # `git`, as bump-python-test.sh does. Offline; needs bash and awk.
+# shellcheck disable=SC2016  # the mutant-script sed patterns and greps hold literal $ signs
 set -uo pipefail
 # shellcheck disable=SC1091
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
@@ -53,6 +54,7 @@ G
 out="" url=""
 while [ $# -gt 0 ]; do case "$1" in -o) out="$2"; shift 2 ;; -*) shift ;; *) url="$1"; shift ;; esac; done
 echo "curl $url${out:+ -o}" >> "$FAKE_LOG"
+[ -z "$out" ] || echo "wrote $url $out" >> "$FAKE_LOG"
 case "$url" in *.sig) k=sig ;; *.pem) k=pem ;; *) k=sums ;; esac
 case " ${FAKE_CURL_FAIL:-} " in *" $k "*) exit 22 ;; esac
 case "$url" in
@@ -83,6 +85,8 @@ run() { # run -> RC, OUT (stdout+stderr)
   OUT="$(env PATH="$SCRATCH/bin:/usr/bin:/bin" REPO=o/r APP_SLUG=app BOT_USER_ID=1 GH_TOKEN=t \
     bash "$R/.github/scripts/bump-binaries.sh" tofu 2>&1)" || RC=$?
 }
+# sums_written: every path curl wrote the chosen tag's SHA256SUMS to (one line per download).
+sums_written() { sed -n "s|^wrote $BASE/v1.14.0/tofu_1.14.0_SHA256SUMS ||p" "$FAKE_LOG"; }
 log_has() { grep -qF -- "$1" "$FAKE_LOG"; }
 log_count() { grep -cE -- "$1" "$FAKE_LOG" || true; }
 out_has() { case "$OUT" in *"$1"*) pass ;; *) fail "$2" "output lacks '$1': $OUT" ;; esac; }
@@ -116,8 +120,20 @@ assert_eq "TOFU_VERSION is rewritten" "1.14.0" "$(arg TOFU_VERSION)"
 assert_eq "TFLINT_SHA256 is untouched" "$SHA_OLD" "$(arg TFLINT_SHA256)"
 cos_file="$(grep -F 'cosign verify-blob ' "$FAKE_LOG" | awk '{print $NF}')"
 assert_eq "the file cosign checked is named SHA256SUMS" "SHA256SUMS" "$(basename "$cos_file")"
+assert_eq "cosign's blob is the exact path curl wrote SHA256SUMS to" "$(sums_written)" "$cos_file"
 # the signature line in the PR body names the identity and the commit
 if log_has "signer identity \`https://github.com/opentofu/opentofu/.github/workflows/release.yml@refs/heads/v1.14\` and the tag's commit \`$COMMIT\`"; then pass; else fail "the PR body's signature line names the identity and the commit" "$(cat "$FAKE_LOG")"; fi
+rm -rf "$SCRATCH"
+
+# --- a script that verifies one copy and parses another fails the same check ------------------
+setup 1.13.10
+M="$R/.github/scripts/bump-binaries.sh"
+sed -i '/curl -fsSL "\$base" -o "\$dir\/SHA256SUMS"$/a\  curl -fsSL "$base" -o "$dir/parsed"' "$M"
+sed -i 's|\(awk -v f="tofu_\${ver}_linux_amd64.zip" .*\) "\$dir/SHA256SUMS")"|\1 "$dir/parsed")"|' "$M"
+if grep -qF '"$dir/parsed")"' "$M" && grep -qF -- '-o "$dir/parsed"' "$M"; then pass; else fail "the mutant script was built" "$(grep -n 'dir/' "$M")"; fi
+FAKE_OPEN=0 run
+mut_cos="$(grep -F 'cosign verify-blob ' "$FAKE_LOG" | awk '{print $NF}')"
+if [ "$(sums_written)" = "$mut_cos" ]; then fail "the same-path check flags a script that parses a second copy" "$(cat "$FAKE_LOG")"; else pass; fi
 rm -rf "$SCRATCH"
 
 # --- a cosign failure refuses ----------------------------------------------------------------
