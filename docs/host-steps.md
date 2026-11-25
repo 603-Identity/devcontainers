@@ -364,8 +364,10 @@ So a mint, and with it a revoke, happens only after the owner answers `y`.
      changed on `origin/main` since the lane branched, the lane pushes no merge. The maintainer
      brings the branch up to date with GitHub's update-branch first; the driver then takes `expect`
      and each `old` from the updated head and rebuilds each handoff copy on `main`'s version, so the
-     publish, not the owner's update, is the branch's last push. Run the container's gate entries
-     again on the rebuilt copies.
+     publish, not the owner's update, is the branch's last push. For a new-branch handoff (`expect`
+     is `new`) there is no branch to update: the driver rebuilds each handoff copy on `main`'s
+     version and takes each `old` from `main`. Run the container's gate entries again on the
+     rebuilt copies.
 2. Copy each file, byte for byte, to `.git/wow-handoff/` in the owner's `devcontainers-dev` clone
    (the clone the driver's container mounts), under a name that starts `{task}-`, is unique in the
    task ignoring case and does not end in `.`, and write `.git/wow-handoff/{task}-manifest.json` beside them:

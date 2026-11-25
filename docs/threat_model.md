@@ -484,13 +484,16 @@ Every repo in both orgs gets a container from these images unless one of these a
   `code_paths` review and `main-approval`. The verifier exempts exactly one path for this repo,
   `template/.devcontainer/devcontainer.json` (the consumer template), from its "no other
   `devcontainer.json`" rule, in both `tools/fetch-consumer.sh` and `devc-verify`; it is keyed on
-  `github.repository`, which the reusable workflow passes as the repo argument and no caller input
-  can set, and it holds only for a regular file at that exact path and case. That lets this repo's
-  root `.devcontainer/` be checked by `verify / verify`. The reusable workflow checks only the
+  `github.repository`, which two reusable workflows pass: `verify-devcontainer-image.yml`, as
+  `CONSUMER_REPO`, to `tools/fetch-consumer.sh` and to `devc-verify`'s `--repo`; and
+  `devcontainer-bump-decision.yml`, as `REPO`, which `tools/decide-bump.sh` hands to
+  `tools/fetch-consumer.sh` and to `devc-verify`'s `--repo`. No caller input can set it, and it
+  holds only for a regular file at that exact path and case. That lets this repo's root
+  `.devcontainer/` be checked by `verify / verify`. `verify-devcontainer-image.yml` checks only the
   form of the caller's pin (40 hex), so `tools/check-self-pins.sh` holds the caller to its fixed
-  shape, checks that its pin is on `main`'s first-parent line and that its tag peels to it, and
-  only warns when it differs from the template pins or is behind the newest tag (the grouped
-  Dependabot `github-actions` PR may move it). **Residual:** an ad hoc host run of one of those steps
+  shape, checks that its pin is on `main`'s first-parent line and that its tag peels to it, and only
+  warns when it differs from the template pins or is behind the newest tag (the grouped Dependabot
+  `github-actions` PR may move it). **Residual:** an ad hoc host run of one of those steps
   (for example a host Trivy scan) must use a checkout no container mounts, since code in the
   container can plant hooks or `.git/config` entries in the checkout it mounts; and because such a
   run executes the branch's own tracked scripts (for example `.github/scripts/build-and-test.sh` or

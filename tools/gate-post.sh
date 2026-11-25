@@ -291,7 +291,7 @@ case "$mode" in
     if [ "$disarm_failed" = 1 ]; then
       post_status failure "Could not disable auto-merge on PR #${TARGET} -- failing closed."
       echo
-      echo "::error::Could not disable auto-merge on PR #${TARGET}. Failing closed: no review status is posted, because the PR may still merge."
+      echo "::error::Could not disable auto-merge on PR #${TARGET}. Failing closed: no review status is posted, because the PR may still merge. A comment on PR #${TARGET} by a user in REVIEWER_IDS re-runs the post job, which decides the row again and, in a row that disarms, retries the disarm."
       exit 1
     fi
     review_logic 0
@@ -306,7 +306,7 @@ case "$mode" in
     if [ "$disarm_failed" = 1 ]; then
       post_status failure "Could not disable auto-merge on PR #${TARGET} -- failing closed."
       echo
-      echo "::error::Could not disable auto-merge on PR #${TARGET}. Failing closed: no review status is posted, because the PR may still merge."
+      echo "::error::Could not disable auto-merge on PR #${TARGET}. Failing closed: no review status is posted, because the PR may still merge. A comment on PR #${TARGET} by a user in REVIEWER_IDS re-runs the post job, which decides the row again and, in a row that disarms, retries the disarm."
       exit 1
     fi
     review_logic 0
@@ -317,7 +317,7 @@ case "$mode" in
     if [ "$disarm_failed" = 1 ]; then
       post_status failure "Could not disable auto-merge on PR #${TARGET} -- failing closed."
       echo
-      echo "::error::Could not disable auto-merge on PR #${TARGET}. Failing closed: no review status is posted, because the PR may still merge."
+      echo "::error::Could not disable auto-merge on PR #${TARGET}. Failing closed: no review status is posted, because the PR may still merge. A comment on PR #${TARGET} by a user in REVIEWER_IDS re-runs the post job, which decides the row again and, in a row that disarms, retries the disarm."
       exit 1
     fi
     review_logic 1

@@ -182,14 +182,17 @@ for p in template/devcontainer.json template/.devcontainer.json template/.devcon
 done
 
 setup; tree_add "$TMPL" blob 100644; tree_add sub/devcontainer.json blob 100644; fetch_as "$SELF"
+assert_rc "exempt file beside sub/devcontainer.json: fetch ok" 0 "$RC"
 assert_eq "exempt file beside sub/devcontainer.json is marked" yes "$(marked)"
 end_scenario
 
 setup; tree_add "$TMPL" blob 120000; fetch_as "$SELF"
+assert_rc "symlink at the exempt path: fetch ok" 0 "$RC"
 assert_eq "symlink at the exempt path is marked" yes "$(marked)"
 end_scenario
 
 setup; tree_add "$TMPL" commit 160000; fetch_as "$SELF"
+assert_rc "submodule at the exempt path: fetch ok" 0 "$RC"
 assert_eq "submodule at the exempt path is marked" yes "$(marked)"
 end_scenario
 
