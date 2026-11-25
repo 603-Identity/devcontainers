@@ -313,6 +313,11 @@ no re-run when a review is edited or dismissed (#315, #281): it triggers on `pul
 type `submitted` only. The template gate, `template/.github/workflows/architect-review-gate.yml`, keeps
 all of them for legacy-route consumers. The threat model's Known gaps record the residuals.
 
+*Amended 2026-11-25, #573:* DEVC-D13 places the two Apps this split left out. The dev App is an
+untrusted writer. `603id-admin[bot]` is placed with the owner inside a `docs/host-steps.md`
+Procedure B run only; outside Procedure B it is an untrusted writer with none of the human-writer
+acceptances above, and its same-repo-gate gap is a named residual of DEVC-D13 that is not accepted.
+
 **Context.** `architect-review` is the only review control on `main`. Any writer can turn it
 green without a review: a PR runs its own copy of the gate (#93), and a PR's own workflow can
 post the status itself, because every `GITHUB_TOKEN` run posts as the same integration (F9b,
@@ -646,6 +651,85 @@ this repo; any wider rule belongs in an IAC-D entry.
 - Releases made by the workflow without a `docs/releases/vX.Y.md` carry log-built notes (see
   DEVC-D8's supersede line). Phases 2 and 3 (a script that prepares the pin-bump PR, and the
   workflow that opens it) are separate work.
+
+#### DEVC-D13: The dev App is not a trusted writer; the elevated window is placed with the owner only inside Procedure B
+
+**Resolved** 2026-11-25 by the repo owner, on #573.
+
+**Context.** DEVC-D7 splits the writers on this repo into trusted human writers, whom the review
+gate does not defend against, and the untrusted bump-binaries App, which its permissions and
+`main-approval` bound. Two other non-human writers now act here. The dev App (`603id-dev[bot]`) is
+driven by a model session that reads untrusted text. The elevated window (`603id-admin[bot]`) holds
+Administration, Environments, Actions and Workflows write and is the route for changes under
+`.github/workflows/`. The threat model's passages on both said their placement was pending; this
+entry places them.
+
+**Decision.**
+- **The dev App is not a trusted writer.** DEVC-D7's acceptances for human writers do not extend to
+  it, on the same ground as the bump-binaries App: it is an automated identity that acts on
+  untrusted input. What bounds it is what the threat model's dev-token row records: it lacks the
+  Workflows permission, so it cannot change any file under `.github/workflows/`, `review-gate.yml`
+  included; it cannot push `main`; and `main-approval` refuses the merge of any PR without the code
+  owner's current approval of its last push, so the owner's read of the diff stands before every
+  merge it can make.
+- **`603id-admin[bot]` is placed with the owner inside a Procedure B run only; outside one it is
+  an untrusted writer.** DEVC-D7's acceptances for human writers extend to it only as
+  `docs/host-steps.md`'s Procedure B uses it: the owner mints it on the host for a single task, only
+  `wow-publish` and `wow-admin` read it, in the owner's own shell and never a Claude session, and
+  the owner revokes it afterwards. Any other use of the App, an elevated window minted with
+  `wow-admin` directly included (with or without `--perms`), gets none of DEVC-D7's human-writer
+  acceptances: it is an untrusted writer, and the same-repo-gate Known gap for that window is a
+  named residual of this entry that is not accepted. Outside Procedure B none of the Procedure B
+  controls below applies (step 2.4's mint check, step 2.5's revoke rule, the owner's snapshot read),
+  and `main-approval` does not bound the window (the threat model's elevated-token row), so every
+  residual of such a window is unaccepted, the same-repo-gate gap among them. The recorded controls
+  inside Procedure B:
+  - the per-task mint and revoke (step 2.5's revoke rule, under which after a failed revoke every
+    admin token is treated as live for an hour);
+  - step 2.4 of `docs/host-steps.md`: the mint matches only when its `granted:` line lists
+    contents, pull_requests and workflows write and metadata read and no other permission, so a
+    `granted:` line that lists any permission beyond those (or no matching line, or any error line)
+    is a failed mint and makes the run a failed run under step 2.5's revoke rule;
+  - a PR its pushes reach still merges only with the code owner's approval of its last push, which
+    `main-approval` requires;
+  - the owner's read of `wow-publish`'s snapshot, and of GitHub's compare when `expect` is not
+    `new`, before the mint and push (step 2.2).
+- Rejected: *trusting the dev App as a human writer:* a model session that reads untrusted text
+  drives it, which is the ground on which DEVC-D7 left the bump-binaries App untrusted.
+- Rejected: *treating `603id-admin[bot]` as untrusted inside Procedure B pushes:* the owner's read
+  of `wow-publish`'s snapshot before the mint is the control there, so the human-writer acceptance
+  holds for the bytes `wow-publish` pushes.
+
+**Why DEVC-D and not IAC-D.** It decides what this repo's gate and threat model defend against.
+
+**Consequences.**
+- Residual (dev App): it can merge a PR that already has a current code-owner approval and green
+  required checks, and it arms auto-merge on its own PRs, so on those the code owner's approval is
+  the merge (the threat model's Boundary 6 and the dev-token row).
+- Residual (dev App): it may be able to edit a review body, the reviewer App's verdict line
+  included (assumed, not tested, per the dev-token row), and this repo's gate has no review-editor
+  check (the Known gap on `review-gate.yml`).
+- Residual (dev App): its later pushes to a Procedure B branch run that branch's workflows before
+  any review (the *Later dev-App pushes* bullet of `docs/host-steps.md`'s Known limits).
+- Residual (`603id-admin[bot]`, inside Procedure B): nothing checks, during Procedure B, the ban on
+  any container that binds the identity home, which covers the token's `admin/` folder,
+  `wow-publish`'s snapshot folder and the `bin/` that holds the `wow-admin` the owner runs (the
+  elevated-token row, and the threat model's Exception for a host that holds a token directory);
+  that identity home is outside every container but not outside the host (`docs/host-steps.md`
+  Known limits). Nothing checks the revoke rule, which is the owner's (step 2.5). Where the App's
+  key is held is outside this repo's record (the elevated-token row).
+- Residual (`603id-admin[bot]`, inside Procedure B): the App holds Administration, Environments,
+  Actions and Workflows write, `wow-admin` mints Administration and Workflows write when `--perms`
+  names them, and the elevated-token row records that `main-approval` does not bound the App and
+  that it can edit or disable any ruleset, add a bypass actor and change an environment's
+  protection rules (with DEVC-D12's residual for the `release` environment, `release-tags` and
+  `release.yml`).
+- Residual (`603id-admin[bot]`, inside Procedure B): the bytes it pushes were written in a container
+  by a model session, so the owner's read is the only control on them before the pushed workflows
+  run on their own events, with the reach the elevated-token row lists for such runs; that read
+  does not cover the dev App's later pushes to the same branch.
+- Residual (`603id-admin[bot]`, outside Procedure B): every residual of the window is unaccepted,
+  the same-repo-gate gap among them.
 
 ### Org-wide IAC-D decisions that bind this repo
 
